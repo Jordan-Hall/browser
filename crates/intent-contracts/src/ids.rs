@@ -60,6 +60,7 @@ typed_uuid!(
     RequestId,
     CancellationId,
     TraceId,
+    WorkerInstanceId,
 );
 
 #[cfg(test)]
