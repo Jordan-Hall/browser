@@ -7,9 +7,7 @@ mod frame;
 mod limits;
 mod negotiation;
 
-pub use envelope::{
-    Envelope, EnvelopeKind, decode_control, decode_control_for_version, encode_control,
-};
+pub use envelope::{Envelope, EnvelopeKind, decode_control, encode_control};
 pub use error::{WireError, WireErrorCode};
 pub use frame::{DecodeBatch, FRAME_HEADER_BYTES, Frame, FrameDecoder, FrameLane};
 pub use limits::WireLimits;
