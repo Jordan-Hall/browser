@@ -1,10 +1,15 @@
 #![forbid(unsafe_code)]
 #![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
 
+mod inbox;
 mod migrations;
 mod operations;
 mod outbox;
 
+pub use inbox::{
+    ConsumerEffect, InboxApplyResult, InboxError, InboxEvent, MAX_CONSUMER_EFFECTS,
+    MAX_INBOX_PAYLOAD_BYTES, StoredConsumerEffect,
+};
 pub use operations::{
     DurableOperation, DurableOperationState, NewDurableOperation, OperationJournalEntry,
     OperationTransition,
@@ -285,7 +290,7 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 3);
+        assert_eq!(store.schema_version()?, 4);
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;
