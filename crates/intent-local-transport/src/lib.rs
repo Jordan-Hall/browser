@@ -18,7 +18,7 @@ pub use peer::{PeerCredentialError, PeerCredentialEvidence, PeerExpectation};
 
 #[cfg(unix)]
 pub use peer::anonymous_unix_channel_pair;
-#[cfg(unix)]
-pub use peer::unix_peer_credentials;
 #[cfg(windows)]
 pub use peer::named_pipe_client_credentials;
+#[cfg(unix)]
+pub use peer::unix_peer_credentials;
