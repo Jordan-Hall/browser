@@ -115,7 +115,10 @@ impl<T> PriorityQueue<T> {
                     return Err(EnqueueError::new(EnqueueErrorKind::NoCredit, item));
                 }
                 if self.best_effort.len() >= self.limits.best_effort {
-                    return Err(EnqueueError::new(EnqueueErrorKind::BestEffortQueueFull, item));
+                    return Err(EnqueueError::new(
+                        EnqueueErrorKind::BestEffortQueueFull,
+                        item,
+                    ));
                 }
                 self.credits -= 1;
                 self.best_effort.push_back((class, item));
@@ -187,7 +190,9 @@ impl fmt::Display for QueueConfigError {
                 formatter.write_str("reserved control capacity must be non-zero")
             }
             Self::CapacityTooLarge => formatter.write_str("queue capacity exceeds hard limit"),
-            Self::CreditLimitTooLarge => formatter.write_str("flow credit limit exceeds hard limit"),
+            Self::CreditLimitTooLarge => {
+                formatter.write_str("flow credit limit exceeds hard limit")
+            }
         }
     }
 }
@@ -263,7 +268,9 @@ impl<T> fmt::Display for EnqueueError<T> {
             EnqueueErrorKind::BestEffortQueueFull => {
                 formatter.write_str("best-effort queue is full")
             }
-            EnqueueErrorKind::NoCredit => formatter.write_str("no flow-control credit is available"),
+            EnqueueErrorKind::NoCredit => {
+                formatter.write_str("no flow-control credit is available")
+            }
         }
     }
 }
@@ -333,7 +340,8 @@ mod tests {
     fn full_reliable_queue_returns_item_instead_of_dropping_it() -> Result<(), Box<dyn Error>> {
         let mut queue = PriorityQueue::new(QueueLimits::try_new(1, 1, 1, 1)?);
         queue.enqueue(DeliveryClass::ReliableControl, TestMessage::State(1))?;
-        let Err(error) = queue.enqueue(DeliveryClass::ReliableControl, TestMessage::State(2)) else {
+        let Err(error) = queue.enqueue(DeliveryClass::ReliableControl, TestMessage::State(2))
+        else {
             return Err("reliable queue unexpectedly accepted beyond capacity".into());
         };
         assert_eq!(error.kind(), EnqueueErrorKind::ReliableQueueFull);
