@@ -68,6 +68,43 @@ BEGIN
 END;
 "#;
 
+const MIGRATION_003: &str = r#"
+CREATE TABLE outbox_messages (
+    outbox_id TEXT PRIMARY KEY NOT NULL,
+    operation_id TEXT NOT NULL REFERENCES durable_operations(operation_id) ON DELETE RESTRICT,
+    attempt_identity TEXT NOT NULL,
+    destination TEXT NOT NULL CHECK (length(destination) BETWEEN 1 AND 512),
+    message_kind TEXT NOT NULL CHECK (length(message_kind) BETWEEN 1 AND 128),
+    payload BLOB NOT NULL CHECK (length(payload) <= 1048576),
+    payload_hash TEXT NOT NULL CHECK (length(payload_hash) = 64),
+    state TEXT NOT NULL CHECK (state IN ('pending', 'leased', 'attempting', 'completed', 'failed')),
+    lease_owner TEXT,
+    lease_expires_at_micros INTEGER,
+    dispatch_started_at_micros INTEGER,
+    completed_at_micros INTEGER,
+    failure_detail TEXT,
+    created_at_micros INTEGER NOT NULL,
+    updated_at_micros INTEGER NOT NULL,
+    UNIQUE(operation_id, attempt_identity),
+    CHECK ((lease_owner IS NULL) = (lease_expires_at_micros IS NULL)),
+    CHECK (state != 'leased' OR lease_owner IS NOT NULL),
+    CHECK (state != 'attempting' OR dispatch_started_at_micros IS NOT NULL)
+) STRICT;
+
+CREATE INDEX outbox_ready_idx
+    ON outbox_messages(state, lease_expires_at_micros, created_at_micros);
+CREATE INDEX outbox_operation_idx
+    ON outbox_messages(operation_id, created_at_micros);
+
+CREATE TRIGGER outbox_immutable_identity
+BEFORE UPDATE OF
+    operation_id, attempt_identity, destination, message_kind, payload, payload_hash, created_at_micros
+ON outbox_messages
+BEGIN
+    SELECT RAISE(ABORT, 'outbox message identity and payload are immutable');
+END;
+"#;
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -78,6 +115,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 2,
         name: "durable_operation_journal",
         sql: MIGRATION_002,
+    },
+    Migration {
+        version: 3,
+        name: "transactional_outbox",
+        sql: MIGRATION_003,
     },
 ];
 
