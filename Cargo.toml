@@ -4,8 +4,10 @@ members = [
     "crates/intent-ipc",
     "crates/intent-local-transport",
     "crates/intent-fixture-worker",
+    "crates/intent-conformance",
     "crates/intent-xtask",
 ]
+exclude = ["fuzz"]
 resolver = "3"
 
 [workspace.package]
