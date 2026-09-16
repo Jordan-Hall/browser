@@ -291,6 +291,25 @@ impl StateStore {
         source: &BoundedText<128>,
         event_id: &BoundedText<256>,
     ) -> Result<Vec<StoredConsumerEffect>, InboxError> {
+        let expected_effects_hash: Option<String> = self
+            .connection
+            .query_row(
+                r#"
+                SELECT effects_hash
+                FROM consumer_events
+                WHERE consumer = ?1 AND source = ?2 AND event_id = ?3
+                "#,
+                params![consumer.as_str(), source.as_str(), event_id.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(expected_effects_hash) = expected_effects_hash else {
+            return Ok(Vec::new());
+        };
+        let expected_effects_hash = ContentHash::from_hex(&expected_effects_hash).map_err(|error| {
+            InboxError::InvalidStoredRecord(format!("invalid aggregate effects hash: {error}"))
+        })?;
+
         let mut statement = self.connection.prepare(
             r#"
             SELECT effect_key, payload, payload_hash
@@ -331,6 +350,14 @@ impl StateStore {
                 payload_hash: stored_hash,
             });
         }
+
+        let actual_effects_hash = hash_stored_effects(&effects);
+        if actual_effects_hash != expected_effects_hash {
+            return Err(InboxError::EffectSetHashMismatch {
+                expected: expected_effects_hash,
+                actual: actual_effects_hash,
+            });
+        }
         Ok(effects)
     }
 }
@@ -361,6 +388,22 @@ fn hash_effects(effects: &[ConsumerEffect]) -> ContentHash {
         hasher.update(effect.key.as_str().as_bytes());
         hasher.update(hash_bytes(&effect.payload).into_bytes());
     }
+    finalize_hash(hasher)
+}
+
+#[must_use]
+fn hash_stored_effects(effects: &[StoredConsumerEffect]) -> ContentHash {
+    let mut hasher = Sha256::new();
+    for effect in effects {
+        hasher.update((effect.key.as_str().len() as u64).to_be_bytes());
+        hasher.update(effect.key.as_str().as_bytes());
+        hasher.update(hash_bytes(&effect.payload).into_bytes());
+    }
+    finalize_hash(hasher)
+}
+
+#[must_use]
+fn finalize_hash(hasher: Sha256) -> ContentHash {
     let digest = hasher.finalize();
     let mut bytes = [0_u8; 32];
     bytes.copy_from_slice(&digest);
@@ -409,6 +452,10 @@ pub enum InboxError {
     },
     EffectHashMismatch {
         key: String,
+        expected: ContentHash,
+        actual: ContentHash,
+    },
+    EffectSetHashMismatch {
         expected: ContentHash,
         actual: ContentHash,
     },
@@ -468,6 +515,10 @@ impl fmt::Display for InboxError {
                 formatter,
                 "consumer effect {key} hash mismatch: expected {expected}, actual {actual}"
             ),
+            Self::EffectSetHashMismatch { expected, actual } => write!(
+                formatter,
+                "consumer effect set hash mismatch: expected {expected}, actual {actual}"
+            ),
             Self::CounterOverflow(label) => write!(formatter, "{label} exceeds storage range"),
             Self::InvalidStoredRecord(detail) => {
                 write!(formatter, "invalid stored inbox record: {detail}")
@@ -496,6 +547,7 @@ mod tests {
     use super::{ConsumerEffect, InboxApplyResult, InboxError, InboxEvent};
     use crate::StateStore;
     use intent_contracts::{BoundedText, UnixTimestampMicros};
+    use rusqlite::params;
     use std::error::Error;
 
     fn event(sequence: u64, event_id: &str) -> Result<InboxEvent, Box<dyn Error>> {
@@ -546,6 +598,29 @@ mod tests {
             store.consumer_effects(&consumer, &source, &event_id)?.len(),
             1
         );
+        Ok(())
+    }
+
+    #[test]
+    fn missing_materialized_effect_is_detected_by_aggregate_hash() -> Result<(), Box<dyn Error>> {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        let consumer = BoundedText::try_new("workspace-projector")?;
+        store.apply_inbox_event(
+            &consumer,
+            event(10, "evt-10")?,
+            effects("v1")?,
+            UnixTimestampMicros::try_new(200)?,
+        )?;
+        store.connection.execute(
+            "DELETE FROM consumer_effects WHERE consumer = ?1 AND source = ?2 AND event_id = ?3",
+            params![consumer.as_str(), "connector", "evt-10"],
+        )?;
+        let source = BoundedText::try_new("connector")?;
+        let event_id = BoundedText::try_new("evt-10")?;
+        let Err(error) = store.consumer_effects(&consumer, &source, &event_id) else {
+            return Err("truncated materialized effects unexpectedly validated".into());
+        };
+        assert!(matches!(error, InboxError::EffectSetHashMismatch { .. }));
         Ok(())
     }
 
