@@ -129,7 +129,9 @@ pub fn named_pipe_client_credentials<H: std::os::windows::io::AsRawHandle>(
     // handle without retaining it, and `process_id` points to valid writable storage for the call.
     let result = unsafe { GetNamedPipeClientProcessId(raw_handle, &mut process_id) };
     if result == 0 {
-        let error_code = std::io::Error::last_os_error().raw_os_error().map_or(-1, |code| code);
+        let error_code = std::io::Error::last_os_error()
+            .raw_os_error()
+            .map_or(-1, |code| code);
         return Err(PeerCredentialError::Os(error_code));
     }
     if process_id == 0 {
