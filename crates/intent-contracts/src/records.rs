@@ -1,7 +1,7 @@
 use crate::ids::{
     AccountId, ActionProposalId, ApprovalId, ArtifactId, CapabilityId, ConnectorId, EvidenceId,
-    GoalContractId, MemoryRecordId, ObservationId, OperationId, ReceiptId, TaskId, ViewDefinitionId,
-    WorkspaceId,
+    GoalContractId, MemoryRecordId, ObservationId, OperationId, ReceiptId, TaskId,
+    ViewDefinitionId, WorkspaceId,
 };
 use crate::values::{
     AccountQualifiedResourceId, BoundedText, ByteSize, ContentHash, Money, ProviderId,
@@ -841,17 +841,16 @@ mod tests {
             )
         }
 
-        let first: Capability = serde_json::from_str(&fixture(
-            "018f47f7-5a86-7c00-8000-000000000302",
-            ACCOUNT_A,
-        ))?;
-        let second: Capability = serde_json::from_str(&fixture(
-            "018f47f7-5a86-7c00-8000-000000000303",
-            ACCOUNT_B,
-        ))?;
+        let first: Capability =
+            serde_json::from_str(&fixture("018f47f7-5a86-7c00-8000-000000000302", ACCOUNT_A))?;
+        let second: Capability =
+            serde_json::from_str(&fixture("018f47f7-5a86-7c00-8000-000000000303", ACCOUNT_B))?;
 
         assert_ne!(first.account_id(), second.account_id());
-        assert_eq!(first.account_id(), serde_json::from_str::<AccountId>(&format!("\"{ACCOUNT_A}\""))?);
+        assert_eq!(
+            first.account_id(),
+            serde_json::from_str::<AccountId>(&format!("\"{ACCOUNT_A}\""))?
+        );
         assert_ne!(first.id(), CapabilityId::from_uuid(second.id().as_uuid()));
         Ok(())
     }
