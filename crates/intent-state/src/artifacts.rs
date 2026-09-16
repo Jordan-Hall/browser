@@ -436,7 +436,10 @@ fn create_directory_durable(path: &Path) -> Result<(), ArtifactError> {
     }
 
     let parent = path.parent().ok_or_else(|| {
-        ArtifactError::InvalidInput(format!("storage directory {} has no parent", path.display()))
+        ArtifactError::InvalidInput(format!(
+            "storage directory {} has no parent",
+            path.display()
+        ))
     })?;
     create_directory_durable(parent)?;
     match fs::create_dir(path) {
