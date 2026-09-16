@@ -192,12 +192,7 @@ impl StateStore {
         )?;
         transaction.commit()?;
         if changed == 1 {
-            enqueue_if_eligible(
-                &mut self.connection,
-                &scope,
-                &content_hash,
-                occurred_at,
-            )?;
+            enqueue_if_eligible(&mut self.connection, &scope, &content_hash, occurred_at)?;
         }
         Ok(changed == 1)
     }
@@ -467,13 +462,11 @@ fn blob_is_eligible(
 }
 
 fn blob_path(root: &Path, scope: &str, content_hash: &str) -> Result<PathBuf, RetentionError> {
-    let hash = ContentHash::from_hex(content_hash)
-        .map_err(|error| RetentionError::InvalidStoredRecord(format!("invalid blob hash: {error}")))?;
+    let hash = ContentHash::from_hex(content_hash).map_err(|error| {
+        RetentionError::InvalidStoredRecord(format!("invalid blob hash: {error}"))
+    })?;
     let namespace = scope_namespace(scope);
-    Ok(root
-        .join("blobs")
-        .join(namespace)
-        .join(hash.to_hex()))
+    Ok(root.join("blobs").join(namespace).join(hash.to_hex()))
 }
 
 #[must_use]
@@ -555,14 +548,23 @@ impl fmt::Display for RetentionError {
             Self::Artifact(error) => write!(formatter, "artifact retention error: {error}"),
             Self::ArtifactNotFound(id) => write!(formatter, "artifact {id} does not exist"),
             Self::ArtifactAccessDenied(id) => {
-                write!(formatter, "artifact {id} is outside the permitted retention scope")
+                write!(
+                    formatter,
+                    "artifact {id} is outside the permitted retention scope"
+                )
             }
             Self::ConcurrentSuppression(id) => {
                 write!(formatter, "artifact {id} suppression changed concurrently")
             }
-            Self::HoldAccessDenied => formatter.write_str("retention hold is outside the permitted scope"),
-            Self::InvalidHoldExpiry => formatter.write_str("retention hold expiry must be after creation"),
-            Self::InvalidLimit => formatter.write_str("retention batch limit exceeds storage range"),
+            Self::HoldAccessDenied => {
+                formatter.write_str("retention hold is outside the permitted scope")
+            }
+            Self::InvalidHoldExpiry => {
+                formatter.write_str("retention hold expiry must be after creation")
+            }
+            Self::InvalidLimit => {
+                formatter.write_str("retention batch limit exceeds storage range")
+            }
             Self::InvalidStoredRecord(detail) => {
                 write!(formatter, "invalid stored retention record: {detail}")
             }
