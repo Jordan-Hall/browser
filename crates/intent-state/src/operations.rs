@@ -299,7 +299,10 @@ impl StateStore {
             "#,
             params![
                 transition.next_state.as_str(),
-                transition.state_detail.as_ref().map(|detail| detail.as_str()),
+                transition
+                    .state_detail
+                    .as_ref()
+                    .map(|detail| detail.as_str()),
                 transition.attempt_identity.map(|id| id.to_string()),
                 u64_to_i64(next_revision, "operation revision")?,
                 transition.occurred_at.get(),
