@@ -1,7 +1,6 @@
 use crate::StateStore;
 use intent_contracts::{
-    BoundedText, ContentHash, OperationAttemptId, OperationId, OutboxMessageId,
-    UnixTimestampMicros,
+    BoundedText, ContentHash, OperationAttemptId, OperationId, OutboxMessageId, UnixTimestampMicros,
 };
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use sha2::{Digest, Sha256};
@@ -472,7 +471,12 @@ impl StateStore {
                 updated_at_micros = ?2
             WHERE outbox_id = ?4
             "#,
-            params![outbox_state, occurred_at.get(), detail, outbox_id.to_string()],
+            params![
+                outbox_state,
+                occurred_at.get(),
+                detail,
+                outbox_id.to_string()
+            ],
         )?;
         transaction.execute(
             r#"
@@ -595,8 +599,9 @@ fn load_outbox_from_connection(
     else {
         return Ok(None);
     };
-    let stored_hash = ContentHash::from_hex(&payload_hash)
-        .map_err(|error| OutboxError::InvalidStoredRecord(format!("invalid payload hash: {error}")))?;
+    let stored_hash = ContentHash::from_hex(&payload_hash).map_err(|error| {
+        OutboxError::InvalidStoredRecord(format!("invalid payload hash: {error}"))
+    })?;
     let actual_hash = hash_payload(&payload);
     if stored_hash != actual_hash {
         return Err(OutboxError::PayloadHashMismatch {
@@ -610,17 +615,21 @@ fn load_outbox_from_connection(
         outbox_id,
         operation_id: parse_id(&operation_id, "operation id")?,
         attempt_identity: parse_id(&attempt_identity, "attempt identity")?,
-        destination: BoundedText::try_new(destination)
-            .map_err(|error| OutboxError::InvalidStoredRecord(format!("invalid destination: {error}")))?,
-        message_kind: BoundedText::try_new(message_kind)
-            .map_err(|error| OutboxError::InvalidStoredRecord(format!("invalid message kind: {error}")))?,
+        destination: BoundedText::try_new(destination).map_err(|error| {
+            OutboxError::InvalidStoredRecord(format!("invalid destination: {error}"))
+        })?,
+        message_kind: BoundedText::try_new(message_kind).map_err(|error| {
+            OutboxError::InvalidStoredRecord(format!("invalid message kind: {error}"))
+        })?,
         payload,
         payload_hash: stored_hash,
         state: OutboxState::parse(&state)?,
         lease_owner: lease_owner
-            .map(|value| BoundedText::try_new(value))
+            .map(BoundedText::try_new)
             .transpose()
-            .map_err(|error| OutboxError::InvalidStoredRecord(format!("invalid lease owner: {error}")))?,
+            .map_err(|error| {
+                OutboxError::InvalidStoredRecord(format!("invalid lease owner: {error}"))
+            })?,
         lease_expires_at: optional_timestamp(lease_expires_at, "lease expiry")?,
         dispatch_started_at: optional_timestamp(dispatch_started_at, "dispatch start")?,
         created_at: timestamp(created_at, "created at")?,
@@ -716,7 +725,10 @@ impl fmt::Display for OutboxError {
                 formatter,
                 "operation {operation_id} revision conflict: expected {expected}, actual {actual}"
             ),
-            Self::OperationNotDispatchable { operation_id, state } => write!(
+            Self::OperationNotDispatchable {
+                operation_id,
+                state,
+            } => write!(
                 formatter,
                 "operation {operation_id} cannot dispatch from state {state}"
             ),
@@ -795,9 +807,7 @@ mod tests {
         let operation = store.create_operation(NewDurableOperation {
             operation_id: operation_id()?,
             task_id: TaskId::from_str("018f47f7-5a86-7c00-8000-000000000834")?,
-            action_proposal_id: ActionProposalId::from_str(
-                "018f47f7-5a86-7c00-8000-000000000835",
-            )?,
+            action_proposal_id: ActionProposalId::from_str("018f47f7-5a86-7c00-8000-000000000835")?,
             account_id: AccountId::from_str("018f47f7-5a86-7c00-8000-000000000836")?,
             capability_id: CapabilityId::from_str("018f47f7-5a86-7c00-8000-000000000837")?,
             arguments_hash: ContentHash::from_bytes([0x83; 32]),
@@ -830,13 +840,17 @@ mod tests {
     }
 
     #[test]
-    fn staging_atomically_marks_operation_pending_and_writes_outbox() -> Result<(), Box<dyn Error>> {
+    fn staging_atomically_marks_operation_pending_and_writes_outbox() -> Result<(), Box<dyn Error>>
+    {
         let mut store = StateStore::open_in_memory_for_tests()?;
         approved_operation(&mut store)?;
         let staged = store.stage_outbox(message()?, 1)?;
         assert_eq!(staged.state(), OutboxState::Pending);
         assert_eq!(
-            store.load_operation(operation_id()?)?.ok_or("operation missing")?.state(),
+            store
+                .load_operation(operation_id()?)?
+                .ok_or("operation missing")?
+                .state(),
             DurableOperationState::DispatchPending
         );
         assert_eq!(store.operation_journal(operation_id()?)?.len(), 3);
@@ -865,14 +879,14 @@ mod tests {
             return Err("wrong lease owner unexpectedly began dispatch".into());
         };
         assert!(matches!(error, OutboxError::LeaseNotHeld(_)));
-        let attempt = store.begin_dispatch(
-            outbox_id()?,
-            &owner,
-            UnixTimestampMicros::try_new(140)?,
-        )?;
+        let attempt =
+            store.begin_dispatch(outbox_id()?, &owner, UnixTimestampMicros::try_new(140)?)?;
         assert_eq!(attempt.attempt_identity(), attempt_id()?);
         assert_eq!(
-            store.load_operation(operation_id()?)?.ok_or("operation missing")?.state(),
+            store
+                .load_operation(operation_id()?)?
+                .ok_or("operation missing")?
+                .state(),
             DurableOperationState::Attempting
         );
         Ok(())
@@ -897,7 +911,10 @@ mod tests {
             UnixTimestampMicros::try_new(150)?,
         )?;
         assert_eq!(
-            store.load_operation(operation_id()?)?.ok_or("operation missing")?.state(),
+            store
+                .load_operation(operation_id()?)?
+                .ok_or("operation missing")?
+                .state(),
             DurableOperationState::NeedsReconciliation
         );
         Ok(())
