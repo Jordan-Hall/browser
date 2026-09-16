@@ -101,6 +101,7 @@ impl DecodeBatch {
     }
 }
 
+/// Incremental bounded decoder that emits only complete frames after validating the header budget.
 #[derive(Debug)]
 pub struct FrameDecoder {
     limits: WireLimits,
