@@ -2,7 +2,14 @@
 #![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
 
 mod migrations;
+mod operations;
 
+pub use operations::{
+    DurableOperation, DurableOperationState, NewDurableOperation, OperationJournalEntry,
+    OperationTransition,
+};
+
+use intent_contracts::OperationId;
 use migrations::apply_migrations;
 use rusqlite::Connection;
 use std::error::Error;
@@ -134,6 +141,20 @@ pub enum StateError {
         expected_checksum: String,
         stored_checksum: String,
     },
+    OperationNotFound(OperationId),
+    StaleOperationRevision {
+        operation_id: OperationId,
+        expected: u64,
+        actual: u64,
+    },
+    InvalidOperationTransition {
+        from: DurableOperationState,
+        to: DurableOperationState,
+    },
+    MissingOperationAttemptIdentity {
+        state: DurableOperationState,
+    },
+    InvalidStoredOperation(String),
 }
 
 impl fmt::Display for StateError {
@@ -174,6 +195,31 @@ impl fmt::Display for StateError {
                 formatter,
                 "migration {version} does not match compiled history: expected {expected_name}/{expected_checksum}, stored {stored_name}/{stored_checksum}"
             ),
+            Self::OperationNotFound(operation_id) => {
+                write!(formatter, "durable operation {operation_id} does not exist")
+            }
+            Self::StaleOperationRevision {
+                operation_id,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "durable operation {operation_id} revision conflict: expected {expected}, actual {actual}"
+            ),
+            Self::InvalidOperationTransition { from, to } => write!(
+                formatter,
+                "invalid durable operation transition: {} -> {}",
+                from.as_str(),
+                to.as_str()
+            ),
+            Self::MissingOperationAttemptIdentity { state } => write!(
+                formatter,
+                "durable operation state {} requires an attempt identity",
+                state.as_str()
+            ),
+            Self::InvalidStoredOperation(detail) => {
+                write!(formatter, "invalid stored operation record: {detail}")
+            }
         }
     }
 }
@@ -234,7 +280,7 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 1);
+        assert_eq!(store.schema_version()?, 2);
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;
