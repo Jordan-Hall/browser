@@ -38,7 +38,7 @@ impl ArtifactReference {
     }
 
     #[must_use]
-    pub const fn id(&self) -> ArtifactId {
+    pub const fn artifact_id(&self) -> ArtifactId {
         self.id
     }
 
@@ -287,6 +287,16 @@ pub enum CapabilitySupportLevel {
     Unavailable,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CapabilityDescriptor {
+    pub name: BoundedText<256>,
+    pub effect_class: CapabilityEffectClass,
+    pub resource_scope: BoundedText<1024>,
+    pub input_schema_hash: ContentHash,
+    pub output_schema_hash: ContentHash,
+    pub support_level: CapabilitySupportLevel,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Capability {
     #[serde(deserialize_with = "deserialize_v1_schema")]
@@ -304,28 +314,23 @@ pub struct Capability {
 
 impl Capability {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         id: CapabilityId,
         connector_id: ConnectorId,
         account_id: AccountId,
-        name: BoundedText<256>,
-        effect_class: CapabilityEffectClass,
-        resource_scope: BoundedText<1024>,
-        input_schema_hash: ContentHash,
-        output_schema_hash: ContentHash,
-        support_level: CapabilitySupportLevel,
+        descriptor: CapabilityDescriptor,
     ) -> Self {
         Self {
             schema_version: SchemaVersion::V1,
             id,
             connector_id,
             account_id,
-            name,
-            effect_class,
-            resource_scope,
-            input_schema_hash,
-            output_schema_hash,
-            support_level,
+            name: descriptor.name,
+            effect_class: descriptor.effect_class,
+            resource_scope: descriptor.resource_scope,
+            input_schema_hash: descriptor.input_schema_hash,
+            output_schema_hash: descriptor.output_schema_hash,
+            support_level: descriptor.support_level,
         }
     }
 
@@ -433,6 +438,14 @@ impl Evidence {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActionProposalDescriptor {
+    pub canonical_arguments: ArtifactReference,
+    pub arguments_hash: ContentHash,
+    pub effect_class: CapabilityEffectClass,
+    pub approval_requirement: ApprovalRequirement,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ActionProposal {
     #[serde(deserialize_with = "deserialize_v1_schema")]
@@ -453,15 +466,12 @@ pub struct ActionProposal {
 
 impl ActionProposal {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         id: ActionProposalId,
         task_id: TaskId,
         capability_id: CapabilityId,
         account_id: AccountId,
-        canonical_arguments: ArtifactReference,
-        arguments_hash: ContentHash,
-        effect_class: CapabilityEffectClass,
-        approval_requirement: ApprovalRequirement,
+        descriptor: ActionProposalDescriptor,
     ) -> Self {
         Self {
             schema_version: SchemaVersion::V1,
@@ -470,11 +480,11 @@ impl ActionProposal {
             capability_id,
             account_id,
             target_resource: None,
-            canonical_arguments,
-            arguments_hash,
-            effect_class,
+            canonical_arguments: descriptor.canonical_arguments,
+            arguments_hash: descriptor.arguments_hash,
+            effect_class: descriptor.effect_class,
             expires_at: None,
-            approval_requirement,
+            approval_requirement: descriptor.approval_requirement,
         }
     }
 }
