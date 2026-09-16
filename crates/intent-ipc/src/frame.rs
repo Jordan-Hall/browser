@@ -152,7 +152,8 @@ impl FrameDecoder {
 
             let remaining = self.current_payload_len - self.payload.len();
             let take = remaining.min(input.len() - cursor);
-            self.payload.extend_from_slice(&input[cursor..cursor + take]);
+            self.payload
+                .extend_from_slice(&input[cursor..cursor + take]);
             cursor += take;
 
             if self.payload.len() == self.current_payload_len {
@@ -249,9 +250,7 @@ fn validate_length(
     if payload_len > limit {
         return Err(WireError::new(
             WireErrorCode::FrameTooLarge,
-            format!(
-                "{lane:?} frame advertises {payload_len} bytes but limit is {limit}"
-            ),
+            format!("{lane:?} frame advertises {payload_len} bytes but limit is {limit}"),
         ));
     }
     Ok(())
@@ -293,7 +292,9 @@ mod tests {
             advertised[3],
         ];
 
-        let error = decoder.push(&header).expect_err("oversized frame must fail");
+        let error = decoder
+            .push(&header)
+            .expect_err("oversized frame must fail");
         assert_eq!(error.code(), WireErrorCode::FrameTooLarge);
         assert_eq!(decoder.buffered_payload_len(), 0);
         assert_eq!(decoder.buffered_payload_capacity(), 0);
@@ -323,7 +324,8 @@ mod tests {
     }
 
     #[test]
-    fn feed_frame_budget_returns_consumed_offset_without_losing_input() -> Result<(), Box<dyn Error>> {
+    fn feed_frame_budget_returns_consumed_offset_without_losing_input() -> Result<(), Box<dyn Error>>
+    {
         let mut limits = WireLimits::for_tests();
         limits.max_frames_per_feed = 1;
         let first = Frame::new(FrameLane::Control, b"a".to_vec()).encode(limits)?;
