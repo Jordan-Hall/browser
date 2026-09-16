@@ -209,9 +209,15 @@ CREATE INDEX artifact_handles_retention_idx
     ON artifact_handles_all(privacy_scope, content_hash, suppressed_at_micros);
 
 CREATE VIEW artifact_handles AS
-SELECT artifact_id, privacy_scope, content_hash, byte_size, media_type, created_at_micros
-FROM artifact_handles_all
-WHERE suppressed_at_micros IS NULL;
+SELECT
+    artifact_id,
+    privacy_scope,
+    content_hash,
+    CASE WHEN suppressed_at_micros IS NULL THEN byte_size ELSE -1 END AS byte_size,
+    media_type,
+    created_at_micros,
+    suppressed_at_micros
+FROM artifact_handles_all;
 
 CREATE TRIGGER artifact_handles_insert
 INSTEAD OF INSERT ON artifact_handles
@@ -223,6 +229,23 @@ BEGIN
         NEW.artifact_id, NEW.privacy_scope, NEW.content_hash, NEW.byte_size,
         NEW.media_type, NEW.created_at_micros, NULL
     );
+END;
+
+CREATE TRIGGER artifact_handles_suppress
+INSTEAD OF UPDATE OF suppressed_at_micros ON artifact_handles
+WHEN OLD.suppressed_at_micros IS NULL AND NEW.suppressed_at_micros IS NOT NULL
+BEGIN
+    UPDATE artifact_handles_all
+    SET suppressed_at_micros = NEW.suppressed_at_micros
+    WHERE artifact_id = OLD.artifact_id AND suppressed_at_micros IS NULL;
+END;
+
+CREATE TRIGGER artifact_handles_delete_suppressed
+INSTEAD OF DELETE ON artifact_handles
+WHEN OLD.suppressed_at_micros IS NOT NULL
+BEGIN
+    DELETE FROM artifact_handles_all
+    WHERE artifact_id = OLD.artifact_id AND suppressed_at_micros IS NOT NULL;
 END;
 
 CREATE TABLE artifact_retention_holds (
