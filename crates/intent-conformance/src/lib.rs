@@ -14,10 +14,10 @@ use intent_local_transport::{
 };
 use serde::Serialize;
 use std::error::Error;
-use std::fmt;
 use std::str::FromStr;
 
 pub const CONFORMANCE_FORMAT_VERSION: u16 = 1;
+pub type ConformanceResult<T> = Result<T, Box<dyn Error>>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ConformanceCheck {
@@ -59,7 +59,7 @@ impl ConformanceReport {
     }
 }
 
-pub fn run_conformance() -> Result<ConformanceReport, ConformanceError> {
+pub fn run_conformance() -> ConformanceResult<ConformanceReport> {
     let canonical_protocol_fixture = canonical_protocol_fixture()?;
     check_migration_chain()?;
     check_outdated_worker_rejected()?;
@@ -103,7 +103,7 @@ pub fn run_conformance() -> Result<ConformanceReport, ConformanceError> {
     })
 }
 
-fn canonical_protocol_fixture() -> Result<String, ConformanceError> {
+fn canonical_protocol_fixture() -> ConformanceResult<String> {
     let offer = ProtocolOffer::try_new(
         vec![ProtocolRange::try_new(1, 0, 2)?],
         [
@@ -115,14 +115,14 @@ fn canonical_protocol_fixture() -> Result<String, ConformanceError> {
     const EXPECTED: &str =
         r#"{"ranges":[{"major":1,"min_minor":0,"max_minor":2}],"capabilities":["alpha","zeta"]}"#;
     if encoded != EXPECTED {
-        return Err(ConformanceError::Invariant(
-            "canonical protocol fixture changed without an explicit conformance update",
-        ));
+        return Err(
+            "canonical protocol fixture changed without an explicit conformance update".into(),
+        );
     }
     Ok(encoded)
 }
 
-fn check_migration_chain() -> Result<(), ConformanceError> {
+fn check_migration_chain() -> ConformanceResult<()> {
     fn migrate_fixture(input: &[u8]) -> Result<Vec<u8>, MigrationFailure> {
         let mut migrated = input.to_vec();
         migrated.extend_from_slice(b"|v1.1");
@@ -144,28 +144,24 @@ fn check_migration_chain() -> Result<(), ConformanceError> {
         || outcome.target_version() != target
         || outcome.bytes() != b"v1|v1.1"
     {
-        return Err(ConformanceError::Invariant(
-            "migration outcome did not preserve version lineage and bytes",
-        ));
+        return Err("migration outcome did not preserve version lineage and bytes".into());
     }
     Ok(())
 }
 
-fn check_outdated_worker_rejected() -> Result<(), ConformanceError> {
+fn check_outdated_worker_rejected() -> ConformanceResult<()> {
     let local = ProtocolOffer::try_new(vec![ProtocolRange::try_new(2, 0, 0)?], [])?;
     let outdated = ProtocolOffer::try_new(vec![ProtocolRange::try_new(1, 0, 9)?], [])?;
     if !matches!(
         negotiate_protocol(&local, &outdated),
         Err(NegotiationError::NoCompatibleVersion)
     ) {
-        return Err(ConformanceError::Invariant(
-            "incompatible worker protocol was not rejected",
-        ));
+        return Err("incompatible worker protocol was not rejected".into());
     }
     Ok(())
 }
 
-fn check_negative_worker_authentication() -> Result<(), ConformanceError> {
+fn check_negative_worker_authentication() -> ConformanceResult<()> {
     let instance = WorkerInstanceId::from_str("018f47f7-5a86-7c00-8000-000000000801")?;
     let token = BootstrapToken::from_bytes([0x41_u8; 32]);
     let peer = PeerCredentialEvidence::Synthetic {
@@ -183,68 +179,27 @@ fn check_negative_worker_authentication() -> Result<(), ConformanceError> {
         OneShotAuthenticator::new(launch).authenticate(&hello, peer),
         Err(AuthenticationError::LaunchIdentityMismatch)
     ) {
-        return Err(ConformanceError::Invariant(
-            "worker role mismatch was not rejected",
-        ));
+        return Err("worker role mismatch was not rejected".into());
     }
     Ok(())
 }
 
-fn check_role_capability_binding() -> Result<(), ConformanceError> {
+fn check_role_capability_binding() -> ConformanceResult<()> {
     if WorkerRole::BrowserWorker.allows(MessageFamily::PolicyDecision) {
-        return Err(ConformanceError::Invariant(
-            "browser worker was allowed to issue a policy decision",
-        ));
+        return Err("browser worker was allowed to issue a policy decision".into());
     }
     if !WorkerRole::PolicyBroker.allows(MessageFamily::PolicyDecision) {
-        return Err(ConformanceError::Invariant(
-            "policy broker lost its declared policy message family",
-        ));
+        return Err("policy broker lost its declared policy message family".into());
     }
     Ok(())
 }
 
-fn check_malformed_approval_rejected() -> Result<(), ConformanceError> {
+fn check_malformed_approval_rejected() -> ConformanceResult<()> {
     let malformed = r#"{"schema_version":{"major":1,"minor":0}}"#;
     if serde_json::from_str::<Approval>(malformed).is_ok() {
-        return Err(ConformanceError::Invariant(
-            "malformed approval unexpectedly deserialized",
-        ));
+        return Err("malformed approval unexpectedly deserialized".into());
     }
     Ok(())
-}
-
-#[derive(Debug)]
-pub enum ConformanceError {
-    Invariant(&'static str),
-    External(Box<dyn Error + Send + Sync>),
-}
-
-impl fmt::Display for ConformanceError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Invariant(message) => formatter.write_str(message),
-            Self::External(error) => error.fmt(formatter),
-        }
-    }
-}
-
-impl Error for ConformanceError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Invariant(_) => None,
-            Self::External(error) => Some(error.as_ref()),
-        }
-    }
-}
-
-impl<E> From<E> for ConformanceError
-where
-    E: Error + Send + Sync + 'static,
-{
-    fn from(value: E) -> Self {
-        Self::External(Box::new(value))
-    }
 }
 
 #[cfg(test)]
