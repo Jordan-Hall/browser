@@ -94,7 +94,10 @@ impl WorkerRole {
                 MessageFamily::AgentSession | MessageFamily::LifecycleControl
             ),
             Self::UiRenderer => {
-                matches!(family, MessageFamily::UiRender | MessageFamily::LifecycleControl)
+                matches!(
+                    family,
+                    MessageFamily::UiRender | MessageFamily::LifecycleControl
+                )
             }
             Self::DesktopBroker => matches!(
                 family,
