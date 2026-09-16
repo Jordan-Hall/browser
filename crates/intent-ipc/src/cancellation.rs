@@ -138,7 +138,10 @@ mod tests {
 
         assert!(registry.cancel(id, now)?);
         assert!(!registry.cancel(id, now)?);
-        assert_eq!(registry.state(id), Some(CancellationState::Cancelled { at: now }));
+        assert_eq!(
+            registry.state(id),
+            Some(CancellationState::Cancelled { at: now })
+        );
         Ok(())
     }
 
