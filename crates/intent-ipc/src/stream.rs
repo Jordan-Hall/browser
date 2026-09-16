@@ -1,5 +1,6 @@
 use crate::{
-    CancellationError, CancellationRegistry, DeliveryClass, EnqueueError, PriorityQueue, QueueLimits,
+    CancellationError, CancellationRegistry, DeliveryClass, EnqueueError, PriorityQueue,
+    QueueLimits,
 };
 use intent_contracts::{ArtifactReference, CancellationId, UnixTimestampMicros};
 use std::error::Error;
@@ -55,14 +56,14 @@ impl<T> StreamEndpoint<T> {
 
     pub fn enqueue_reliable(&mut self, payload: T) -> Result<(), StreamError<T>> {
         self.queue
-            .enqueue(DeliveryClass::ReliableControl, StreamEvent::Reliable(payload))
+            .enqueue(
+                DeliveryClass::ReliableControl,
+                StreamEvent::Reliable(payload),
+            )
             .map_err(StreamError::Enqueue)
     }
 
-    pub fn enqueue_artifact(
-        &mut self,
-        artifact: ArtifactReference,
-    ) -> Result<(), StreamError<T>> {
+    pub fn enqueue_artifact(&mut self, artifact: ArtifactReference) -> Result<(), StreamError<T>> {
         self.queue
             .enqueue(
                 DeliveryClass::ArtifactReference,
@@ -149,8 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn two_workers_ack_cancel_while_progress_queues_are_saturated()
-    -> Result<(), Box<dyn Error>> {
+    fn two_workers_ack_cancel_while_progress_queues_are_saturated() -> Result<(), Box<dyn Error>> {
         let limits = QueueLimits::try_new(4, 1, 2, 4)?;
         let cancellation_id = cancellation_id()?;
         let now = UnixTimestampMicros::try_new(123)?;
