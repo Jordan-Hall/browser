@@ -1,0 +1,29 @@
+[package]
+name = "intent-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.98"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+intent-contracts = { path = "../crates/intent-contracts" }
+intent-ipc = { path = "../crates/intent-ipc" }
+serde = { version = "1", features = ["derive"] }
+
+[[bin]]
+name = "frame_decoder"
+path = "fuzz_targets/frame_decoder.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "control_envelope"
+path = "fuzz_targets/control_envelope.rs"
+test = false
+doc = false
+bench = false
