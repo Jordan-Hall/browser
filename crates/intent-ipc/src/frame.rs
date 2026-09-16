@@ -327,8 +327,8 @@ mod tests {
     }
 
     #[test]
-    fn feed_frame_budget_returns_consumed_offset_without_losing_input()
-    -> Result<(), Box<dyn Error>> {
+    fn feed_frame_budget_returns_consumed_offset_without_losing_input() -> Result<(), Box<dyn Error>>
+    {
         let mut limits = WireLimits::for_tests();
         limits.max_frames_per_feed = 1;
         let first = Frame::new(FrameLane::Control, b"a".to_vec()).encode(limits)?;
