@@ -155,6 +155,52 @@ CREATE INDEX consumer_events_stream_idx
     ON consumer_events(consumer, source, stream, sequence);
 "#;
 
+const MIGRATION_005: &str = r#"
+CREATE TABLE artifact_blobs (
+    privacy_scope TEXT NOT NULL CHECK (length(privacy_scope) BETWEEN 1 AND 128),
+    content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+    byte_size INTEGER NOT NULL CHECK (byte_size >= 0 AND byte_size <= 268435456),
+    created_at_micros INTEGER NOT NULL,
+    PRIMARY KEY(privacy_scope, content_hash)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE artifact_handles (
+    artifact_id TEXT PRIMARY KEY NOT NULL,
+    privacy_scope TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    byte_size INTEGER NOT NULL CHECK (byte_size >= 0 AND byte_size <= 268435456),
+    media_type TEXT NOT NULL CHECK (length(media_type) BETWEEN 1 AND 255),
+    created_at_micros INTEGER NOT NULL,
+    FOREIGN KEY(privacy_scope, content_hash)
+        REFERENCES artifact_blobs(privacy_scope, content_hash) ON DELETE RESTRICT
+) STRICT;
+
+CREATE INDEX artifact_handles_scope_hash_idx
+    ON artifact_handles(privacy_scope, content_hash);
+
+CREATE TABLE artifact_references (
+    artifact_id TEXT NOT NULL REFERENCES artifact_handles(artifact_id) ON DELETE RESTRICT,
+    reference_kind TEXT NOT NULL CHECK (length(reference_kind) BETWEEN 1 AND 64),
+    reference_id TEXT NOT NULL CHECK (length(reference_id) BETWEEN 1 AND 256),
+    created_at_micros INTEGER NOT NULL,
+    PRIMARY KEY(artifact_id, reference_kind, reference_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TRIGGER artifact_blobs_immutable
+BEFORE UPDATE OF privacy_scope, content_hash, byte_size, created_at_micros
+ON artifact_blobs
+BEGIN
+    SELECT RAISE(ABORT, 'artifact blob identity is immutable');
+END;
+
+CREATE TRIGGER artifact_handles_immutable
+BEFORE UPDATE OF artifact_id, privacy_scope, content_hash, byte_size, media_type, created_at_micros
+ON artifact_handles
+BEGIN
+    SELECT RAISE(ABORT, 'artifact handle metadata is immutable');
+END;
+"#;
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -175,6 +221,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 4,
         name: "inbox_deduplication",
         sql: MIGRATION_004,
+    },
+    Migration {
+        version: 5,
+        name: "scoped_immutable_artifacts",
+        sql: MIGRATION_005,
     },
 ];
 
