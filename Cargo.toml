@@ -5,6 +5,7 @@ members = [
     "crates/intent-local-transport",
     "crates/intent-fixture-worker",
     "crates/intent-conformance",
+    "crates/intent-state",
     "crates/intent-xtask",
 ]
 exclude = ["fuzz"]
@@ -19,10 +20,12 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 getrandom = "0.3.3"
 nix = { version = "0.31.3", default-features = false, features = ["socket", "user"] }
+rusqlite = { version = "0.40.1", features = ["bundled", "backup"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.10.9"
 subtle = "2.6.1"
-uuid = { version = "1.20.0", features = ["serde"] }
+uuid = { version = "1.20.0", features = ["serde", "v4"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes"] }
 
 [workspace.lints.rust]
