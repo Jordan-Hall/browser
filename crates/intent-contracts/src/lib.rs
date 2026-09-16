@@ -21,8 +21,8 @@ mod version;
 
 pub use ids::{
     AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId, ConnectorId,
-    EvidenceId, GoalContractId, MemoryRecordId, ObservationId, OperationId, ReceiptId, RequestId,
-    TaskId, TraceId, ViewDefinitionId, WorkerInstanceId, WorkspaceId,
+    EvidenceId, GoalContractId, MemoryRecordId, ObservationId, OperationAttemptId, OperationId,
+    ReceiptId, RequestId, TaskId, TraceId, ViewDefinitionId, WorkerInstanceId, WorkspaceId,
 };
 pub use migration::{
     DocumentAccess, MAX_MIGRATION_STEPS, MigrationFailure, MigrationFn, MigrationOutcome,
