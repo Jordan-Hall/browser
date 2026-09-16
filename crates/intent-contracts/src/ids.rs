@@ -51,6 +51,7 @@ typed_uuid!(
     ActionProposalId,
     ApprovalId,
     OperationId,
+    OperationAttemptId,
     ReceiptId,
     ViewDefinitionId,
     MemoryRecordId,
