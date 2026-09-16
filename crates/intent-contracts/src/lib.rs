@@ -24,11 +24,11 @@ pub use ids::{
     TaskId, TraceId, ViewDefinitionId, WorkspaceId,
 };
 pub use records::{
-    ActionProposal, Approval, ApprovalRequirement, ApprovalState, ArtifactReference, Capability,
-    CapabilityEffectClass, CapabilitySupportLevel, Evidence, EvidenceOrigin, EvidenceRelation,
-    GoalConstraint, GoalContract, InferenceMode, MemoryKind, MemoryRecord, MemoryScope,
-    Observation, ObservationKind, Operation, OperationState, Receipt, ReceiptOutcome, Task,
-    TaskState, ViewBinding, ViewDefinition, Workspace, WorkspaceState,
+    ActionProposal, ActionProposalDescriptor, Approval, ApprovalRequirement, ApprovalState,
+    ArtifactReference, Capability, CapabilityDescriptor, CapabilityEffectClass, CapabilitySupportLevel,
+    Evidence, EvidenceOrigin, EvidenceRelation, GoalConstraint, GoalContract, InferenceMode,
+    MemoryKind, MemoryRecord, MemoryScope, Observation, ObservationKind, Operation, OperationState,
+    Receipt, ReceiptOutcome, Task, TaskState, ViewBinding, ViewDefinition, Workspace, WorkspaceState,
 };
 pub use values::{
     AccountQualifiedResourceId, BoundedText, BoundedTextError, ByteSize, ContentHash,
