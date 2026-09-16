@@ -390,14 +390,20 @@ mod tests {
     #[test]
     fn braces_inside_strings_do_not_count_toward_depth() -> Result<(), Box<dyn Error>> {
         let limits = WireLimits::for_tests();
-        let trace = "018f47f7-5a86-7c00-8000-000000000411";
-        let request = "018f47f7-5a86-7c00-8000-000000000412";
-        let payload = format!(
-            r#"{{"schema_version":{{"major":1,"minor":0}},"trace_id":"{trace}","message":{{"kind":"request","request_id":"{request}"}},"payload":{{"value":"{{{{[[\\\"]]}}}}"}}}}"#
+        let trace = TraceId::from_str("018f47f7-5a86-7c00-8000-000000000411")?;
+        let request = RequestId::from_str("018f47f7-5a86-7c00-8000-000000000412")?;
+        let value = r#"{{[["quoted"]]}}"#.to_owned();
+        let envelope = Envelope::request(
+            trace,
+            request,
+            TestPayload {
+                value: value.clone(),
+            },
         );
-        let frame = Frame::new(FrameLane::Control, payload.into_bytes());
+        let frame = encode_control(&envelope, limits)?;
         let decoded: Envelope<TestPayload> = decode_control(&frame, limits)?;
-        assert_eq!(decoded.payload().value, "{{[[\"]]}}");
+
+        assert_eq!(decoded.payload().value, value);
         Ok(())
     }
 
