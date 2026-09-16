@@ -6,6 +6,7 @@ mod inbox;
 mod migrations;
 mod operations;
 mod outbox;
+mod retention;
 
 pub use artifacts::{
     ArtifactError, ArtifactMetadata, ArtifactReferenceRegistration, ArtifactScope,
@@ -22,6 +23,9 @@ pub use operations::{
 pub use outbox::{
     DispatchAttempt, DispatchResult, MAX_OUTBOX_CLAIM_BATCH, MAX_OUTBOX_PAYLOAD_BYTES,
     NewOutboxMessage, OutboxError, OutboxMessage, OutboxState,
+};
+pub use retention::{
+    ArtifactRetentionHold, GcReport, MAX_GC_BATCH, RetentionError, SuppressionResult,
 };
 
 use intent_contracts::OperationId;
@@ -295,7 +299,7 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 5);
+        assert_eq!(store.schema_version()?, 6);
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;
