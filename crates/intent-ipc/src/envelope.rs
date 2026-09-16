@@ -262,7 +262,10 @@ fn validate_json_node(
     if depth > limits.max_json_depth.max(1) {
         return Err(WireError::new(
             WireErrorCode::JsonTooDeep,
-            format!("JSON depth exceeds configured limit {}", limits.max_json_depth),
+            format!(
+                "JSON depth exceeds configured limit {}",
+                limits.max_json_depth
+            ),
         ));
     }
 
@@ -335,7 +338,12 @@ mod tests {
         assert_eq!(decoded.trace_id(), trace);
         assert_eq!(decoded.cancellation_id(), Some(cancellation));
         assert_eq!(decoded.deadline(), Some(deadline));
-        assert_eq!(decoded.message(), EnvelopeKind::Request { request_id: request });
+        assert_eq!(
+            decoded.message(),
+            EnvelopeKind::Request {
+                request_id: request
+            }
+        );
         assert_eq!(decoded.payload(), envelope.payload());
         Ok(())
     }
@@ -344,7 +352,7 @@ mod tests {
     fn deeply_nested_json_is_rejected_before_typed_deserialization() {
         let limits = WireLimits::for_tests();
         let mut payload = "[".repeat(limits.max_json_depth + 1);
-        payload.push_str("0");
+        payload.push('0');
         payload.push_str(&"]".repeat(limits.max_json_depth + 1));
         let frame = Frame::new(FrameLane::Control, payload.into_bytes());
 
@@ -368,14 +376,13 @@ mod tests {
     fn malformed_json_is_rejected_with_stable_error() {
         let limits = WireLimits::for_tests();
         let frame = Frame::new(FrameLane::Control, b"{\"value\":1".to_vec());
-        let error = decode_control::<TestPayload>(&frame, limits)
-            .expect_err("malformed JSON should fail");
+        let error =
+            decode_control::<TestPayload>(&frame, limits).expect_err("malformed JSON should fail");
         assert_eq!(error.code(), WireErrorCode::MalformedJson);
     }
 
     #[test]
     fn braces_inside_strings_do_not_count_toward_depth() {
-        let limits = WireLimits::for_tests();
         let trace = "018f47f7-5a86-7c00-8000-000000000411";
         let request = "018f47f7-5a86-7c00-8000-000000000412";
         let payload = format!(
