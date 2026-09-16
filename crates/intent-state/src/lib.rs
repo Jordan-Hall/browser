@@ -74,14 +74,6 @@ impl StateStore {
         }
         Err(StateError::IntegrityCheckFailed(result))
     }
-
-    pub(crate) const fn connection(&self) -> &Connection {
-        &self.connection
-    }
-
-    pub(crate) const fn connection_mut(&mut self) -> &mut Connection {
-        &mut self.connection
-    }
 }
 
 fn configure_connection(connection: &Connection, require_wal: bool) -> Result<(), StateError> {
@@ -294,12 +286,12 @@ mod tests {
     #[test]
     fn foreign_key_enforcement_is_effective() -> Result<(), Box<dyn Error>> {
         let store = StateStore::open_in_memory_for_tests()?;
-        let connection = store.connection();
-        connection.execute_batch(
+        store.connection.execute_batch(
             "CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(parent_id INTEGER NOT NULL REFERENCES parent(id));",
         )?;
         assert!(
-            connection
+            store
+                .connection
                 .execute("INSERT INTO child(parent_id) VALUES (99)", [])
                 .is_err()
         );
