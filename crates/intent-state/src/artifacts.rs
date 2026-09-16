@@ -124,20 +124,8 @@ impl StateStore {
             ));
         }
 
-        let existing = self.load_artifact_metadata_unscoped(new.artifact_id)?;
-        if let Some(existing) = existing {
-            if existing.privacy_scope != new.privacy_scope
-                || existing.media_type != new.media_type
-                || existing.created_at != new.created_at
-            {
-                return Err(ArtifactError::HandleConflict(new.artifact_id));
-            }
-            verify_blob(root, &existing)?;
-            return Ok(existing);
-        }
-
         let quarantine_dir = root.join("quarantine");
-        fs::create_dir_all(&quarantine_dir)?;
+        create_directory_durable(&quarantine_dir)?;
         let temp_path =
             quarantine_dir.join(format!("{}-{}.partial", new.artifact_id, Uuid::new_v4()));
         let mut cleanup = QuarantineCleanup::new(temp_path.clone());
@@ -170,14 +158,30 @@ impl StateStore {
         drop(file);
 
         let content_hash = finalize_hash(hasher);
+        if let Some(existing) = self.load_artifact_metadata_unscoped(new.artifact_id)? {
+            if existing.privacy_scope != new.privacy_scope
+                || existing.media_type != new.media_type
+                || existing.created_at != new.created_at
+                || existing.content_hash != content_hash
+                || existing.byte_size != total
+            {
+                return Err(ArtifactError::HandleConflict(new.artifact_id));
+            }
+            verify_blob(root, &existing)?;
+            cleanup.disarm_after_remove()?;
+            return Ok(existing);
+        }
+
+        let blobs_dir = root.join("blobs");
+        create_directory_durable(&blobs_dir)?;
         let blob_dir = scope_blob_dir(root, &new.privacy_scope);
-        fs::create_dir_all(&blob_dir)?;
+        create_directory_durable(&blob_dir)?;
         let target_path = blob_dir.join(content_hash.to_hex());
 
         match fs::hard_link(&temp_path, &target_path) {
             Ok(()) => {
-                cleanup.disarm_after_remove()?;
                 sync_directory(&blob_dir)?;
+                cleanup.disarm_after_remove()?;
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 let expected = ArtifactMetadata {
@@ -299,7 +303,12 @@ impl StateStore {
         Ok(())
     }
 
-    pub fn artifact_reference_count(&self, artifact_id: ArtifactId) -> Result<u64, ArtifactError> {
+    pub fn artifact_reference_count(
+        &self,
+        artifact_id: ArtifactId,
+        permitted_scope: &ArtifactScope,
+    ) -> Result<u64, ArtifactError> {
+        self.artifact_metadata(artifact_id, permitted_scope)?;
         let count: i64 = self.connection.query_row(
             "SELECT COUNT(*) FROM artifact_references WHERE artifact_id = ?1",
             [artifact_id.to_string()],
@@ -414,6 +423,37 @@ fn scope_blob_dir(root: &Path, scope: &ArtifactScope) -> PathBuf {
     root.join("blobs").join(scope_namespace(scope))
 }
 
+fn create_directory_durable(path: &Path) -> Result<(), ArtifactError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+                return Err(ArtifactError::InvalidStorageDirectory(path.to_path_buf()));
+            }
+            return Ok(());
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+
+    let parent = path.parent().ok_or_else(|| {
+        ArtifactError::InvalidInput(format!("storage directory {} has no parent", path.display()))
+    })?;
+    create_directory_durable(parent)?;
+    match fs::create_dir(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            let metadata = fs::symlink_metadata(path)?;
+            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+                return Err(ArtifactError::InvalidStorageDirectory(path.to_path_buf()));
+            }
+        }
+        Err(error) => return Err(error.into()),
+    }
+    sync_directory(path)?;
+    sync_directory(parent)?;
+    Ok(())
+}
+
 #[must_use]
 fn scope_namespace(scope: &ArtifactScope) -> String {
     hash_bytes(scope.as_str().as_bytes()).to_hex()
@@ -467,6 +507,9 @@ impl QuarantineCleanup {
 
     fn disarm_after_remove(&mut self) -> Result<(), ArtifactError> {
         fs::remove_file(&self.path)?;
+        if let Some(parent) = self.path.parent() {
+            sync_directory(parent)?;
+        }
         self.armed = false;
         Ok(())
     }
@@ -495,6 +538,7 @@ pub enum ArtifactError {
     MissingBlob(ArtifactId),
     AccessDenied(ArtifactId),
     InvalidBlobType(ArtifactId),
+    InvalidStorageDirectory(PathBuf),
     HandleConflict(ArtifactId),
     BlobMetadataConflict {
         scope: String,
@@ -530,9 +574,14 @@ impl fmt::Display for ArtifactError {
             Self::InvalidBlobType(id) => {
                 write!(formatter, "artifact {id} blob is not a regular file")
             }
+            Self::InvalidStorageDirectory(path) => write!(
+                formatter,
+                "artifact storage path {} is not a regular directory",
+                path.display()
+            ),
             Self::HandleConflict(id) => write!(
                 formatter,
-                "artifact {id} handle conflicts with existing metadata"
+                "artifact {id} handle conflicts with existing metadata or retry bytes"
             ),
             Self::BlobMetadataConflict { scope, hash } => write!(
                 formatter,
@@ -641,12 +690,53 @@ mod tests {
             reference_id: BoundedText::try_new("obs-1")?,
             created_at: UnixTimestampMicros::try_new(101)?,
         })?;
-        assert_eq!(store.artifact_reference_count(id)?, 1);
+        assert_eq!(store.artifact_reference_count(id, &scope)?, 1);
 
         let verified = store.open_verified_artifact(root.path(), id, &scope)?;
         let mut bytes = Vec::new();
         verified.into_file().read_to_end(&mut bytes)?;
         assert_eq!(bytes, b"evidence-bytes");
+        Ok(())
+    }
+
+    #[test]
+    fn idempotent_retry_compares_incoming_bytes() -> Result<(), Box<dyn Error>> {
+        let root = TempRoot::new()?;
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        let id = artifact_id(6)?;
+        let scope = ArtifactScope::try_new("profile:alpha/private")?;
+        let mut first = Cursor::new(b"original".to_vec());
+        store.store_artifact(root.path(), new_artifact(id, scope.as_str())?, &mut first)?;
+        let mut changed = Cursor::new(b"changed".to_vec());
+        let Err(error) =
+            store.store_artifact(root.path(), new_artifact(id, scope.as_str())?, &mut changed)
+        else {
+            return Err("changed retry bytes unexpectedly reused the old handle".into());
+        };
+        assert!(matches!(error, ArtifactError::HandleConflict(found) if found == id));
+        Ok(())
+    }
+
+    #[test]
+    fn reference_count_requires_matching_scope() -> Result<(), Box<dyn Error>> {
+        let root = TempRoot::new()?;
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        let id = artifact_id(7)?;
+        let scope = ArtifactScope::try_new("profile:alpha/private")?;
+        let wrong_scope = ArtifactScope::try_new("profile:alpha/public")?;
+        let mut input = Cursor::new(b"scoped".to_vec());
+        store.store_artifact(root.path(), new_artifact(id, scope.as_str())?, &mut input)?;
+        store.register_artifact_reference(ArtifactReferenceRegistration {
+            artifact_id: id,
+            privacy_scope: scope.clone(),
+            reference_kind: BoundedText::try_new("evidence")?,
+            reference_id: BoundedText::try_new("obs-7")?,
+            created_at: UnixTimestampMicros::try_new(101)?,
+        })?;
+        let Err(error) = store.artifact_reference_count(id, &wrong_scope) else {
+            return Err("cross-scope reference count unexpectedly succeeded".into());
+        };
+        assert!(matches!(error, ArtifactError::AccessDenied(found) if found == id));
         Ok(())
     }
 
