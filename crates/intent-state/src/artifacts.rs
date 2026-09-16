@@ -18,8 +18,9 @@ pub struct ArtifactScope(BoundedText<128>);
 
 impl ArtifactScope {
     pub fn try_new(value: impl Into<String>) -> Result<Self, ArtifactError> {
-        let value = BoundedText::try_new(value)
-            .map_err(|error| ArtifactError::InvalidInput(format!("invalid artifact scope: {error}")))?;
+        let value = BoundedText::try_new(value).map_err(|error| {
+            ArtifactError::InvalidInput(format!("invalid artifact scope: {error}"))
+        })?;
         if value.as_str().is_empty() {
             return Err(ArtifactError::InvalidInput(
                 "artifact scope must not be empty".to_owned(),
@@ -138,11 +139,8 @@ impl StateStore {
 
         let quarantine_dir = root.join("quarantine");
         fs::create_dir_all(&quarantine_dir)?;
-        let temp_path = quarantine_dir.join(format!(
-            "{}-{}.partial",
-            new.artifact_id,
-            Uuid::new_v4()
-        ));
+        let temp_path =
+            quarantine_dir.join(format!("{}-{}.partial", new.artifact_id, Uuid::new_v4()));
         let mut cleanup = QuarantineCleanup::new(temp_path.clone());
         let mut file = OpenOptions::new()
             .write(true)
@@ -367,7 +365,8 @@ fn verify_blob_at(path: &Path, metadata: &ArtifactMetadata) -> Result<File, Arti
     if !file_type.is_file() || file_type.is_symlink() {
         return Err(ArtifactError::InvalidBlobType(metadata.artifact_id));
     }
-    let mut file = File::open(path).map_err(|error| map_missing_blob(error, metadata.artifact_id))?;
+    let mut file =
+        File::open(path).map_err(|error| map_missing_blob(error, metadata.artifact_id))?;
     let mut hasher = Sha256::new();
     let mut total = 0_u64;
     let mut buffer = [0_u8; COPY_BUFFER_BYTES];
@@ -526,9 +525,16 @@ impl fmt::Display for ArtifactError {
             Self::SizeOverflow => formatter.write_str("artifact size counter overflowed"),
             Self::ArtifactNotFound(id) => write!(formatter, "artifact {id} does not exist"),
             Self::MissingBlob(id) => write!(formatter, "artifact {id} blob is missing"),
-            Self::AccessDenied(id) => write!(formatter, "artifact {id} is outside the permitted scope"),
-            Self::InvalidBlobType(id) => write!(formatter, "artifact {id} blob is not a regular file"),
-            Self::HandleConflict(id) => write!(formatter, "artifact {id} handle conflicts with existing metadata"),
+            Self::AccessDenied(id) => {
+                write!(formatter, "artifact {id} is outside the permitted scope")
+            }
+            Self::InvalidBlobType(id) => {
+                write!(formatter, "artifact {id} blob is not a regular file")
+            }
+            Self::HandleConflict(id) => write!(
+                formatter,
+                "artifact {id} handle conflicts with existing metadata"
+            ),
             Self::BlobMetadataConflict { scope, hash } => write!(
                 formatter,
                 "artifact blob metadata conflicts for scope {scope} and hash {hash}"
@@ -609,10 +615,7 @@ mod tests {
         Ok(ArtifactId::from_str(&raw)?)
     }
 
-    fn new_artifact(
-        id: ArtifactId,
-        scope: &str,
-    ) -> Result<NewArtifact, Box<dyn Error>> {
+    fn new_artifact(id: ArtifactId, scope: &str) -> Result<NewArtifact, Box<dyn Error>> {
         Ok(NewArtifact {
             artifact_id: id,
             privacy_scope: ArtifactScope::try_new(scope)?,
@@ -628,7 +631,8 @@ mod tests {
         let id = artifact_id(1)?;
         let scope = ArtifactScope::try_new("profile:alpha/private")?;
         let mut input = Cursor::new(b"evidence-bytes".to_vec());
-        let metadata = store.store_artifact(root.path(), new_artifact(id, scope.as_str())?, &mut input)?;
+        let metadata =
+            store.store_artifact(root.path(), new_artifact(id, scope.as_str())?, &mut input)?;
         assert_eq!(metadata.byte_size(), 14);
 
         store.register_artifact_reference(ArtifactReferenceRegistration {
@@ -657,8 +661,16 @@ mod tests {
         let id_b = artifact_id(3)?;
         let mut first = Cursor::new(b"same".to_vec());
         let mut second = Cursor::new(b"same".to_vec());
-        let meta_a = store.store_artifact(root.path(), new_artifact(id_a, scope_a.as_str())?, &mut first)?;
-        let meta_b = store.store_artifact(root.path(), new_artifact(id_b, scope_b.as_str())?, &mut second)?;
+        let meta_a = store.store_artifact(
+            root.path(),
+            new_artifact(id_a, scope_a.as_str())?,
+            &mut first,
+        )?;
+        let meta_b = store.store_artifact(
+            root.path(),
+            new_artifact(id_b, scope_b.as_str())?,
+            &mut second,
+        )?;
         assert_eq!(meta_a.content_hash(), meta_b.content_hash());
         assert_ne!(
             artifact_blob_path(root.path(), &meta_a),
@@ -678,7 +690,8 @@ mod tests {
         let id = artifact_id(4)?;
         let scope = ArtifactScope::try_new("profile:alpha/private")?;
         let mut input = Cursor::new(b"original".to_vec());
-        let metadata = store.store_artifact(root.path(), new_artifact(id, scope.as_str())?, &mut input)?;
+        let metadata =
+            store.store_artifact(root.path(), new_artifact(id, scope.as_str())?, &mut input)?;
         fs::write(artifact_blob_path(root.path(), &metadata), b"corrupt")?;
         let Err(error) = store.open_verified_artifact(root.path(), id, &scope) else {
             return Err("corrupt artifact unexpectedly verified".into());
