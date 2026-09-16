@@ -26,9 +26,9 @@ pub use ids::{
 pub use records::{
     ActionProposal, Approval, ApprovalRequirement, ApprovalState, ArtifactReference, Capability,
     CapabilityEffectClass, CapabilitySupportLevel, Evidence, EvidenceOrigin, EvidenceRelation,
-    GoalConstraint, GoalContract, InferenceMode, MemoryKind, MemoryRecord, MemoryScope, Observation,
-    ObservationKind, Operation, OperationState, Receipt, ReceiptOutcome, Task, TaskState, ViewBinding,
-    ViewDefinition, Workspace, WorkspaceState,
+    GoalConstraint, GoalContract, InferenceMode, MemoryKind, MemoryRecord, MemoryScope,
+    Observation, ObservationKind, Operation, OperationState, Receipt, ReceiptOutcome, Task,
+    TaskState, ViewBinding, ViewDefinition, Workspace, WorkspaceState,
 };
 pub use values::{
     AccountQualifiedResourceId, BoundedText, BoundedTextError, ByteSize, ContentHash,
