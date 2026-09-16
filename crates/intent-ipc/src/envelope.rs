@@ -349,56 +349,65 @@ mod tests {
     }
 
     #[test]
-    fn deeply_nested_json_is_rejected_before_typed_deserialization() {
+    fn deeply_nested_json_is_rejected_before_typed_deserialization() -> Result<(), Box<dyn Error>> {
         let limits = WireLimits::for_tests();
         let mut payload = "[".repeat(limits.max_json_depth + 1);
         payload.push('0');
         payload.push_str(&"]".repeat(limits.max_json_depth + 1));
         let frame = Frame::new(FrameLane::Control, payload.into_bytes());
 
-        let error = decode_control::<TestPayload>(&frame, limits)
-            .expect_err("deep JSON should fail preflight");
+        let Err(error) = decode_control::<TestPayload>(&frame, limits) else {
+            return Err("deep JSON unexpectedly decoded".into());
+        };
         assert_eq!(error.code(), WireErrorCode::JsonTooDeep);
+        Ok(())
     }
 
     #[test]
-    fn oversized_collection_is_rejected_with_stable_error() {
+    fn oversized_collection_is_rejected_with_stable_error() -> Result<(), Box<dyn Error>> {
         let limits = WireLimits::for_tests();
         let array = vec!["0"; limits.max_collection_entries + 1].join(",");
         let frame = Frame::new(FrameLane::Control, format!("[{array}]").into_bytes());
 
-        let error = decode_control::<TestPayload>(&frame, limits)
-            .expect_err("oversized collection should fail");
+        let Err(error) = decode_control::<TestPayload>(&frame, limits) else {
+            return Err("oversized collection unexpectedly decoded".into());
+        };
         assert_eq!(error.code(), WireErrorCode::CollectionTooLarge);
+        Ok(())
     }
 
     #[test]
-    fn malformed_json_is_rejected_with_stable_error() {
+    fn malformed_json_is_rejected_with_stable_error() -> Result<(), Box<dyn Error>> {
         let limits = WireLimits::for_tests();
         let frame = Frame::new(FrameLane::Control, b"{\"value\":1".to_vec());
-        let error =
-            decode_control::<TestPayload>(&frame, limits).expect_err("malformed JSON should fail");
+        let Err(error) = decode_control::<TestPayload>(&frame, limits) else {
+            return Err("malformed JSON unexpectedly decoded".into());
+        };
         assert_eq!(error.code(), WireErrorCode::MalformedJson);
+        Ok(())
     }
 
     #[test]
-    fn braces_inside_strings_do_not_count_toward_depth() {
+    fn braces_inside_strings_do_not_count_toward_depth() -> Result<(), Box<dyn Error>> {
+        let limits = WireLimits::for_tests();
         let trace = "018f47f7-5a86-7c00-8000-000000000411";
         let request = "018f47f7-5a86-7c00-8000-000000000412";
         let payload = format!(
             r#"{{"schema_version":{{"major":1,"minor":0}},"trace_id":"{trace}","message":{{"kind":"request","request_id":"{request}"}},"payload":{{"value":"{{{{[[\\\"]]}}}}"}}}}"#
         );
         let frame = Frame::new(FrameLane::Control, payload.into_bytes());
-        let decoded: Envelope<TestPayload> =
-            decode_control(&frame, WireLimits::for_tests()).expect("valid quoted delimiters");
+        let decoded: Envelope<TestPayload> = decode_control(&frame, limits)?;
         assert_eq!(decoded.payload().value, "{{[[\"]]}}");
+        Ok(())
     }
 
     #[test]
-    fn artifact_lane_cannot_be_typed_as_control_envelope() {
+    fn artifact_lane_cannot_be_typed_as_control_envelope() -> Result<(), Box<dyn Error>> {
         let frame = Frame::new(FrameLane::Artifact, b"{}".to_vec());
-        let error = decode_control::<TestPayload>(&frame, WireLimits::for_tests())
-            .expect_err("artifact lane should fail");
+        let Err(error) = decode_control::<TestPayload>(&frame, WireLimits::for_tests()) else {
+            return Err("artifact frame unexpectedly decoded as control envelope".into());
+        };
         assert_eq!(error.code(), WireErrorCode::WrongLane);
+        Ok(())
     }
 }
