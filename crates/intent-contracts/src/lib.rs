@@ -14,6 +14,7 @@ fn invalid(task: TaskId) {
 "#]
 
 mod ids;
+mod migration;
 mod records;
 mod values;
 mod version;
@@ -22,6 +23,10 @@ pub use ids::{
     AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId, ConnectorId,
     EvidenceId, GoalContractId, MemoryRecordId, ObservationId, OperationId, ReceiptId, RequestId,
     TaskId, TraceId, ViewDefinitionId, WorkerInstanceId, WorkspaceId,
+};
+pub use migration::{
+    DocumentAccess, MAX_MIGRATION_STEPS, MigrationFailure, MigrationFn, MigrationOutcome,
+    MigrationRegistry, MigrationRegistryError, MigrationStep, RecordFamily, assess_document_access,
 };
 pub use records::{
     ActionProposal, ActionProposalDescriptor, Approval, ApprovalRequirement, ApprovalState,
