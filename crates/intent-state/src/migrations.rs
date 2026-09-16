@@ -18,11 +18,68 @@ CREATE TABLE store_metadata (
 ) STRICT;
 "#;
 
-pub(crate) const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "bootstrap_store_metadata",
-    sql: MIGRATION_001,
-}];
+const MIGRATION_002: &str = r#"
+CREATE TABLE durable_operations (
+    operation_id TEXT PRIMARY KEY NOT NULL,
+    task_id TEXT NOT NULL,
+    action_proposal_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    capability_id TEXT NOT NULL,
+    arguments_hash TEXT NOT NULL CHECK (length(arguments_hash) = 64),
+    source_schema_major INTEGER NOT NULL CHECK (source_schema_major > 0),
+    source_schema_minor INTEGER NOT NULL CHECK (source_schema_minor >= 0),
+    state TEXT NOT NULL CHECK (state IN (
+        'prepared', 'approved', 'dispatch_pending', 'attempting', 'accepted',
+        'verified', 'failed', 'needs_reconciliation', 'cancelled',
+        'compensating', 'compensated'
+    )),
+    state_detail TEXT,
+    attempt_identity TEXT,
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    created_at_micros INTEGER NOT NULL,
+    updated_at_micros INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX durable_operations_task_idx ON durable_operations(task_id);
+CREATE INDEX durable_operations_state_idx ON durable_operations(state);
+
+CREATE TABLE operation_journal (
+    sequence INTEGER PRIMARY KEY,
+    operation_id TEXT NOT NULL REFERENCES durable_operations(operation_id) ON DELETE RESTRICT,
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    from_state TEXT,
+    to_state TEXT NOT NULL,
+    state_detail TEXT,
+    attempt_identity TEXT,
+    occurred_at_micros INTEGER NOT NULL,
+    UNIQUE(operation_id, revision)
+) STRICT;
+
+CREATE INDEX operation_journal_operation_idx
+    ON operation_journal(operation_id, revision);
+
+CREATE TRIGGER durable_operations_immutable_identity
+BEFORE UPDATE OF
+    task_id, action_proposal_id, account_id, capability_id, arguments_hash,
+    source_schema_major, source_schema_minor, created_at_micros
+ON durable_operations
+BEGIN
+    SELECT RAISE(ABORT, 'durable operation identity is immutable');
+END;
+"#;
+
+pub(crate) const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "bootstrap_store_metadata",
+        sql: MIGRATION_001,
+    },
+    Migration {
+        version: 2,
+        name: "durable_operation_journal",
+        sql: MIGRATION_002,
+    },
+];
 
 pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateError> {
     connection.execute_batch(
