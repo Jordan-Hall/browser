@@ -322,7 +322,11 @@ pub struct TimestampError(i64);
 
 impl fmt::Display for TimestampError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "Unix timestamp in microseconds is out of supported range: {}", self.0)
+        write!(
+            formatter,
+            "Unix timestamp in microseconds is out of supported range: {}",
+            self.0
+        )
     }
 }
 
