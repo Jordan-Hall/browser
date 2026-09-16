@@ -287,10 +287,9 @@ impl StateStore {
         validate_transition(current.state, transition.next_state)?;
         validate_attempt_identity(transition.next_state, transition.attempt_identity)?;
 
-        let next_revision = current
-            .revision
-            .checked_add(1)
-            .ok_or_else(|| StateError::InvalidStoredOperation("operation revision overflow".to_owned()))?;
+        let next_revision = current.revision.checked_add(1).ok_or_else(|| {
+            StateError::InvalidStoredOperation("operation revision overflow".to_owned())
+        })?;
         let changed = transaction.execute(
             r#"
             UPDATE durable_operations
@@ -300,7 +299,7 @@ impl StateStore {
             "#,
             params![
                 transition.next_state.as_str(),
-                transition.state_detail.as_ref().map(BoundedText::as_str),
+                transition.state_detail.as_ref().map(|detail| detail.as_str()),
                 transition.attempt_identity.map(|id| id.to_string()),
                 u64_to_i64(next_revision, "operation revision")?,
                 transition.occurred_at.get(),
@@ -413,7 +412,7 @@ fn append_journal(
             u64_to_i64(revision, "journal revision")?,
             from_state.map(DurableOperationState::as_str),
             to_state.as_str(),
-            state_detail.map(BoundedText::as_str),
+            state_detail.map(|detail| detail.as_str()),
             attempt_identity.map(|id| id.to_string()),
             occurred_at.get(),
         ],
@@ -513,59 +512,58 @@ fn validate_transition(
 ) -> Result<(), StateError> {
     let allowed = matches!(
         (from, to),
-        (DurableOperationState::Prepared, DurableOperationState::Approved)
-            | (
-                DurableOperationState::Approved,
-                DurableOperationState::DispatchPending
-            )
-            | (
-                DurableOperationState::DispatchPending,
-                DurableOperationState::Attempting
-            )
-            | (
-                DurableOperationState::Attempting,
-                DurableOperationState::Accepted
-            )
-            | (
-                DurableOperationState::Attempting,
-                DurableOperationState::NeedsReconciliation
-            )
-            | (
-                DurableOperationState::Accepted,
-                DurableOperationState::Verified
-            )
-            | (
-                DurableOperationState::Accepted,
-                DurableOperationState::NeedsReconciliation
-            )
-            | (
-                DurableOperationState::NeedsReconciliation,
-                DurableOperationState::Accepted
-            )
-            | (
-                DurableOperationState::NeedsReconciliation,
-                DurableOperationState::Verified
-            )
-            | (
-                DurableOperationState::NeedsReconciliation,
-                DurableOperationState::Failed
-            )
-            | (DurableOperationState::Approved, DurableOperationState::Cancelled)
-            | (
-                DurableOperationState::DispatchPending,
-                DurableOperationState::Cancelled
-            )
-            | (DurableOperationState::Attempting, DurableOperationState::Failed)
-            | (DurableOperationState::Accepted, DurableOperationState::Failed)
-            | (DurableOperationState::Verified, DurableOperationState::Compensating)
-            | (
-                DurableOperationState::Compensating,
-                DurableOperationState::Compensated
-            )
-            | (
-                DurableOperationState::Compensating,
-                DurableOperationState::NeedsReconciliation
-            )
+        (
+            DurableOperationState::Prepared,
+            DurableOperationState::Approved
+        ) | (
+            DurableOperationState::Approved,
+            DurableOperationState::DispatchPending
+        ) | (
+            DurableOperationState::DispatchPending,
+            DurableOperationState::Attempting
+        ) | (
+            DurableOperationState::Attempting,
+            DurableOperationState::Accepted
+        ) | (
+            DurableOperationState::Attempting,
+            DurableOperationState::NeedsReconciliation
+        ) | (
+            DurableOperationState::Accepted,
+            DurableOperationState::Verified
+        ) | (
+            DurableOperationState::Accepted,
+            DurableOperationState::NeedsReconciliation
+        ) | (
+            DurableOperationState::NeedsReconciliation,
+            DurableOperationState::Accepted
+        ) | (
+            DurableOperationState::NeedsReconciliation,
+            DurableOperationState::Verified
+        ) | (
+            DurableOperationState::NeedsReconciliation,
+            DurableOperationState::Failed
+        ) | (
+            DurableOperationState::Approved,
+            DurableOperationState::Cancelled
+        ) | (
+            DurableOperationState::DispatchPending,
+            DurableOperationState::Cancelled
+        ) | (
+            DurableOperationState::Attempting,
+            DurableOperationState::Failed
+        ) | (
+            DurableOperationState::Accepted,
+            DurableOperationState::Failed
+        ) | (
+            DurableOperationState::Verified,
+            DurableOperationState::Compensating
+        ) | (
+            DurableOperationState::Compensating,
+            DurableOperationState::Compensated
+        ) | (
+            DurableOperationState::Compensating,
+            DurableOperationState::NeedsReconciliation
+        )
     );
     if allowed {
         Ok(())
@@ -609,9 +607,8 @@ where
     T: FromStr,
     T::Err: std::fmt::Display,
 {
-    T::from_str(value).map_err(|error| {
-        StateError::InvalidStoredOperation(format!("invalid {label}: {error}"))
-    })
+    T::from_str(value)
+        .map_err(|error| StateError::InvalidStoredOperation(format!("invalid {label}: {error}")))
 }
 
 fn parse_optional_id<T>(value: Option<String>, label: &str) -> Result<Option<T>, StateError>
@@ -634,9 +631,7 @@ fn u64_to_i64(value: u64, label: &str) -> Result<i64, StateError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        DurableOperationState, NewDurableOperation, OperationTransition,
-    };
+    use super::{DurableOperationState, NewDurableOperation, OperationTransition};
     use crate::{StateError, StateStore};
     use intent_contracts::{
         AccountId, ActionProposalId, CapabilityId, ContentHash, OperationAttemptId, OperationId,
@@ -649,9 +644,7 @@ mod tests {
         Ok(NewDurableOperation {
             operation_id: OperationId::from_str("018f47f7-5a86-7c00-8000-000000000821")?,
             task_id: TaskId::from_str("018f47f7-5a86-7c00-8000-000000000822")?,
-            action_proposal_id: ActionProposalId::from_str(
-                "018f47f7-5a86-7c00-8000-000000000823",
-            )?,
+            action_proposal_id: ActionProposalId::from_str("018f47f7-5a86-7c00-8000-000000000823")?,
             account_id: AccountId::from_str("018f47f7-5a86-7c00-8000-000000000824")?,
             capability_id: CapabilityId::from_str("018f47f7-5a86-7c00-8000-000000000825")?,
             arguments_hash: ContentHash::from_bytes([0x42; 32]),
@@ -688,7 +681,10 @@ mod tests {
         assert_eq!(journal.len(), 2);
         assert_eq!(journal[0].revision(), 0);
         assert_eq!(journal[1].revision(), 1);
-        assert_eq!(journal[1].from_state(), Some(DurableOperationState::Prepared));
+        assert_eq!(
+            journal[1].from_state(),
+            Some(DurableOperationState::Prepared)
+        );
         assert_eq!(journal[1].to_state(), DurableOperationState::Approved);
         Ok(())
     }
