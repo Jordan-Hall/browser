@@ -16,6 +16,7 @@ pub enum WireErrorCode {
     UnsupportedSchema = 7,
     WrongLane = 8,
     InvalidEnvelope = 9,
+    AllocationFailed = 10,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -81,5 +82,6 @@ mod tests {
     fn stable_error_codes_are_explicit() {
         assert_eq!(WireErrorCode::InvalidLane as u16, 1);
         assert_eq!(WireErrorCode::InvalidEnvelope as u16, 9);
+        assert_eq!(WireErrorCode::AllocationFailed as u16, 10);
     }
 }
