@@ -227,10 +227,7 @@ pub fn validate_version_change(
         return Err(VersionChangeError::NonForward { previous, next });
     }
     if class == ProtocolChangeClass::AuthorityAffecting && next.major() == previous.major() {
-        return Err(VersionChangeError::AuthorityChangeRequiresMajor {
-            previous,
-            next,
-        });
+        return Err(VersionChangeError::AuthorityChangeRequiresMajor { previous, next });
     }
     Ok(())
 }
@@ -283,7 +280,9 @@ pub enum NegotiationError {
 impl fmt::Display for NegotiationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidOffer => formatter.write_str("protocol offer contained an invalid version"),
+            Self::InvalidOffer => {
+                formatter.write_str("protocol offer contained an invalid version")
+            }
             Self::NoCompatibleVersion => {
                 formatter.write_str("local and remote peers have no compatible protocol version")
             }
@@ -451,7 +450,9 @@ mod tests {
         let v1 = SchemaVersion::try_new(1, 0)?;
         let v1_1 = SchemaVersion::try_new(1, 1)?;
         let v2 = SchemaVersion::try_new(2, 0)?;
-        assert!(validate_version_change(v1, v1_1, ProtocolChangeClass::AuthorityAffecting).is_err());
+        assert!(
+            validate_version_change(v1, v1_1, ProtocolChangeClass::AuthorityAffecting).is_err()
+        );
         validate_version_change(v1, v2, ProtocolChangeClass::AuthorityAffecting)?;
         validate_version_change(v1, v1_1, ProtocolChangeClass::AdditiveOptional)?;
         Ok(())
