@@ -202,10 +202,28 @@ END;
 "#;
 
 const MIGRATION_006: &str = r#"
-ALTER TABLE artifact_handles ADD COLUMN suppressed_at_micros INTEGER;
+ALTER TABLE artifact_handles RENAME TO artifact_handles_all;
+ALTER TABLE artifact_handles_all ADD COLUMN suppressed_at_micros INTEGER;
 
 CREATE INDEX artifact_handles_retention_idx
-    ON artifact_handles(privacy_scope, content_hash, suppressed_at_micros);
+    ON artifact_handles_all(privacy_scope, content_hash, suppressed_at_micros);
+
+CREATE VIEW artifact_handles AS
+SELECT artifact_id, privacy_scope, content_hash, byte_size, media_type, created_at_micros
+FROM artifact_handles_all
+WHERE suppressed_at_micros IS NULL;
+
+CREATE TRIGGER artifact_handles_insert
+INSTEAD OF INSERT ON artifact_handles
+BEGIN
+    INSERT INTO artifact_handles_all(
+        artifact_id, privacy_scope, content_hash, byte_size, media_type, created_at_micros,
+        suppressed_at_micros
+    ) VALUES (
+        NEW.artifact_id, NEW.privacy_scope, NEW.content_hash, NEW.byte_size,
+        NEW.media_type, NEW.created_at_micros, NULL
+    );
+END;
 
 CREATE TABLE artifact_retention_holds (
     hold_id TEXT PRIMARY KEY NOT NULL CHECK (length(hold_id) BETWEEN 1 AND 128),
