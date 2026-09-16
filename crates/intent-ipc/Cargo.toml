@@ -1,0 +1,13 @@
+[package]
+name = "intent-ipc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+intent-contracts = { path = "../intent-contracts" }
+
+[lints]
+workspace = true
