@@ -1,5 +1,17 @@
 #![forbid(unsafe_code)]
-#![doc = "Versioned, authority-neutral domain contracts shared by Intent Browser processes."]
+#![doc = r#"Versioned, authority-neutral domain contracts shared by Intent Browser processes.
+
+Typed identifiers are deliberately non-interchangeable:
+
+```compile_fail
+use intent_contracts::{TaskId, WorkspaceId};
+
+fn requires_workspace(_: WorkspaceId) {}
+fn invalid(task: TaskId) {
+    requires_workspace(task);
+}
+```
+"#]
 
 mod ids;
 mod values;
