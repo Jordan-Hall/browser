@@ -105,6 +105,56 @@ BEGIN
 END;
 "#;
 
+const MIGRATION_004: &str = r#"
+CREATE TABLE inbox_events (
+    source TEXT NOT NULL CHECK (length(source) BETWEEN 1 AND 128),
+    event_id TEXT NOT NULL CHECK (length(event_id) BETWEEN 1 AND 256),
+    stream TEXT NOT NULL CHECK (length(stream) BETWEEN 1 AND 128),
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    payload BLOB NOT NULL CHECK (length(payload) <= 1048576),
+    payload_hash TEXT NOT NULL CHECK (length(payload_hash) = 64),
+    received_at_micros INTEGER NOT NULL,
+    PRIMARY KEY(source, event_id),
+    UNIQUE(source, stream, sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE consumer_events (
+    consumer TEXT NOT NULL CHECK (length(consumer) BETWEEN 1 AND 128),
+    source TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    stream TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    effects_hash TEXT NOT NULL CHECK (length(effects_hash) = 64),
+    processed_at_micros INTEGER NOT NULL,
+    PRIMARY KEY(consumer, source, event_id),
+    FOREIGN KEY(source, event_id) REFERENCES inbox_events(source, event_id) ON DELETE RESTRICT
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE consumer_cursors (
+    consumer TEXT NOT NULL CHECK (length(consumer) BETWEEN 1 AND 128),
+    source TEXT NOT NULL CHECK (length(source) BETWEEN 1 AND 128),
+    stream TEXT NOT NULL CHECK (length(stream) BETWEEN 1 AND 128),
+    last_sequence INTEGER NOT NULL CHECK (last_sequence >= 0),
+    updated_at_micros INTEGER NOT NULL,
+    PRIMARY KEY(consumer, source, stream)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE consumer_effects (
+    consumer TEXT NOT NULL,
+    source TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    effect_key TEXT NOT NULL CHECK (length(effect_key) BETWEEN 1 AND 256),
+    payload BLOB NOT NULL CHECK (length(payload) <= 1048576),
+    payload_hash TEXT NOT NULL CHECK (length(payload_hash) = 64),
+    PRIMARY KEY(consumer, source, event_id, effect_key),
+    FOREIGN KEY(consumer, source, event_id)
+        REFERENCES consumer_events(consumer, source, event_id) ON DELETE RESTRICT
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX consumer_events_stream_idx
+    ON consumer_events(consumer, source, stream, sequence);
+"#;
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -120,6 +170,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 3,
         name: "transactional_outbox",
         sql: MIGRATION_003,
+    },
+    Migration {
+        version: 4,
+        name: "inbox_deduplication",
+        sql: MIGRATION_004,
     },
 ];
 
