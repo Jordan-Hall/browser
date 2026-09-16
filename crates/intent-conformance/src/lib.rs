@@ -66,13 +66,14 @@ pub fn run_conformance() -> ConformanceResult<ConformanceReport> {
     check_negative_worker_authentication()?;
     check_role_capability_binding()?;
     check_malformed_approval_rejected()?;
+    let current = SchemaVersion::V1;
 
     Ok(ConformanceReport {
         format_version: CONFORMANCE_FORMAT_VERSION,
         rustc_version: env!("INTENT_RUSTC_VERSION"),
         contracts_schema_family: intent_contracts::CONTRACTS_SCHEMA_FAMILY,
         ipc_schema_family: intent_ipc::IPC_SCHEMA_FAMILY,
-        current_schema_version: SchemaVersion::V1.to_string(),
+        current_schema_version: format!("{}.{}", current.major(), current.minor()),
         canonical_protocol_fixture,
         checks: vec![
             ConformanceCheck {
