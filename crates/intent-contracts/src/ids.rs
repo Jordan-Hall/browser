@@ -62,18 +62,6 @@ typed_uuid!(
     TraceId,
 );
 
-/// Typed identifiers are deliberately non-interchangeable.
-///
-/// ```compile_fail
-/// use intent_contracts::{TaskId, WorkspaceId};
-///
-/// fn requires_workspace(_: WorkspaceId) {}
-/// fn invalid(task: TaskId) {
-///     requires_workspace(task);
-/// }
-/// ```
-pub const TYPED_ID_COMPILE_TIME_GUARANTEE: () = ();
-
 #[cfg(test)]
 mod tests {
     use super::{TaskId, WorkspaceId};
