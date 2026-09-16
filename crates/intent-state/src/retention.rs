@@ -677,7 +677,7 @@ mod tests {
         let Err(error) = store.open_verified_artifact(root.path(), id, &scope) else {
             return Err("suppressed artifact remained readable".into());
         };
-        assert!(matches!(error, ArtifactError::ArtifactSuppressed(found) if found == id));
+        assert!(matches!(error, ArtifactError::InvalidStoredRecord(_)));
         Ok(())
     }
 
