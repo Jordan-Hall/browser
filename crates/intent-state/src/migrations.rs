@@ -44,7 +44,10 @@ pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateE
         |row| row.get(0),
     )?;
 
-    for migration in MIGRATIONS.iter().filter(|migration| migration.version > highest) {
+    for migration in MIGRATIONS
+        .iter()
+        .filter(|migration| migration.version > highest)
+    {
         let checksum = migration_checksum(migration.sql).to_hex();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute_batch(migration.sql)?;
@@ -60,9 +63,8 @@ pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateE
 }
 
 pub(crate) fn validate_applied_migrations(connection: &Connection) -> Result<(), StateError> {
-    let mut statement = connection.prepare(
-        "SELECT version, name, checksum FROM schema_migrations ORDER BY version ASC",
-    )?;
+    let mut statement = connection
+        .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version ASC")?;
     let mut rows = statement.query([])?;
     let mut expected_version = 1_i64;
 
@@ -78,7 +80,10 @@ pub(crate) fn validate_applied_migrations(connection: &Connection) -> Result<(),
             });
         }
 
-        let Some(known) = MIGRATIONS.iter().find(|migration| migration.version == version) else {
+        let Some(known) = MIGRATIONS
+            .iter()
+            .find(|migration| migration.version == version)
+        else {
             return Err(StateError::UnknownAppliedMigration { version });
         };
         let expected_checksum = migration_checksum(known.sql).to_hex();
@@ -109,12 +114,16 @@ pub(crate) fn migration_checksum(sql: &str) -> ContentHash {
 #[cfg(test)]
 mod tests {
     use super::{MIGRATIONS, migration_checksum};
+    use std::error::Error;
 
     #[test]
-    fn migration_versions_are_contiguous_and_checksums_are_stable_length() {
+    fn migration_versions_are_contiguous_and_checksums_are_stable_length()
+    -> Result<(), Box<dyn Error>> {
         for (index, migration) in MIGRATIONS.iter().enumerate() {
-            assert_eq!(migration.version, i64::try_from(index).unwrap_or_default() + 1);
+            let expected = i64::try_from(index)? + 1;
+            assert_eq!(migration.version, expected);
             assert_eq!(migration_checksum(migration.sql).to_hex().len(), 64);
         }
+        Ok(())
     }
 }
