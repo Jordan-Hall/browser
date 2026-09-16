@@ -1,0 +1,16 @@
+[package]
+name = "intent-state"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+intent-contracts = { path = "../intent-contracts" }
+rusqlite.workspace = true
+sha2.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true
