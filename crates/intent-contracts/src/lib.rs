@@ -14,12 +14,21 @@ fn invalid(task: TaskId) {
 "#]
 
 mod ids;
+mod records;
 mod values;
+mod version;
 
 pub use ids::{
     AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId, ConnectorId,
     EvidenceId, GoalContractId, MemoryRecordId, ObservationId, OperationId, ReceiptId, RequestId,
     TaskId, TraceId, ViewDefinitionId, WorkspaceId,
+};
+pub use records::{
+    ActionProposal, Approval, ApprovalRequirement, ApprovalState, ArtifactReference, Capability,
+    CapabilityEffectClass, CapabilitySupportLevel, Evidence, EvidenceOrigin, EvidenceRelation,
+    GoalConstraint, GoalContract, InferenceMode, MemoryKind, MemoryRecord, MemoryScope, Observation,
+    ObservationKind, Operation, OperationState, Receipt, ReceiptOutcome, Task, TaskState, ViewBinding,
+    ViewDefinition, Workspace, WorkspaceState,
 };
 pub use values::{
     AccountQualifiedResourceId, BoundedText, BoundedTextError, ByteSize, ContentHash,
@@ -27,6 +36,7 @@ pub use values::{
     KnownCurrencyScale, MAX_CURRENCY_SCALE, MAX_UNIX_TIMESTAMP_MICROS, MIN_UNIX_TIMESTAMP_MICROS,
     Money, ProviderAccountId, ProviderId, ProviderResourceId, TimestampError, UnixTimestampMicros,
 };
+pub use version::{SchemaVersion, SchemaVersionError};
 
 /// Stable schema-family identifier for durable domain contracts.
 pub const CONTRACTS_SCHEMA_FAMILY: &str = "intent.contracts";
