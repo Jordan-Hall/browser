@@ -90,7 +90,8 @@ mod tests {
     }
 
     #[test]
-    fn different_id_types_preserve_same_uuid_without_becoming_equal_types() -> Result<(), Box<dyn Error>> {
+    fn different_id_types_preserve_same_uuid_without_becoming_equal_types()
+    -> Result<(), Box<dyn Error>> {
         let raw = "018f47f7-5a86-7c00-8000-000000000002";
         let task = TaskId::from_str(raw)?;
         let workspace = WorkspaceId::from_uuid(task.as_uuid());
