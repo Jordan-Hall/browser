@@ -26,13 +26,8 @@ pub struct ConsumerEffect {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InboxApplyResult {
-    Applied {
-        sequence: u64,
-        effect_count: usize,
-    },
-    Duplicate {
-        sequence: u64,
-    },
+    Applied { sequence: u64, effect_count: usize },
+    Duplicate { sequence: u64 },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,7 +72,9 @@ impl StateStore {
         effects.sort_by(|left, right| left.key.cmp(&right.key));
         for pair in effects.windows(2) {
             if pair[0].key == pair[1].key {
-                return Err(InboxError::DuplicateEffectKey(pair[0].key.as_str().to_owned()));
+                return Err(InboxError::DuplicateEffectKey(
+                    pair[0].key.as_str().to_owned(),
+                ));
             }
         }
 
@@ -155,7 +152,11 @@ impl StateStore {
                 SELECT sequence, effects_hash FROM consumer_events
                 WHERE consumer = ?1 AND source = ?2 AND event_id = ?3
                 "#,
-                params![consumer.as_str(), event.source.as_str(), event.event_id.as_str()],
+                params![
+                    consumer.as_str(),
+                    event.source.as_str(),
+                    event.event_id.as_str()
+                ],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
@@ -179,7 +180,11 @@ impl StateStore {
                 SELECT last_sequence FROM consumer_cursors
                 WHERE consumer = ?1 AND source = ?2 AND stream = ?3
                 "#,
-                params![consumer.as_str(), event.source.as_str(), event.stream.as_str()],
+                params![
+                    consumer.as_str(),
+                    event.source.as_str(),
+                    event.stream.as_str()
+                ],
                 |row| row.get(0),
             )
             .optional()?;
@@ -423,7 +428,9 @@ impl fmt::Display for InboxError {
                 formatter,
                 "consumer produced {count} effects; maximum is {MAX_CONSUMER_EFFECTS}"
             ),
-            Self::DuplicateEffectKey(key) => write!(formatter, "duplicate consumer effect key {key}"),
+            Self::DuplicateEffectKey(key) => {
+                write!(formatter, "duplicate consumer effect key {key}")
+            }
             Self::EventIdentityCollision { source, event_id } => write!(
                 formatter,
                 "inbox event identity collision for {source}/{event_id}"
@@ -519,7 +526,13 @@ mod tests {
             effects("v1")?,
             UnixTimestampMicros::try_new(200)?,
         )?;
-        assert!(matches!(first, InboxApplyResult::Applied { effect_count: 1, .. }));
+        assert!(matches!(
+            first,
+            InboxApplyResult::Applied {
+                effect_count: 1,
+                ..
+            }
+        ));
         let duplicate = store.apply_inbox_event(
             &consumer,
             event(10, "evt-10")?,
@@ -529,7 +542,10 @@ mod tests {
         assert_eq!(duplicate, InboxApplyResult::Duplicate { sequence: 10 });
         let source = BoundedText::try_new("connector")?;
         let event_id = BoundedText::try_new("evt-10")?;
-        assert_eq!(store.consumer_effects(&consumer, &source, &event_id)?.len(), 1);
+        assert_eq!(
+            store.consumer_effects(&consumer, &source, &event_id)?.len(),
+            1
+        );
         Ok(())
     }
 
@@ -551,10 +567,19 @@ mod tests {
         ) else {
             return Err("sequence gap unexpectedly applied".into());
         };
-        assert!(matches!(error, InboxError::SequenceGap { expected: 21, received: 22 }));
+        assert!(matches!(
+            error,
+            InboxError::SequenceGap {
+                expected: 21,
+                received: 22
+            }
+        ));
         let source = BoundedText::try_new("connector")?;
         let stream = BoundedText::try_new("orders")?;
-        assert_eq!(store.consumer_cursor(&consumer, &source, &stream)?, Some(20));
+        assert_eq!(
+            store.consumer_cursor(&consumer, &source, &stream)?,
+            Some(20)
+        );
         Ok(())
     }
 
