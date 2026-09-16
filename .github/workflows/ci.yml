@@ -33,3 +33,16 @@ jobs:
 
       - name: Check architecture boundaries
         run: cargo run -p intent-xtask -- arch-check
+
+      - name: Run core contract conformance
+        run: |
+          mkdir -p target/conformance
+          cargo run -p intent-conformance --quiet > target/conformance/core-contracts.json
+
+      - name: Upload core conformance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-contract-conformance
+          path: target/conformance/core-contracts.json
+          if-no-files-found: error
+          retention-days: 14
