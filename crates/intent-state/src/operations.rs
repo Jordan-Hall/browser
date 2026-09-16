@@ -218,6 +218,16 @@ impl OperationJournalEntry {
     }
 }
 
+struct JournalAppend<'a> {
+    operation_id: OperationId,
+    revision: u64,
+    from_state: Option<DurableOperationState>,
+    to_state: DurableOperationState,
+    state_detail: Option<&'a BoundedText<2048>>,
+    attempt_identity: Option<OperationAttemptId>,
+    occurred_at: UnixTimestampMicros,
+}
+
 impl StateStore {
     pub fn create_operation(
         &mut self,
@@ -250,13 +260,15 @@ impl StateStore {
 
         append_journal(
             &transaction,
-            new.operation_id,
-            0,
-            None,
-            DurableOperationState::Prepared,
-            None,
-            None,
-            new.created_at,
+            JournalAppend {
+                operation_id: new.operation_id,
+                revision: 0,
+                from_state: None,
+                to_state: DurableOperationState::Prepared,
+                state_detail: None,
+                attempt_identity: None,
+                occurred_at: new.created_at,
+            },
         )?;
         transaction.commit()?;
         self.load_operation(new.operation_id)?.ok_or_else(|| {
@@ -320,13 +332,15 @@ impl StateStore {
 
         append_journal(
             &transaction,
-            operation_id,
-            next_revision,
-            Some(current.state),
-            transition.next_state,
-            transition.state_detail.as_ref(),
-            transition.attempt_identity,
-            transition.occurred_at,
+            JournalAppend {
+                operation_id,
+                revision: next_revision,
+                from_state: Some(current.state),
+                to_state: transition.next_state,
+                state_detail: transition.state_detail.as_ref(),
+                attempt_identity: transition.attempt_identity,
+                occurred_at: transition.occurred_at,
+            },
         )?;
         transaction.commit()?;
         self.load_operation(operation_id)?.ok_or_else(|| {
@@ -395,13 +409,7 @@ impl StateStore {
 
 fn append_journal(
     transaction: &Transaction<'_>,
-    operation_id: OperationId,
-    revision: u64,
-    from_state: Option<DurableOperationState>,
-    to_state: DurableOperationState,
-    state_detail: Option<&BoundedText<2048>>,
-    attempt_identity: Option<OperationAttemptId>,
-    occurred_at: UnixTimestampMicros,
+    entry: JournalAppend<'_>,
 ) -> Result<(), StateError> {
     transaction.execute(
         r#"
@@ -411,13 +419,13 @@ fn append_journal(
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         "#,
         params![
-            operation_id.to_string(),
-            u64_to_i64(revision, "journal revision")?,
-            from_state.map(DurableOperationState::as_str),
-            to_state.as_str(),
-            state_detail.map(|detail| detail.as_str()),
-            attempt_identity.map(|id| id.to_string()),
-            occurred_at.get(),
+            entry.operation_id.to_string(),
+            u64_to_i64(entry.revision, "journal revision")?,
+            entry.from_state.map(DurableOperationState::as_str),
+            entry.to_state.as_str(),
+            entry.state_detail.map(|detail| detail.as_str()),
+            entry.attempt_identity.map(|id| id.to_string()),
+            entry.occurred_at.get(),
         ],
     )?;
     Ok(())
