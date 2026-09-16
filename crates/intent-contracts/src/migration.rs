@@ -148,12 +148,13 @@ impl MigrationRegistry {
                     target: target_version,
                 });
             }
-            bytes = (step.migrate)(&bytes).map_err(|failure| MigrationRegistryError::StepFailed {
-                family: family.clone(),
-                from: step.from,
-                to: step.to,
-                detail: failure.detail,
-            })?;
+            bytes =
+                (step.migrate)(&bytes).map_err(|failure| MigrationRegistryError::StepFailed {
+                    family: family.clone(),
+                    from: step.from,
+                    to: step.to,
+                    detail: failure.detail,
+                })?;
             current = step.to;
             applied_steps += 1;
         }
@@ -352,8 +353,8 @@ mod tests {
     }
 
     #[test]
-    fn migration_preserves_source_version_and_applies_explicit_chain()
-    -> Result<(), Box<dyn Error>> {
+    fn migration_preserves_source_version_and_applies_explicit_chain() -> Result<(), Box<dyn Error>>
+    {
         let family = RecordFamily::try_new("workspace")?;
         let v1 = SchemaVersion::try_new(1, 0)?;
         let v1_1 = SchemaVersion::try_new(1, 1)?;
