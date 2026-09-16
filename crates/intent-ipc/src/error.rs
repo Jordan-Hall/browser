@@ -47,7 +47,11 @@ impl WireError {
 
 impl fmt::Display for WireError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "wire error {}: {}", self.code as u16, self.detail)
+        write!(
+            formatter,
+            "wire error {}: {}",
+            self.code as u16, self.detail
+        )
     }
 }
 
