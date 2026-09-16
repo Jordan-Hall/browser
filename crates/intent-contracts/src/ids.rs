@@ -52,6 +52,7 @@ typed_uuid!(
     ApprovalId,
     OperationId,
     OperationAttemptId,
+    OutboxMessageId,
     ReceiptId,
     ViewDefinitionId,
     MemoryRecordId,
