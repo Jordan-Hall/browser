@@ -65,7 +65,7 @@ pub struct PriorityQueue<T> {
     limits: QueueLimits,
     reserved: VecDeque<T>,
     reliable: VecDeque<T>,
-    best_effort: VecDeque<T>,
+    best_effort: VecDeque<(DeliveryClass, T)>,
     credits: usize,
 }
 
@@ -118,7 +118,7 @@ impl<T> PriorityQueue<T> {
                     return Err(EnqueueError::new(EnqueueErrorKind::BestEffortQueueFull, item));
                 }
                 self.credits -= 1;
-                self.best_effort.push_back(item);
+                self.best_effort.push_back((class, item));
             }
         }
         Ok(())
@@ -132,13 +132,11 @@ impl<T> PriorityQueue<T> {
         if let Some(item) = self.reliable.pop_front() {
             return Some((DeliveryClass::ReliableControl, item));
         }
-        self.best_effort
-            .pop_front()
-            .map(|item| (DeliveryClass::BestEffortProgress, item))
+        self.best_effort.pop_front()
     }
 
     #[must_use]
-    pub fn credits(&self) -> usize {
+    pub const fn credits(&self) -> usize {
         self.credits
     }
 
@@ -256,9 +254,15 @@ impl<T> EnqueueError<T> {
 impl<T> fmt::Display for EnqueueError<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
-            EnqueueErrorKind::ReservedQueueFull => formatter.write_str("reserved control queue is full"),
-            EnqueueErrorKind::ReliableQueueFull => formatter.write_str("reliable control queue is full"),
-            EnqueueErrorKind::BestEffortQueueFull => formatter.write_str("best-effort queue is full"),
+            EnqueueErrorKind::ReservedQueueFull => {
+                formatter.write_str("reserved control queue is full")
+            }
+            EnqueueErrorKind::ReliableQueueFull => {
+                formatter.write_str("reliable control queue is full")
+            }
+            EnqueueErrorKind::BestEffortQueueFull => {
+                formatter.write_str("best-effort queue is full")
+            }
             EnqueueErrorKind::NoCredit => formatter.write_str("no flow-control credit is available"),
         }
     }
@@ -276,6 +280,7 @@ mod tests {
         Progress(u8),
         State(u8),
         Cancel,
+        Artifact,
     }
 
     fn limits() -> Result<QueueLimits, Box<dyn Error>> {
@@ -333,6 +338,18 @@ mod tests {
         };
         assert_eq!(error.kind(), EnqueueErrorKind::ReliableQueueFull);
         assert_eq!(error.into_item(), TestMessage::State(2));
+        Ok(())
+    }
+
+    #[test]
+    fn artifact_reference_keeps_its_delivery_class() -> Result<(), Box<dyn Error>> {
+        let mut queue = PriorityQueue::new(limits()?);
+        queue.grant_credits(1)?;
+        queue.enqueue(DeliveryClass::ArtifactReference, TestMessage::Artifact)?;
+        assert_eq!(
+            queue.pop_next(),
+            Some((DeliveryClass::ArtifactReference, TestMessage::Artifact))
+        );
         Ok(())
     }
 }
