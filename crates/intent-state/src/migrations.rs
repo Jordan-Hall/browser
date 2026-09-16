@@ -201,6 +201,43 @@ BEGIN
 END;
 "#;
 
+const MIGRATION_006: &str = r#"
+ALTER TABLE artifact_handles ADD COLUMN suppressed_at_micros INTEGER;
+
+CREATE INDEX artifact_handles_retention_idx
+    ON artifact_handles(privacy_scope, content_hash, suppressed_at_micros);
+
+CREATE TABLE artifact_retention_holds (
+    hold_id TEXT PRIMARY KEY NOT NULL CHECK (length(hold_id) BETWEEN 1 AND 128),
+    privacy_scope TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512),
+    expires_at_micros INTEGER,
+    created_at_micros INTEGER NOT NULL,
+    FOREIGN KEY(privacy_scope, content_hash)
+        REFERENCES artifact_blobs(privacy_scope, content_hash) ON DELETE RESTRICT
+) STRICT;
+
+CREATE INDEX artifact_retention_holds_expiry_idx
+    ON artifact_retention_holds(expires_at_micros, privacy_scope, content_hash);
+
+CREATE TABLE artifact_gc_queue (
+    privacy_scope TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('pending', 'deleting', 'failed')),
+    attempt_count INTEGER NOT NULL CHECK (attempt_count >= 0),
+    enqueued_at_micros INTEGER NOT NULL,
+    updated_at_micros INTEGER NOT NULL,
+    last_error TEXT CHECK (last_error IS NULL OR length(last_error) <= 2048),
+    PRIMARY KEY(privacy_scope, content_hash),
+    FOREIGN KEY(privacy_scope, content_hash)
+        REFERENCES artifact_blobs(privacy_scope, content_hash) ON DELETE RESTRICT
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX artifact_gc_queue_state_idx
+    ON artifact_gc_queue(state, enqueued_at_micros);
+"#;
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -226,6 +263,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 5,
         name: "scoped_immutable_artifacts",
         sql: MIGRATION_005,
+    },
+    Migration {
+        version: 6,
+        name: "artifact_retention_and_gc",
+        sql: MIGRATION_006,
     },
 ];
 
