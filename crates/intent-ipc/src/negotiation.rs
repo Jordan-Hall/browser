@@ -161,6 +161,19 @@ impl NegotiatedProtocol {
     pub fn supports(&self, capability: &ProtocolCapability) -> bool {
         self.capabilities.contains(capability)
     }
+
+    pub fn validate_message_version(
+        &self,
+        message_version: SchemaVersion,
+    ) -> Result<(), NegotiationError> {
+        if message_version != self.version {
+            return Err(NegotiationError::VersionMismatch {
+                negotiated: self.version,
+                received: message_version,
+            });
+        }
+        Ok(())
+    }
 }
 
 pub fn negotiate_protocol(
@@ -261,6 +274,10 @@ impl Error for ProtocolOfferError {}
 pub enum NegotiationError {
     InvalidOffer,
     NoCompatibleVersion,
+    VersionMismatch {
+        negotiated: SchemaVersion,
+        received: SchemaVersion,
+    },
 }
 
 impl fmt::Display for NegotiationError {
@@ -270,6 +287,17 @@ impl fmt::Display for NegotiationError {
             Self::NoCompatibleVersion => {
                 formatter.write_str("local and remote peers have no compatible protocol version")
             }
+            Self::VersionMismatch {
+                negotiated,
+                received,
+            } => write!(
+                formatter,
+                "message version {}.{} does not match negotiated version {}.{}",
+                received.major(),
+                received.minor(),
+                negotiated.major(),
+                negotiated.minor()
+            ),
         }
     }
 }
@@ -316,8 +344,8 @@ impl Error for VersionChangeError {}
 #[cfg(test)]
 mod tests {
     use super::{
-        NegotiationError, ProtocolCapability, ProtocolChangeClass, ProtocolOffer, ProtocolRange,
-        negotiate_protocol, validate_version_change,
+        MAX_PROTOCOL_RANGES, NegotiationError, ProtocolCapability, ProtocolChangeClass,
+        ProtocolOffer, ProtocolRange, negotiate_protocol, validate_version_change,
     };
     use intent_contracts::SchemaVersion;
     use std::error::Error;
@@ -330,12 +358,21 @@ mod tests {
     fn negotiation_selects_highest_common_version_and_capability_intersection()
     -> Result<(), Box<dyn Error>> {
         let local = ProtocolOffer::try_new(
-            vec![ProtocolRange::try_new(1, 0, 3)?, ProtocolRange::try_new(2, 0, 1)?],
+            vec![
+                ProtocolRange::try_new(1, 0, 3)?,
+                ProtocolRange::try_new(2, 0, 1)?,
+            ],
             [capability("artifact_lane")?, capability("cancellation")?],
         )?;
         let remote = ProtocolOffer::try_new(
-            vec![ProtocolRange::try_new(1, 1, 2)?, ProtocolRange::try_new(2, 0, 0)?],
-            [capability("cancellation")?, capability("remote_diagnostics")?],
+            vec![
+                ProtocolRange::try_new(1, 1, 2)?,
+                ProtocolRange::try_new(2, 0, 0)?,
+            ],
+            [
+                capability("cancellation")?,
+                capability("remote_diagnostics")?,
+            ],
         )?;
 
         let negotiated = negotiate_protocol(&local, &remote)?;
@@ -346,9 +383,49 @@ mod tests {
     }
 
     #[test]
+    fn offer_round_trip_preserves_ranges_and_capabilities() -> Result<(), Box<dyn Error>> {
+        let offer = ProtocolOffer::try_new(
+            vec![ProtocolRange::try_new(1, 0, 2)?],
+            [capability("artifact_lane")?, capability("cancellation")?],
+        )?;
+        let bytes = serde_json::to_vec(&offer)?;
+        let decoded: ProtocolOffer = serde_json::from_slice(&bytes)?;
+        assert_eq!(decoded, offer);
+        Ok(())
+    }
+
+    #[test]
+    fn negotiated_session_rejects_unselected_message_version() -> Result<(), Box<dyn Error>> {
+        let local = ProtocolOffer::try_new(
+            vec![ProtocolRange::try_new(1, 0, 3)?],
+            std::iter::empty::<ProtocolCapability>(),
+        )?;
+        let remote = ProtocolOffer::try_new(
+            vec![ProtocolRange::try_new(1, 1, 2)?],
+            std::iter::empty::<ProtocolCapability>(),
+        )?;
+        let negotiated = negotiate_protocol(&local, &remote)?;
+        assert_eq!(negotiated.version(), SchemaVersion::try_new(1, 2)?);
+        assert_eq!(
+            negotiated.validate_message_version(SchemaVersion::try_new(1, 1)?),
+            Err(NegotiationError::VersionMismatch {
+                negotiated: SchemaVersion::try_new(1, 2)?,
+                received: SchemaVersion::try_new(1, 1)?,
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
     fn unsupported_major_fails_early() -> Result<(), Box<dyn Error>> {
-        let local = ProtocolOffer::try_new(vec![ProtocolRange::try_new(1, 0, 3)?], [])?;
-        let remote = ProtocolOffer::try_new(vec![ProtocolRange::try_new(2, 0, 1)?], [])?;
+        let local = ProtocolOffer::try_new(
+            vec![ProtocolRange::try_new(1, 0, 3)?],
+            std::iter::empty::<ProtocolCapability>(),
+        )?;
+        let remote = ProtocolOffer::try_new(
+            vec![ProtocolRange::try_new(2, 0, 1)?],
+            std::iter::empty::<ProtocolCapability>(),
+        )?;
         assert_eq!(
             negotiate_protocol(&local, &remote),
             Err(NegotiationError::NoCompatibleVersion)
