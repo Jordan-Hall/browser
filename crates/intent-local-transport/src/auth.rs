@@ -67,7 +67,7 @@ pub enum MessageFamily {
 
 impl WorkerRole {
     #[must_use]
-    pub const fn allows(self, family: MessageFamily) -> bool {
+    pub fn allows(self, family: MessageFamily) -> bool {
         match self {
             Self::BrowserWorker => matches!(
                 family,
@@ -195,7 +195,7 @@ impl WorkerIdentity {
     }
 
     #[must_use]
-    pub const fn allows(&self, family: MessageFamily) -> bool {
+    pub fn allows(&self, family: MessageFamily) -> bool {
         self.role.allows(family)
     }
 }
