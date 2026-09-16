@@ -1,0 +1,13 @@
+[package]
+name = "intent-fixture-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+intent-ipc = { path = "../intent-ipc" }
+
+[lints]
+workspace = true
