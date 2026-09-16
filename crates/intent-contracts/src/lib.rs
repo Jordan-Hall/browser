@@ -21,7 +21,7 @@ mod version;
 pub use ids::{
     AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId, ConnectorId,
     EvidenceId, GoalContractId, MemoryRecordId, ObservationId, OperationId, ReceiptId, RequestId,
-    TaskId, TraceId, ViewDefinitionId, WorkspaceId,
+    TaskId, TraceId, ViewDefinitionId, WorkerInstanceId, WorkspaceId,
 };
 pub use records::{
     ActionProposal, ActionProposalDescriptor, Approval, ApprovalRequirement, ApprovalState,
