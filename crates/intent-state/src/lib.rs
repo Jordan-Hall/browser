@@ -153,9 +153,14 @@ impl fmt::Display for StateError {
                 "database application_id {found} does not belong to Intent Browser"
             ),
             Self::WalUnavailable(mode) => {
-                write!(formatter, "SQLite WAL mode is unavailable; active mode is {mode}")
+                write!(
+                    formatter,
+                    "SQLite WAL mode is unavailable; active mode is {mode}"
+                )
             }
-            Self::InvalidStoreId(value) => write!(formatter, "stored state UUID is invalid: {value}"),
+            Self::InvalidStoreId(value) => {
+                write!(formatter, "stored state UUID is invalid: {value}")
+            }
             Self::IntegrityCheckFailed(detail) => {
                 write!(formatter, "SQLite quick_check failed: {detail}")
             }
