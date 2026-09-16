@@ -4,7 +4,7 @@ use intent_ipc::{FrameDecoder, WireLimits};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let limits = WireLimits::conservative_default();
+    let limits = WireLimits::default();
     let mut decoder = FrameDecoder::new(limits);
     let mut cursor = 0_usize;
 
