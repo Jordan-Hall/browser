@@ -32,7 +32,7 @@ impl PeerExpectation {
     }
 
     #[must_use]
-    pub const fn matches(self, evidence: PeerCredentialEvidence) -> bool {
+    pub fn matches(self, evidence: PeerCredentialEvidence) -> bool {
         match self {
             Self::AnyLocal => true,
             Self::Exact(expected) => expected == evidence,
