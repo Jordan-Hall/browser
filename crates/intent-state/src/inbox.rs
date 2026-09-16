@@ -306,9 +306,10 @@ impl StateStore {
         let Some(expected_effects_hash) = expected_effects_hash else {
             return Ok(Vec::new());
         };
-        let expected_effects_hash = ContentHash::from_hex(&expected_effects_hash).map_err(|error| {
-            InboxError::InvalidStoredRecord(format!("invalid aggregate effects hash: {error}"))
-        })?;
+        let expected_effects_hash =
+            ContentHash::from_hex(&expected_effects_hash).map_err(|error| {
+                InboxError::InvalidStoredRecord(format!("invalid aggregate effects hash: {error}"))
+            })?;
 
         let mut statement = self.connection.prepare(
             r#"
