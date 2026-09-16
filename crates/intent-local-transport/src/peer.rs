@@ -77,7 +77,8 @@ pub fn unix_peer_credentials(
 
     let credentials = getsockopt(stream, PeerCredentials)
         .map_err(|error| PeerCredentialError::Os(error as i32))?;
-    let pid = u32::try_from(credentials.pid()).map_err(|_| PeerCredentialError::InvalidProcessId)?;
+    let pid =
+        u32::try_from(credentials.pid()).map_err(|_| PeerCredentialError::InvalidProcessId)?;
 
     Ok(PeerCredentialEvidence::Unix {
         pid: Some(pid),
@@ -94,8 +95,8 @@ pub fn unix_peer_credentials(
     use nix::unistd::getpeereid;
 
     let (uid, gid) = getpeereid(stream).map_err(|error| PeerCredentialError::Os(error as i32))?;
-    let raw_pid = getsockopt(stream, LocalPeerPid)
-        .map_err(|error| PeerCredentialError::Os(error as i32))?;
+    let raw_pid =
+        getsockopt(stream, LocalPeerPid).map_err(|error| PeerCredentialError::Os(error as i32))?;
     let pid = u32::try_from(raw_pid).map_err(|_| PeerCredentialError::InvalidProcessId)?;
 
     Ok(PeerCredentialEvidence::Unix {
@@ -105,7 +106,10 @@ pub fn unix_peer_credentials(
     })
 }
 
-#[cfg(all(unix, not(any(target_os = "linux", target_os = "android", target_vendor = "apple"))))]
+#[cfg(all(
+    unix,
+    not(any(target_os = "linux", target_os = "android", target_vendor = "apple"))
+))]
 pub fn unix_peer_credentials(
     _stream: &std::os::unix::net::UnixStream,
 ) -> Result<PeerCredentialEvidence, PeerCredentialError> {
@@ -125,9 +129,8 @@ pub fn named_pipe_client_credentials<H: std::os::windows::io::AsRawHandle>(
     // handle without retaining it, and `process_id` points to valid writable storage for the call.
     let result = unsafe { GetNamedPipeClientProcessId(raw_handle, &mut process_id) };
     if result == 0 {
-        return Err(PeerCredentialError::Os(
-            std::io::Error::last_os_error().raw_os_error().unwrap_or(-1),
-        ));
+        let error_code = std::io::Error::last_os_error().raw_os_error().map_or(-1, |code| code);
+        return Err(PeerCredentialError::Os(error_code));
     }
     if process_id == 0 {
         return Err(PeerCredentialError::InvalidProcessId);
@@ -159,7 +162,8 @@ mod tests {
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
     #[test]
-    fn anonymous_unix_pair_exposes_current_peer_credentials() -> Result<(), Box<dyn std::error::Error>> {
+    fn anonymous_unix_pair_exposes_current_peer_credentials()
+    -> Result<(), Box<dyn std::error::Error>> {
         use super::{anonymous_unix_channel_pair, unix_peer_credentials};
         use nix::unistd::{getegid, geteuid};
 
