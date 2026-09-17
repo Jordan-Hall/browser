@@ -82,7 +82,8 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
 ];
 
 pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateError> {
-    connection.execute_batch(
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    transaction.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY CHECK (version > 0),
@@ -92,31 +93,27 @@ pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateE
         ) STRICT;
         "#,
     )?;
-
-    validate_applied_migrations(connection)?;
-
-    let highest: i64 = connection.query_row(
+    validate_applied_migrations(&transaction)?;
+    let highest: i64 = transaction.query_row(
         "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
         [],
         |row| row.get(0),
     )?;
-
     for migration in MIGRATIONS
         .iter()
         .filter(|migration| migration.version > highest)
     {
         let checksum = migration_checksum(migration.sql).to_hex();
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute_batch(migration.sql)?;
         transaction.execute(
             "INSERT INTO schema_migrations(version, name, checksum, applied_unix_seconds) VALUES (?1, ?2, ?3, unixepoch())",
             params![migration.version, migration.name, checksum],
         )?;
         transaction.pragma_update(None, "user_version", migration.version)?;
-        transaction.commit()?;
     }
-
-    validate_applied_migrations(connection)
+    validate_applied_migrations(&transaction)?;
+    transaction.commit()?;
+    Ok(())
 }
 
 pub(crate) fn validate_applied_migrations(connection: &Connection) -> Result<(), StateError> {
@@ -156,7 +153,14 @@ pub(crate) fn validate_applied_migrations(connection: &Connection) -> Result<(),
 
         expected_version += 1;
     }
-
+    let user_version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let ledger_version = expected_version - 1;
+    if user_version != ledger_version {
+        return Err(StateError::MigrationVersionMismatch {
+            user_version,
+            ledger_version,
+        });
+    }
     Ok(())
 }
 
