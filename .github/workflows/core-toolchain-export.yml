@@ -1,0 +1,50 @@
+name: CORE offline review inputs
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/core-toolchain-export.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.event.pull_request.number == 802 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export source, compiler and locked dependency sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.98.1
+          mkdir -p /tmp/core-offline /tmp/core-review-deps/src
+          printf '[package]\nname = "core-review-deps"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nhmac = "0.12"\nproptest = "1.9"\n' > /tmp/core-review-deps/Cargo.toml
+          printf 'fn main() {}\n' > /tmp/core-review-deps/src/main.rs
+          cargo generate-lockfile --manifest-path /tmp/core-review-deps/Cargo.toml
+          cargo vendor --locked --versioned-dirs --sync fuzz/Cargo.toml --sync /tmp/core-review-deps/Cargo.toml /tmp/core-offline/vendor > /tmp/core-offline/vendor-config.toml
+          git bundle create /tmp/core-offline/repository.bundle --all
+          cp Cargo.lock /tmp/core-offline/workspace-Cargo.lock
+          cp fuzz/Cargo.lock /tmp/core-offline/fuzz-Cargo.lock
+          cp /tmp/core-review-deps/Cargo.lock /tmp/core-offline/review-Cargo.lock
+          rustc -vV > /tmp/core-offline/compiler.txt
+          toolchain="$(rustup run 1.98.1 rustc --print sysroot)"
+          tar --exclude='./share/doc' -C "$toolchain" -cJf /tmp/core-offline/toolchain.tar.xz .
+          tar -C /tmp/core-offline -cJf /tmp/core-offline/dependencies.tar.xz vendor
+          rm -rf /tmp/core-offline/vendor
+          cd /tmp/core-offline
+          sha256sum *.tar.xz repository.bundle > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-offline-review-inputs-${{ github.run_id }}
+          path: /tmp/core-offline/
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
