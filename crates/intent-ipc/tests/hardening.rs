@@ -1,0 +1,158 @@
+use intent_contracts::*;
+use intent_ipc::*;
+use serde::{Serialize, Serializer, ser::SerializeSeq};
+use serde_json::{Value, json};
+use std::cell::Cell;
+use std::error::Error;
+
+struct InfiniteSequence<'a>(&'a Cell<usize>);
+
+impl Serialize for InfiniteSequence<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut sequence = serializer.serialize_seq(None)?;
+        loop {
+            self.0.set(self.0.get() + 1);
+            sequence.serialize_element(&0_u8)?;
+        }
+    }
+}
+
+#[test]
+fn lazy_unbounded_serializer_is_stopped_by_the_output_budget() -> Result<(), Box<dyn Error>> {
+    let count = Cell::new(0);
+    let value = Envelope::event(
+        "018f47f7-5a86-7c00-8000-000000000501".parse()?,
+        InfiniteSequence(&count),
+    );
+    let result = encode_control(&value, WireLimits::for_tests());
+    assert!(matches!(result, Err(error) if error.code() == WireErrorCode::FrameTooLarge));
+    assert!(count.get() > 0 && count.get() < WireLimits::for_tests().max_control_frame_bytes);
+    Ok(())
+}
+
+#[test]
+fn encoder_accepts_exact_budget_and_rejects_one_byte_less() -> Result<(), Box<dyn Error>> {
+    let value = Envelope::event("018f47f7-5a86-7c00-8000-000000000501".parse()?, "small");
+    let expected = serde_json::to_vec(&value)?;
+    let mut limits = WireLimits::for_tests();
+    limits.max_control_frame_bytes = expected.len();
+    assert_eq!(encode_control(&value, limits)?.payload(), expected);
+    for limit in [0, expected.len() - 1] {
+        limits.max_control_frame_bytes = limit;
+        assert!(
+            matches!(encode_control(&value, limits), Err(error) if error.code() == WireErrorCode::FrameTooLarge)
+        );
+    }
+    Ok(())
+}
+
+struct SwallowedWriterError;
+impl Serialize for SwallowedWriterError {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut sequence = serializer.serialize_seq(None)?;
+        let _ = sequence.serialize_element(&"x".repeat(2048));
+        sequence.end()
+    }
+}
+
+#[test]
+fn swallowed_writer_error_cannot_return_a_truncated_success() -> Result<(), Box<dyn Error>> {
+    let value = Envelope::event(
+        "018f47f7-5a86-7c00-8000-000000000501".parse()?,
+        SwallowedWriterError,
+    );
+    assert!(
+        matches!(encode_control(&value, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::FrameTooLarge)
+    );
+    Ok(())
+}
+
+struct InvalidSerializer;
+impl Serialize for InvalidSerializer {
+    fn serialize<S: Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("invalid source value"))
+    }
+}
+
+#[test]
+fn unrelated_serialization_failure_keeps_its_error_class() -> Result<(), Box<dyn Error>> {
+    let value = Envelope::event(
+        "018f47f7-5a86-7c00-8000-000000000501".parse()?,
+        InvalidSerializer,
+    );
+    assert!(
+        matches!(encode_control(&value, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::InvalidEnvelope)
+    );
+    Ok(())
+}
+
+#[test]
+fn unsupported_schema_is_classified_before_the_typed_payload() -> Result<(), Box<dyn Error>> {
+    let value = Envelope::event(
+        "018f47f7-5a86-7c00-8000-000000000501".parse()?,
+        json!({"not": "a u64"}),
+    );
+    let mut wire = serde_json::to_value(value)?;
+    wire["schema_version"] = json!({"major": 2, "minor": 0});
+    let frame = Frame::new(FrameLane::Control, serde_json::to_vec(&wire)?);
+    assert!(
+        matches!(decode_control::<u64>(&frame, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::UnsupportedSchema)
+    );
+    wire["schema_version"] = json!(null);
+    let frame = Frame::new(FrameLane::Control, serde_json::to_vec(&wire)?);
+    assert!(
+        matches!(decode_control::<u64>(&frame, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::InvalidEnvelope)
+    );
+    Ok(())
+}
+
+#[test]
+fn unknown_envelope_authority_fields_are_not_silently_ignored() -> Result<(), Box<dyn Error>> {
+    let value = Envelope::event("018f47f7-5a86-7c00-8000-000000000501".parse()?, 7);
+    let mut wire = serde_json::to_value(value)?;
+    wire["override_deadline"] = json!(true);
+    let frame = Frame::new(FrameLane::Control, serde_json::to_vec(&wire)?);
+    assert!(
+        matches!(decode_control::<u64>(&frame, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::InvalidEnvelope)
+    );
+    Ok(())
+}
+
+#[test]
+fn full_money_domain_roundtrips_through_the_real_envelope_codec() -> Result<(), Box<dyn Error>> {
+    for amount in [i128::MIN, -1, 0, 1, (1_i128 << 53) + 1, i128::MAX] {
+        let money = Money::new(CurrencyCode::parse("USD")?, amount, CurrencyScale::Unknown);
+        let value = Envelope::event("018f47f7-5a86-7c00-8000-000000000501".parse()?, money);
+        let frame = encode_control(&value, WireLimits::default())?;
+        assert_eq!(
+            decode_control::<Money>(&frame, WireLimits::default())?,
+            value
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn duplicate_keys_are_rejected_before_typed_payload_parsing() -> Result<(), Box<dyn Error>> {
+    for payload in [
+        r#"{"schema_version":{"major":1,"minor":0},"schema_version":{"major":2,"minor":0}}"#,
+        r#"{"payload":{"amount":1,"amount":2}}"#,
+        r#"{"payload":{"account":1,"\u0061ccount":2}}"#,
+        r#"{"payload":[{"allow":false,"allow":true}]}"#,
+    ] {
+        let frame = Frame::new(FrameLane::Control, payload.as_bytes().to_vec());
+        assert!(
+            matches!(decode_control::<Value>(&frame, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::DuplicateJsonKey)
+        );
+    }
+    let value = Envelope::event(
+        "018f47f7-5a86-7c00-8000-000000000501".parse()?,
+        json!({"first":{"id":1},"second":{"id":2}}),
+    );
+    let frame = encode_control(&value, WireLimits::for_tests())?;
+    assert_eq!(
+        decode_control::<Value>(&frame, WireLimits::for_tests())?,
+        value
+    );
+    Ok(())
+}

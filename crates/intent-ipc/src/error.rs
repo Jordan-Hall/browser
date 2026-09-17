@@ -17,6 +17,7 @@ pub enum WireErrorCode {
     WrongLane = 8,
     InvalidEnvelope = 9,
     AllocationFailed = 10,
+    DuplicateJsonKey = 11,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

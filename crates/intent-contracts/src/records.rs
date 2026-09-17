@@ -10,6 +10,8 @@ use crate::values::{
 use crate::version::{SchemaVersion, deserialize_v1_schema};
 use serde::{Deserialize, Serialize};
 
+mod proposal_validation;
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ArtifactReference {
     #[serde(deserialize_with = "deserialize_v1_schema")]
@@ -441,12 +443,11 @@ impl Evidence {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActionProposalDescriptor {
     pub canonical_arguments: ArtifactReference,
-    pub arguments_hash: ContentHash,
     pub effect_class: CapabilityEffectClass,
     pub approval_requirement: ApprovalRequirement,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionProposal {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -473,6 +474,7 @@ impl ActionProposal {
         account_id: AccountId,
         descriptor: ActionProposalDescriptor,
     ) -> Self {
+        let arguments_hash = descriptor.canonical_arguments.content_hash();
         Self {
             schema_version: SchemaVersion::V1,
             id,
@@ -481,7 +483,7 @@ impl ActionProposal {
             account_id,
             target_resource: None,
             canonical_arguments: descriptor.canonical_arguments,
-            arguments_hash: descriptor.arguments_hash,
+            arguments_hash,
             effect_class: descriptor.effect_class,
             expires_at: None,
             approval_requirement: descriptor.approval_requirement,
