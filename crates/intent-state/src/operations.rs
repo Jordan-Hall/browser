@@ -298,6 +298,37 @@ impl StateStore {
         }
         validate_transition(current.state, transition.next_state)?;
         validate_attempt_identity(transition.next_state, transition.attempt_identity)?;
+        let starts_attempt = matches!(
+            (current.state, transition.next_state),
+            (
+                DurableOperationState::DispatchPending,
+                DurableOperationState::Attempting
+            ) | (
+                DurableOperationState::Verified,
+                DurableOperationState::Compensating
+            )
+        );
+        if starts_attempt {
+            if current.state == DurableOperationState::Verified
+                && current.attempt_identity == transition.attempt_identity
+            {
+                return Err(StateError::InvalidStoredOperation(
+                    "compensation must have a distinct attempt identity".to_owned(),
+                ));
+            }
+            if current.state == DurableOperationState::DispatchPending
+                && current.attempt_identity.is_some()
+                && current.attempt_identity != transition.attempt_identity
+            {
+                return Err(StateError::InvalidStoredOperation(
+                    "dispatch must preserve its staged attempt identity".to_owned(),
+                ));
+            }
+        } else if transition.attempt_identity != current.attempt_identity {
+            return Err(StateError::InvalidStoredOperation(
+                "an outcome transition must preserve the active attempt identity".to_owned(),
+            ));
+        }
 
         let next_revision = current.revision.checked_add(1).ok_or_else(|| {
             StateError::InvalidStoredOperation("operation revision overflow".to_owned())

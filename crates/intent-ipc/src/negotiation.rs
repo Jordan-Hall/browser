@@ -101,10 +101,18 @@ impl ProtocolOffer {
         if ranges.len() > MAX_PROTOCOL_RANGES {
             return Err(ProtocolOfferError::TooManyRanges(ranges.len()));
         }
-        let capabilities: BTreeSet<_> = capabilities.into_iter().collect();
-        if capabilities.len() > MAX_PROTOCOL_CAPABILITIES {
-            return Err(ProtocolOfferError::TooManyCapabilities(capabilities.len()));
+        let mut bounded_capabilities = BTreeSet::new();
+        for (index, capability) in capabilities
+            .into_iter()
+            .take(MAX_PROTOCOL_CAPABILITIES + 1)
+            .enumerate()
+        {
+            if index == MAX_PROTOCOL_CAPABILITIES {
+                return Err(ProtocolOfferError::TooManyCapabilities(index + 1));
+            }
+            bounded_capabilities.insert(capability);
         }
+        let capabilities = bounded_capabilities;
         Ok(Self {
             ranges,
             capabilities,
@@ -130,14 +138,31 @@ impl<'de> Deserialize<'de> for ProtocolOffer {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct RawOffer {
+            #[serde(deserialize_with = "deserialize_ranges")]
             ranges: Vec<ProtocolRange>,
-            #[serde(default)]
+            #[serde(default, deserialize_with = "deserialize_capabilities")]
             capabilities: Vec<ProtocolCapability>,
         }
 
         let raw = RawOffer::deserialize(deserializer)?;
         Self::try_new(raw.ranges, raw.capabilities).map_err(de::Error::custom)
     }
+}
+
+fn deserialize_ranges<'de, D>(deserializer: D) -> Result<Vec<ProtocolRange>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    crate::bounded_sequence::deserialize::<D, ProtocolRange, MAX_PROTOCOL_RANGES>(deserializer)
+}
+
+fn deserialize_capabilities<'de, D>(deserializer: D) -> Result<Vec<ProtocolCapability>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    crate::bounded_sequence::deserialize::<D, ProtocolCapability, MAX_PROTOCOL_CAPABILITIES>(
+        deserializer,
+    )
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
