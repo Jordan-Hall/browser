@@ -1,0 +1,70 @@
+name: Import verified CORE task stack
+
+on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - '.github/core-restack.bundle.part*'
+      - '.github/workflows/core-restack-import.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    if: >-
+      github.event.pull_request.number == 802 &&
+      github.event.pull_request.head.repo.full_name == 'Jordan-Hall/browser' &&
+      github.event.pull_request.head.ref == 'core/production-hardening-20260917'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact isolated branch without persistent credentials
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify and import tested history without executing imported code
+        env:
+          CHECKED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CHECKED_HEAD"
+          cat .github/core-restack.bundle.part{01,02,03,04,05,06,07,08,09,10,11,12} > /tmp/core-restack.bundle
+          echo 'b5529ff839add54bd5ec10b47a7f8c81d53e0ab42680421f9d75ef5d19d45d33  /tmp/core-restack.bundle' | sha256sum --check
+          git bundle verify /tmp/core-restack.bundle
+          git fetch /tmp/core-restack.bundle refs/heads/review/802:refs/review/core-candidate
+          candidate=f9de669268ebb9df4cff3e3f9b62ec3f09b4dfc2
+          tree=c11299b9a3427a369158dee1e51d7dc5c89b9994
+          test "$(git rev-parse refs/review/core-candidate)" = "$candidate"
+          test "$(git rev-parse "$candidate^{tree}")" = "$tree"
+          git merge-base --is-ancestor 1d21dac7f58110022b0e0ed55672f96a1c25ba76 "$candidate"
+          git merge-base --is-ancestor 96e66e0b977b3ad4c716368b0baa430a266cb686 "$candidate"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          imported=$(printf 'build(core): import tested task stack and remove one-shot transport\n' | git commit-tree "$tree" -p "$CHECKED_HEAD" -p "$candidate")
+          mkdir -p /tmp/core-restack-evidence
+          printf '%s\n' "$imported" > /tmp/core-restack-evidence/head.txt
+          printf '%s\n' "$tree" > /tmp/core-restack-evidence/tree.txt
+          git show --no-patch --format=fuller "$imported"
+
+      - name: Publish only the isolated integration branch without force
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          imported=$(cat /tmp/core-restack-evidence/head.txt)
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin "$imported:refs/heads/core/production-hardening-20260917"
+
+      - name: Retain imported commit identity
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-restack-import-${{ github.run_id }}
+          path: /tmp/core-restack-evidence/
+          if-no-files-found: warn
+          retention-days: 2
