@@ -42,6 +42,8 @@ struct Package {
 struct Dependency {
     name: String,
     path: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 fn main() -> ExitCode {
@@ -70,7 +72,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
 fn architecture_check() -> Result<(), Box<dyn Error>> {
     let output = Command::new("cargo")
-        .args(["metadata", "--format-version=1", "--no-deps"])
+        .args(["metadata", "--locked", "--format-version=1", "--no-deps"])
         .output()?;
 
     if !output.status.success() {
@@ -116,13 +118,17 @@ fn validate_contract_dependencies(metadata: &Metadata) -> Result<(), Vec<String>
 }
 
 fn is_forbidden_contract_dependency(dependency: &Dependency) -> bool {
-    if dependency.path.is_some() {
+    if dependency.path.is_some()
+        || dependency.source.as_deref()
+            != Some("registry+https://github.com/rust-lang/crates.io-index")
+    {
         return true;
     }
 
     FORBIDDEN_DEPENDENCY_PREFIXES
         .iter()
         .any(|prefix| dependency.name.starts_with(prefix))
+        || !matches!(dependency.name.as_str(), "serde" | "serde_json" | "uuid")
 }
 
 #[cfg(test)]
@@ -134,6 +140,7 @@ mod tests {
         let dependency = Dependency {
             name: "serde".to_owned(),
             path: None,
+            source: Some("registry+https://github.com/rust-lang/crates.io-index".to_owned()),
         };
 
         assert!(!is_forbidden_contract_dependency(&dependency));
@@ -144,6 +151,7 @@ mod tests {
         let dependency = Dependency {
             name: "intent-gui".to_owned(),
             path: Some("../intent-gui".to_owned()),
+            source: None,
         };
 
         assert!(is_forbidden_contract_dependency(&dependency));
@@ -154,8 +162,38 @@ mod tests {
         let dependency = Dependency {
             name: "cef-wrapper".to_owned(),
             path: None,
+            source: Some("registry+https://github.com/rust-lang/crates.io-index".to_owned()),
         };
 
         assert!(is_forbidden_contract_dependency(&dependency));
+    }
+}
+
+#[cfg(test)]
+mod hardening_tests {
+    use super::{Dependency, is_forbidden_contract_dependency};
+
+    #[test]
+    fn rejects_unknown_packages_and_unreviewed_sources() {
+        for name in ["egui", "slint", "provider-sdk", "an-unclassified-library"] {
+            let dependency = Dependency {
+                name: name.to_owned(),
+                path: None,
+                source: Some("registry+https://github.com/rust-lang/crates.io-index".to_owned()),
+            };
+            assert!(is_forbidden_contract_dependency(&dependency));
+        }
+        for source in [
+            None,
+            Some("git+https://example.invalid/serde"),
+            Some("registry+https://example.invalid/index"),
+        ] {
+            let dependency = Dependency {
+                name: "serde".to_owned(),
+                path: None,
+                source: source.map(str::to_owned),
+            };
+            assert!(is_forbidden_contract_dependency(&dependency));
+        }
     }
 }
