@@ -168,10 +168,14 @@ impl StateStore {
                 return Err(ArtifactError::HandleConflict(new.artifact_id));
             }
             verify_blob(root, &existing)?;
+            sync_directory(&scope_blob_dir(root, &existing.privacy_scope))?;
             cleanup.disarm_after_remove()?;
             return Ok(existing);
         }
 
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let blobs_dir = root.join("blobs");
         create_directory_durable(&blobs_dir)?;
         let blob_dir = scope_blob_dir(root, &new.privacy_scope);
@@ -193,14 +197,12 @@ impl StateStore {
                     created_at: new.created_at,
                 };
                 verify_blob_at(&target_path, &expected)?;
+                sync_directory(&blob_dir)?;
                 cleanup.disarm_after_remove()?;
             }
             Err(error) => return Err(error.into()),
         }
 
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute(
             r#"
             INSERT INTO artifact_blobs(privacy_scope, content_hash, byte_size, created_at_micros)
@@ -282,15 +284,30 @@ impl StateStore {
         &mut self,
         reference: ArtifactReferenceRegistration,
     ) -> Result<(), ArtifactError> {
-        self.artifact_metadata(reference.artifact_id, &reference.privacy_scope)?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let handle: Option<(String, Option<i64>)> = transaction
+            .query_row(
+                "SELECT privacy_scope, NULL FROM artifact_handles WHERE artifact_id = ?1",
+                [reference.artifact_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let (scope, suppressed_at) =
+            handle.ok_or(ArtifactError::ArtifactNotFound(reference.artifact_id))?;
+        if scope != reference.privacy_scope.as_str() {
+            return Err(ArtifactError::AccessDenied(reference.artifact_id));
+        }
+        if suppressed_at.is_some() {
+            return Err(ArtifactError::ArtifactNotFound(reference.artifact_id));
+        }
         transaction.execute(
             r#"
-            INSERT OR IGNORE INTO artifact_references(
+            INSERT INTO artifact_references(
                 artifact_id, reference_kind, reference_id, created_at_micros
             ) VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(artifact_id, reference_kind, reference_id) DO NOTHING
             "#,
             params![
                 reference.artifact_id.to_string(),
@@ -429,6 +446,13 @@ fn create_directory_durable(path: &Path) -> Result<(), ArtifactError> {
             if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
                 return Err(ArtifactError::InvalidStorageDirectory(path.to_path_buf()));
             }
+            sync_directory(path)?;
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                sync_directory(parent)?;
+            }
             return Ok(());
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -486,7 +510,11 @@ fn sync_directory(path: &Path) -> Result<(), ArtifactError> {
 
 #[cfg(not(unix))]
 fn sync_directory(_path: &Path) -> Result<(), ArtifactError> {
-    Ok(())
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "durable artifact directory synchronization is not implemented for this platform",
+    )
+    .into())
 }
 
 fn nonnegative_u64(value: i64, label: &'static str) -> Result<u64, ArtifactError> {
@@ -808,6 +836,43 @@ mod tests {
         assert!(matches!(error, ArtifactError::ArtifactTooLarge { .. }));
         let quarantine = root.path().join("quarantine");
         assert_eq!(fs::read_dir(quarantine)?.count(), 0);
+        Ok(())
+    }
+    #[test]
+    fn invalid_reference_never_reports_a_successful_pin() -> Result<(), Box<dyn Error>> {
+        let root = TempRoot::new()?;
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        let id = artifact_id(20)?;
+        let scope = ArtifactScope::try_new("profile:test/private")?;
+        store.store_artifact(
+            root.path(),
+            new_artifact(id, scope.as_str())?,
+            &mut Cursor::new(b"keep"),
+        )?;
+        for (kind, reference) in [("", "ref"), ("evidence", "")] {
+            assert!(
+                store
+                    .register_artifact_reference(ArtifactReferenceRegistration {
+                        artifact_id: id,
+                        privacy_scope: scope.clone(),
+                        reference_kind: BoundedText::try_new(kind)?,
+                        reference_id: BoundedText::try_new(reference)?,
+                        created_at: UnixTimestampMicros::try_new(101)?,
+                    })
+                    .is_err()
+            );
+            assert_eq!(store.artifact_reference_count(id, &scope)?, 0);
+        }
+        let reference = ArtifactReferenceRegistration {
+            artifact_id: id,
+            privacy_scope: scope.clone(),
+            reference_kind: BoundedText::try_new("evidence")?,
+            reference_id: BoundedText::try_new("ref")?,
+            created_at: UnixTimestampMicros::try_new(101)?,
+        };
+        store.register_artifact_reference(reference.clone())?;
+        store.register_artifact_reference(reference)?;
+        assert_eq!(store.artifact_reference_count(id, &scope)?, 1);
         Ok(())
     }
 }

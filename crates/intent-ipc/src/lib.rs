@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 #![doc = "Bounded local IPC primitives for Intent Browser trusted processes."]
 
+mod bounded_json;
+mod bounded_sequence;
 mod cancellation;
+mod codec;
 mod envelope;
 mod error;
 mod flow;
@@ -9,11 +12,13 @@ mod frame;
 mod limits;
 mod negotiation;
 mod stream;
+mod strict_json;
 
 pub use cancellation::{
     CancellationError, CancellationRegistry, CancellationState, DeadlineStatus,
     MAX_CANCELLATION_RECORDS, deadline_status,
 };
+pub use codec::ControlCodec;
 pub use envelope::{Envelope, EnvelopeKind, decode_control, encode_control};
 pub use error::{WireError, WireErrorCode};
 pub use flow::{

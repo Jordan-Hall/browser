@@ -14,12 +14,23 @@ pub enum DeliveryClass {
     ArtifactReference,
 }
 
+/// Validated queue limits cannot be constructed or mutated externally.
+///
+/// ```compile_fail
+/// use intent_ipc::QueueLimits;
+/// let _ = QueueLimits { reserved_control: 0, reliable_control: 0, best_effort: 0, max_credits: 0 };
+/// ```
+///
+/// ```compile_fail
+/// use intent_ipc::QueueLimits;
+/// fn corrupt(mut limits: QueueLimits) { limits.reserved_control = 0; }
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct QueueLimits {
-    pub reserved_control: usize,
-    pub reliable_control: usize,
-    pub best_effort: usize,
-    pub max_credits: usize,
+    reserved_control: usize,
+    reliable_control: usize,
+    best_effort: usize,
+    max_credits: usize,
 }
 
 impl QueueLimits {
