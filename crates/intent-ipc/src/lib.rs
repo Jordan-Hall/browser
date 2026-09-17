@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 #![doc = "Bounded local IPC primitives for Intent Browser trusted processes."]
 
+mod bounded_json;
 mod envelope;
 mod error;
 mod frame;
 mod limits;
+mod strict_json;
 
 pub use envelope::{Envelope, EnvelopeKind, decode_control, encode_control};
 pub use error::{WireError, WireErrorCode};

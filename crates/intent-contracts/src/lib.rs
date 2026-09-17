@@ -13,6 +13,7 @@ fn invalid(task: TaskId) {
 ```
 "#]
 
+mod decimal_i128;
 mod ids;
 mod records;
 mod values;
