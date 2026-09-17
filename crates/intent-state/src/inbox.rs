@@ -66,8 +66,18 @@ impl StateStore {
         if effects.len() > MAX_CONSUMER_EFFECTS {
             return Err(InboxError::TooManyEffects(effects.len()));
         }
+        let mut aggregate_payload_bytes = event.payload.len();
         for effect in &effects {
             validate_payload(&effect.payload, "consumer effect")?;
+            aggregate_payload_bytes = aggregate_payload_bytes
+                .checked_add(effect.payload.len())
+                .ok_or(InboxError::CounterOverflow("aggregate inbox payload bytes"))?;
+            if aggregate_payload_bytes > MAX_INBOX_PAYLOAD_BYTES {
+                return Err(InboxError::PayloadTooLarge {
+                    label: "aggregate inbox and consumer-effect payloads",
+                    size: aggregate_payload_bytes,
+                });
+            }
         }
         effects.sort_by(|left, right| left.key.cmp(&right.key));
         for pair in effects.windows(2) {
@@ -107,6 +117,7 @@ impl StateStore {
                         event_id: event.event_id.as_str().to_owned(),
                     });
                 }
+                validate_stored_event(&transaction, &event.source, &event.event_id, payload_hash)?;
             }
             None => {
                 let stream_collision: Option<String> = transaction
@@ -168,6 +179,7 @@ impl StateStore {
                     event_id: event.event_id.as_str().to_owned(),
                 });
             }
+            load_consumer_effects(&transaction, consumer, &event.source, &event.event_id)?;
             transaction.commit()?;
             return Ok(InboxApplyResult::Duplicate {
                 sequence: event.sequence,
@@ -291,76 +303,155 @@ impl StateStore {
         source: &BoundedText<128>,
         event_id: &BoundedText<256>,
     ) -> Result<Vec<StoredConsumerEffect>, InboxError> {
-        let expected_effects_hash: Option<String> = self
-            .connection
-            .query_row(
-                r#"
+        let transaction = self.connection.unchecked_transaction()?;
+        let effects = load_consumer_effects(&transaction, consumer, source, event_id)?;
+        transaction.commit()?;
+        Ok(effects)
+    }
+}
+
+fn load_consumer_effects(
+    connection: &rusqlite::Connection,
+    consumer: &BoundedText<128>,
+    source: &BoundedText<128>,
+    event_id: &BoundedText<256>,
+) -> Result<Vec<StoredConsumerEffect>, InboxError> {
+    let expected_effects_hash: Option<String> = connection
+        .query_row(
+            r#"
                 SELECT effects_hash
                 FROM consumer_events
                 WHERE consumer = ?1 AND source = ?2 AND event_id = ?3
                 "#,
-                params![consumer.as_str(), source.as_str(), event_id.as_str()],
-                |row| row.get(0),
-            )
-            .optional()?;
-        let Some(expected_effects_hash) = expected_effects_hash else {
-            return Ok(Vec::new());
-        };
-        let expected_effects_hash =
-            ContentHash::from_hex(&expected_effects_hash).map_err(|error| {
-                InboxError::InvalidStoredRecord(format!("invalid aggregate effects hash: {error}"))
-            })?;
+            params![consumer.as_str(), source.as_str(), event_id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(expected_effects_hash) = expected_effects_hash else {
+        return Ok(Vec::new());
+    };
+    let expected_effects_hash = ContentHash::from_hex(&expected_effects_hash).map_err(|error| {
+        InboxError::InvalidStoredRecord(format!("invalid aggregate effects hash: {error}"))
+    })?;
 
-        let mut statement = self.connection.prepare(
-            r#"
+    validate_stored_effect_budget(connection, consumer, source, event_id)?;
+    let mut statement = connection.prepare(
+        r#"
             SELECT effect_key, payload, payload_hash
             FROM consumer_effects
             WHERE consumer = ?1 AND source = ?2 AND event_id = ?3
             ORDER BY effect_key ASC
             "#,
-        )?;
-        let rows = statement.query_map(
-            params![consumer.as_str(), source.as_str(), event_id.as_str()],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Vec<u8>>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            },
-        )?;
-        let mut effects = Vec::new();
-        for row in rows {
-            let (key, payload, payload_hash) = row?;
-            let stored_hash = ContentHash::from_hex(&payload_hash).map_err(|error| {
-                InboxError::InvalidStoredRecord(format!("invalid effect hash: {error}"))
-            })?;
-            let actual_hash = hash_bytes(&payload);
-            if stored_hash != actual_hash {
-                return Err(InboxError::EffectHashMismatch {
-                    key: key.clone(),
-                    expected: stored_hash,
-                    actual: actual_hash,
-                });
-            }
-            effects.push(StoredConsumerEffect {
-                key: BoundedText::try_new(key).map_err(|error| {
-                    InboxError::InvalidStoredRecord(format!("invalid effect key: {error}"))
-                })?,
-                payload,
-                payload_hash: stored_hash,
+    )?;
+    let rows = statement.query_map(
+        params![consumer.as_str(), source.as_str(), event_id.as_str()],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )?;
+    let mut effects = Vec::new();
+    for row in rows {
+        let (key, payload, payload_hash) = row?;
+        let stored_hash = ContentHash::from_hex(&payload_hash).map_err(|error| {
+            InboxError::InvalidStoredRecord(format!("invalid effect hash: {error}"))
+        })?;
+        let actual_hash = hash_bytes(&payload);
+        if stored_hash != actual_hash {
+            return Err(InboxError::EffectHashMismatch {
+                key: key.clone(),
+                expected: stored_hash,
+                actual: actual_hash,
             });
         }
-
-        let actual_effects_hash = hash_stored_effects(&effects);
-        if actual_effects_hash != expected_effects_hash {
-            return Err(InboxError::EffectSetHashMismatch {
-                expected: expected_effects_hash,
-                actual: actual_effects_hash,
-            });
-        }
-        Ok(effects)
+        effects.push(StoredConsumerEffect {
+            key: BoundedText::try_new(key).map_err(|error| {
+                InboxError::InvalidStoredRecord(format!("invalid effect key: {error}"))
+            })?,
+            payload,
+            payload_hash: stored_hash,
+        });
     }
+
+    let actual_effects_hash = hash_stored_effects(&effects);
+    if actual_effects_hash != expected_effects_hash {
+        return Err(InboxError::EffectSetHashMismatch {
+            expected: expected_effects_hash,
+            actual: actual_effects_hash,
+        });
+    }
+    Ok(effects)
+}
+
+fn validate_stored_effect_budget(
+    connection: &rusqlite::Connection,
+    consumer: &BoundedText<128>,
+    source: &BoundedText<128>,
+    event_id: &BoundedText<256>,
+) -> Result<(), InboxError> {
+    let (count, bytes): (i64, i64) = connection.query_row(
+        "SELECT count(*), coalesce(sum(length(payload)), 0) FROM consumer_effects WHERE consumer = ?1 AND source = ?2 AND event_id = ?3",
+        params![consumer.as_str(), source.as_str(), event_id.as_str()],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let count =
+        usize::try_from(count).map_err(|_| InboxError::CounterOverflow("stored effect count"))?;
+    if count > MAX_CONSUMER_EFFECTS {
+        return Err(InboxError::TooManyEffects(count));
+    }
+    let event_bytes: i64 = connection.query_row(
+        "SELECT length(payload) FROM inbox_events WHERE source = ?1 AND event_id = ?2",
+        params![source.as_str(), event_id.as_str()],
+        |row| row.get(0),
+    )?;
+    let total = bytes
+        .checked_add(event_bytes)
+        .and_then(|total| usize::try_from(total).ok())
+        .ok_or(InboxError::CounterOverflow(
+            "stored aggregate inbox payload bytes",
+        ))?;
+    if total > MAX_INBOX_PAYLOAD_BYTES {
+        return Err(InboxError::PayloadTooLarge {
+            label: "stored inbox and consumer-effect payloads",
+            size: total,
+        });
+    }
+    Ok(())
+}
+
+fn validate_stored_event(
+    connection: &rusqlite::Connection,
+    source: &BoundedText<128>,
+    event_id: &BoundedText<256>,
+    expected_hash: ContentHash,
+) -> Result<(), InboxError> {
+    let size: i64 = connection.query_row(
+        "SELECT length(payload) FROM inbox_events WHERE source = ?1 AND event_id = ?2",
+        params![source.as_str(), event_id.as_str()],
+        |row| row.get(0),
+    )?;
+    let size =
+        usize::try_from(size).map_err(|_| InboxError::CounterOverflow("stored event bytes"))?;
+    if size > MAX_INBOX_PAYLOAD_BYTES {
+        return Err(InboxError::PayloadTooLarge {
+            label: "stored inbox event",
+            size,
+        });
+    }
+    let payload: Vec<u8> = connection.query_row(
+        "SELECT payload FROM inbox_events WHERE source = ?1 AND event_id = ?2",
+        params![source.as_str(), event_id.as_str()],
+        |row| row.get(0),
+    )?;
+    if hash_bytes(&payload) != expected_hash {
+        return Err(InboxError::InvalidStoredRecord(
+            "stored inbox payload does not match its digest".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_payload(payload: &[u8], label: &'static str) -> Result<(), InboxError> {
