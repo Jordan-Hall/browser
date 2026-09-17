@@ -146,7 +146,13 @@ impl WorkerHello {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// A launch record is a move-only input; one-use registry enforcement is still required.
+///
+/// ```compile_fail
+/// use intent_local_transport::WorkerLaunchRecord;
+/// fn duplicate(record: WorkerLaunchRecord) { let _ = record.clone(); }
+/// ```
+#[derive(Debug, Eq, PartialEq)]
 pub struct WorkerLaunchRecord {
     instance_id: WorkerInstanceId,
     role: WorkerRole,
