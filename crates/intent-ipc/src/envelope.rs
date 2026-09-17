@@ -136,12 +136,7 @@ pub fn decode_control<T: DeserializeOwned>(
     }
 
     preflight_json_structure(frame.payload(), limits.max_json_depth)?;
-    let value: Value = serde_json::from_slice(frame.payload()).map_err(|error| {
-        WireError::new(
-            WireErrorCode::MalformedJson,
-            format!("malformed control JSON: {error}"),
-        )
-    })?;
+    let value = crate::strict_json::decode(frame.payload(), limits)?;
     validate_json_value(&value, limits)?;
 
     let schema_value = value.get("schema_version").cloned().ok_or_else(|| {

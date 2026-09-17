@@ -42,6 +42,11 @@ jobs:
           git ls-files --error-unmatch Cargo.lock fuzz/Cargo.lock
           git diff --exit-code -- Cargo.lock fuzz/Cargo.lock
 
+      - name: Check CORE task coverage
+        id: core_coverage
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: python3 scripts/check_core_coverage.py
+
       - name: Check formatting
         id: format
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}

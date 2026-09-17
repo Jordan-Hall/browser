@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_support::*;
-use intent_contracts::{BoundedText, OperationAttemptId};
+use intent_contracts::*;
 use rusqlite::params;
 use std::{
     fs,
@@ -44,19 +44,19 @@ fn user_version_disagreement_fails_without_rewriting_the_ledger() -> TestResult 
     let profile = Profile::new()?;
     drop(StateStore::open(profile.database())?);
     let connection = Connection::open(profile.database())?;
-    connection.pragma_update(None, "user_version", 5)?;
+    connection.pragma_update(None, "user_version", 99)?;
     drop(connection);
     assert!(matches!(
         StateStore::open(profile.database()),
         Err(StateError::MigrationVersionMismatch {
-            user_version: 5,
+            user_version: 99,
             ledger_version: 6
         })
     ));
     let connection = Connection::open(profile.database())?;
     assert_eq!(
         connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        5
+        99
     );
     assert_eq!(
         connection.query_row("SELECT count(*) FROM schema_migrations", [], |row| row

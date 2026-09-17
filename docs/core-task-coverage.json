@@ -1,0 +1,376 @@
+{
+  "schema_version": 1,
+  "programme_issue": 1,
+  "epic_issue": 13,
+  "parent_issues": [
+    2,
+    3,
+    4,
+    5
+  ],
+  "tracking_pr": 802,
+  "production_ready": false,
+  "tasks": [
+    {
+      "issue": 121,
+      "task": "CORE-01.T01",
+      "parent_issue": 2,
+      "title": "Bootstrap the Rust workspace and architectural checks",
+      "implementation_prs": [
+        785
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Initial host checks pass; independent review and merge remain."
+    },
+    {
+      "issue": 122,
+      "task": "CORE-01.T02",
+      "parent_issue": 2,
+      "title": "Define typed identities and value objects",
+      "implementation_prs": [
+        786
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Wire representation and provider-resource validation require baseline sign-off."
+    },
+    {
+      "issue": 123,
+      "task": "CORE-01.T03",
+      "parent_issue": 2,
+      "title": "Specify durable core record schemas",
+      "implementation_prs": [
+        787
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Complete record-family fixtures and authority semantics remain unaccepted."
+    },
+    {
+      "issue": 124,
+      "task": "CORE-01.T04",
+      "parent_issue": 2,
+      "title": "Build bounded wire framing and errors",
+      "implementation_prs": [
+        788
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Stable error-wire representation and full parser/fuzz qualification remain."
+    },
+    {
+      "issue": 125,
+      "task": "CORE-01.T05",
+      "parent_issue": 2,
+      "title": "Authenticate locally launched worker channels",
+      "implementation_prs": [
+        789
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Actual spawned-process authentication and registry-owned one-use launch bindings are missing."
+    },
+    {
+      "issue": 126,
+      "task": "CORE-01.T06",
+      "parent_issue": 2,
+      "title": "Implement version negotiation and schema evolution",
+      "implementation_prs": [
+        790
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Authenticated production session and validated durable migration integration are missing."
+    },
+    {
+      "issue": 127,
+      "task": "CORE-01.T07",
+      "parent_issue": 2,
+      "title": "Wire cancellation, deadlines and backpressure",
+      "implementation_prs": [
+        791
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Real worker cancellation, deadlines, generation fencing and bounded retirement are missing."
+    },
+    {
+      "issue": 128,
+      "task": "CORE-01.T08",
+      "parent_issue": 2,
+      "title": "Publish contract conformance and fuzz targets",
+      "implementation_prs": [
+        792
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Instrumented fuzz execution, complete schema fixtures and process conformance are missing."
+    },
+    {
+      "issue": 129,
+      "task": "CORE-02.T01",
+      "parent_issue": 3,
+      "title": "Establish database ownership and migrations",
+      "implementation_prs": [
+        793
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Profile-wide ownership, filesystem trust boundary and restore validation are missing."
+    },
+    {
+      "issue": 130,
+      "task": "CORE-02.T02",
+      "parent_issue": 3,
+      "title": "Model durable operation and journal records",
+      "implementation_prs": [
+        794
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Evidence-bound state transitions and original/compensation lineage are missing."
+    },
+    {
+      "issue": 131,
+      "task": "CORE-02.T03",
+      "parent_issue": 3,
+      "title": "Implement transactional outbox dispatch",
+      "implementation_prs": [
+        795
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Authority-bound opaque dispatch, fencing and abandoned-attempt recovery are missing."
+    },
+    {
+      "issue": 132,
+      "task": "CORE-02.T04",
+      "parent_issue": 3,
+      "title": "Add inbox deduplication and consumer cursors",
+      "implementation_prs": [
+        796
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Source-precondition integration and repair/recovery acceptance are missing."
+    },
+    {
+      "issue": 133,
+      "task": "CORE-02.T05",
+      "parent_issue": 3,
+      "title": "Implement scoped immutable artifact storage",
+      "implementation_prs": [
+        797
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Exclusive root ownership, hostile-path protection and platform durability qualification are missing."
+    },
+    {
+      "issue": 134,
+      "task": "CORE-02.T06",
+      "parent_issue": 3,
+      "title": "Implement reference-safe retention and deletion",
+      "implementation_prs": [
+        801
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Profile/backup coordination and process/power-loss qualification are missing."
+    },
+    {
+      "issue": 135,
+      "task": "CORE-02.T07",
+      "parent_issue": 3,
+      "title": "Build backup, restore and integrity checks",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 136,
+      "task": "CORE-02.T08",
+      "parent_issue": 3,
+      "title": "Run storage fault and power-loss qualification",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 137,
+      "task": "CORE-03.T01",
+      "parent_issue": 4,
+      "title": "Define worker registry and launch specifications",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 138,
+      "task": "CORE-03.T02",
+      "parent_issue": 4,
+      "title": "Implement process lifecycle and health",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 139,
+      "task": "CORE-03.T03",
+      "parent_issue": 4,
+      "title": "Implement admission and foreground priorities",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 140,
+      "task": "CORE-03.T04",
+      "parent_issue": 4,
+      "title": "Enforce platform resource constraints",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 141,
+      "task": "CORE-03.T05",
+      "parent_issue": 4,
+      "title": "Implement lease-first cancellation and revocation",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 142,
+      "task": "CORE-03.T06",
+      "parent_issue": 4,
+      "title": "Add crash-loop policy and degraded service",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 143,
+      "task": "CORE-03.T07",
+      "parent_issue": 4,
+      "title": "Integrate resource observation and cooperative yields",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 144,
+      "task": "CORE-03.T08",
+      "parent_issue": 4,
+      "title": "Verify supervisor robustness under concurrency",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 145,
+      "task": "CORE-04.T01",
+      "parent_issue": 5,
+      "title": "Classify every recoverable operation",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 146,
+      "task": "CORE-04.T02",
+      "parent_issue": 5,
+      "title": "Implement consistent checkpoints",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 147,
+      "task": "CORE-04.T03",
+      "parent_issue": 5,
+      "title": "Plan startup recovery before dispatch",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 148,
+      "task": "CORE-04.T04",
+      "parent_issue": 5,
+      "title": "Reconcile local writes and uncertain external state",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 149,
+      "task": "CORE-04.T05",
+      "parent_issue": 5,
+      "title": "Build no-production replay contexts",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 150,
+      "task": "CORE-04.T06",
+      "parent_issue": 5,
+      "title": "Implement provider resume and reseeding policy",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 151,
+      "task": "CORE-04.T07",
+      "parent_issue": 5,
+      "title": "Expose recovery decisions in the task centre",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 152,
+      "task": "CORE-04.T08",
+      "parent_issue": 5,
+      "title": "Qualify restart, suspend and corrupt-state cases",
+      "implementation_prs": [],
+      "status": "not_implemented",
+      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+    },
+    {
+      "issue": 113,
+      "task": "PROGRAMME.T03",
+      "parent_issue": 1,
+      "title": "Freeze core contracts and process authority inventory",
+      "implementation_prs": [],
+      "status": "blocked",
+      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+    },
+    {
+      "issue": 211,
+      "task": "EPIC-CORE.T01",
+      "parent_issue": 13,
+      "title": "Agree runtime ownership and wire contracts",
+      "implementation_prs": [],
+      "status": "blocked",
+      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+    },
+    {
+      "issue": 212,
+      "task": "EPIC-CORE.T02",
+      "parent_issue": 13,
+      "title": "Integrate durable dispatch and worker supervision",
+      "implementation_prs": [],
+      "status": "blocked",
+      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+    },
+    {
+      "issue": 213,
+      "task": "EPIC-CORE.T03",
+      "parent_issue": 13,
+      "title": "Exercise crash and bounded replay end to end",
+      "implementation_prs": [],
+      "status": "blocked",
+      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+    },
+    {
+      "issue": 214,
+      "task": "EPIC-CORE.T04",
+      "parent_issue": 13,
+      "title": "Publish runtime operational readiness",
+      "implementation_prs": [],
+      "status": "blocked",
+      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+    }
+  ]
+}
