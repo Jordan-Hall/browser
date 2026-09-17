@@ -46,8 +46,37 @@ impl<'de, const MAX_BYTES: usize> Deserialize<'de> for BoundedText<MAX_BYTES> {
     where
         D: Deserializer<'de>,
     {
-        let value = String::deserialize(deserializer)?;
-        Self::try_new(value).map_err(de::Error::custom)
+        struct TextVisitor<const MAX: usize>;
+
+        impl<'de, const MAX: usize> de::Visitor<'de> for TextVisitor<MAX> {
+            type Value = BoundedText<MAX>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "a UTF-8 string of at most {MAX} bytes")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value.len() > MAX {
+                    return Err(E::custom(BoundedTextError {
+                        actual_bytes: value.len(),
+                        max_bytes: MAX,
+                    }));
+                }
+                Ok(BoundedText(value.to_owned()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                BoundedText::try_new(value).map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_string(TextVisitor::<MAX_BYTES>)
     }
 }
 
@@ -259,6 +288,7 @@ impl Error for CurrencyScaleError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Money {
     currency: CurrencyCode,
+    #[serde(with = "crate::decimal_i128")]
     minor_units: i128,
     scale: CurrencyScale,
 }
