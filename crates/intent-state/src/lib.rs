@@ -16,7 +16,7 @@ pub use outbox::{
 
 use intent_contracts::OperationId;
 use migrations::apply_migrations;
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -34,7 +34,7 @@ pub struct StateStore {
 impl StateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StateError> {
         let mut connection = Connection::open(path)?;
-        configure_connection(&connection, true)?;
+        configure_connection(&mut connection, true)?;
         apply_migrations(&mut connection)?;
         initialize_store_metadata(&connection)?;
         Ok(Self { connection })
@@ -43,7 +43,7 @@ impl StateStore {
     #[doc(hidden)]
     pub fn open_in_memory_for_tests() -> Result<Self, StateError> {
         let mut connection = Connection::open_in_memory()?;
-        configure_connection(&connection, false)?;
+        configure_connection(&mut connection, false)?;
         apply_migrations(&mut connection)?;
         initialize_store_metadata(&connection)?;
         Ok(Self { connection })
@@ -88,20 +88,34 @@ impl StateStore {
     }
 }
 
-fn configure_connection(connection: &Connection, require_wal: bool) -> Result<(), StateError> {
+fn configure_connection(connection: &mut Connection, require_wal: bool) -> Result<(), StateError> {
     connection.busy_timeout(BUSY_TIMEOUT)?;
+    {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let application_id: i64 =
+            transaction.query_row("PRAGMA application_id", [], |row| row.get(0))?;
+        match application_id {
+            0 => {
+                let populated: bool = transaction.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_schema)",
+                    [],
+                    |row| row.get(0),
+                )?;
+                let user_version: i64 =
+                    transaction.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+                if populated || user_version != 0 {
+                    return Err(StateError::WrongApplicationId { found: 0 });
+                }
+                transaction.pragma_update(None, "application_id", APPLICATION_ID)?;
+            }
+            APPLICATION_ID => {}
+            found => return Err(StateError::WrongApplicationId { found }),
+        }
+        transaction.commit()?;
+    }
     connection.pragma_update(None, "foreign_keys", "ON")?;
     connection.pragma_update(None, "trusted_schema", "OFF")?;
     connection.pragma_update(None, "synchronous", "FULL")?;
-
-    let application_id: i64 =
-        connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
-    match application_id {
-        0 => connection.pragma_update(None, "application_id", APPLICATION_ID)?,
-        APPLICATION_ID => {}
-        found => return Err(StateError::WrongApplicationId { found }),
-    }
-
     if require_wal {
         let mode: String =
             connection.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
@@ -110,7 +124,6 @@ fn configure_connection(connection: &Connection, require_wal: bool) -> Result<()
         }
         connection.pragma_update(None, "wal_autocheckpoint", 1_000_i64)?;
     }
-
     Ok(())
 }
 
@@ -132,6 +145,10 @@ pub enum StateError {
     WalUnavailable(String),
     InvalidStoreId(String),
     IntegrityCheckFailed(String),
+    MigrationVersionMismatch {
+        user_version: i64,
+        ledger_version: i64,
+    },
     MigrationGap {
         expected: i64,
         found: i64,
@@ -182,6 +199,13 @@ impl fmt::Display for StateError {
             Self::IntegrityCheckFailed(detail) => {
                 write!(formatter, "SQLite quick_check failed: {detail}")
             }
+            Self::MigrationVersionMismatch {
+                user_version,
+                ledger_version,
+            } => write!(
+                formatter,
+                "schema user_version {user_version} disagrees with migration ledger {ledger_version}"
+            ),
             Self::MigrationGap { expected, found } => write!(
                 formatter,
                 "migration ledger has a gap: expected version {expected}, found {found}"
@@ -349,3 +373,8 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod hardening_tests;
+#[cfg(test)]
+mod test_support;
