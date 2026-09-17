@@ -234,12 +234,13 @@ impl StateStore {
             .ok_or(OutboxError::CounterOverflow("operation revision"))?;
 
         transaction.execute(
-            "UPDATE durable_operations SET state = 'dispatch_pending', revision = ?1, updated_at_micros = ?2 WHERE operation_id = ?3 AND revision = ?4",
+            "UPDATE durable_operations SET state = 'dispatch_pending', revision = ?1, updated_at_micros = ?2, attempt_identity = ?5 WHERE operation_id = ?3 AND revision = ?4",
             params![
                 to_sql_i64(next_revision, "operation revision")?,
                 new.created_at.get(),
                 new.operation_id.to_string(),
                 to_sql_i64(expected_operation_revision, "expected operation revision")?,
+                new.attempt_identity.to_string(),
             ],
         )?;
         append_operation_journal(
@@ -301,11 +302,13 @@ impl StateStore {
         {
             let mut statement = transaction.prepare(
                 r#"
-                SELECT outbox_id
-                FROM outbox_messages
-                WHERE state = 'pending'
-                   OR (state = 'leased' AND lease_expires_at_micros <= ?1)
-                ORDER BY created_at_micros ASC, outbox_id ASC
+                SELECT outbox.outbox_id
+                FROM outbox_messages AS outbox
+                JOIN durable_operations AS operation ON operation.operation_id = outbox.operation_id
+                WHERE operation.state = 'dispatch_pending'
+                  AND (outbox.state = 'pending'
+                    OR (outbox.state = 'leased' AND outbox.lease_expires_at_micros <= ?1))
+                ORDER BY outbox.created_at_micros ASC, outbox.outbox_id ASC
                 LIMIT ?2
                 "#,
             )?;
@@ -360,12 +363,15 @@ impl StateStore {
         {
             return Err(OutboxError::LeaseNotHeld(outbox_id));
         }
-        let (operation_state, revision): (String, i64) = transaction.query_row(
-            "SELECT state, revision FROM durable_operations WHERE operation_id = ?1",
+        let (operation_state, revision, active_attempt): (String, i64, Option<String>) = transaction.query_row(
+            "SELECT state, revision, attempt_identity FROM durable_operations WHERE operation_id = ?1",
             [raw.operation_id.to_string()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-        if operation_state != "dispatch_pending" {
+        let expected_attempt = raw.attempt_identity.to_string();
+        if operation_state != "dispatch_pending"
+            || active_attempt.as_deref() != Some(expected_attempt.as_str())
+        {
             return Err(OutboxError::OperationNotDispatchable {
                 operation_id: raw.operation_id,
                 state: operation_state,
@@ -442,12 +448,15 @@ impl StateStore {
                 state: raw.state,
             });
         }
-        let (operation_state, revision): (String, i64) = transaction.query_row(
-            "SELECT state, revision FROM durable_operations WHERE operation_id = ?1",
+        let (operation_state, revision, active_attempt): (String, i64, Option<String>) = transaction.query_row(
+            "SELECT state, revision, attempt_identity FROM durable_operations WHERE operation_id = ?1",
             [raw.operation_id.to_string()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-        if operation_state != "attempting" {
+        let expected_attempt = raw.attempt_identity.to_string();
+        if operation_state != "attempting"
+            || active_attempt.as_deref() != Some(expected_attempt.as_str())
+        {
             return Err(OutboxError::OperationNotDispatchable {
                 operation_id: raw.operation_id,
                 state: operation_state,

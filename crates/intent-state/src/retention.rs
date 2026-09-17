@@ -40,43 +40,32 @@ impl StateStore {
         permitted_scope: &ArtifactScope,
         suppressed_at: UnixTimestampMicros,
     ) -> Result<SuppressionResult, RetentionError> {
-        let handle = load_handle(&self.connection, artifact_id)?
-            .ok_or(RetentionError::ArtifactNotFound(artifact_id))?;
-        ensure_scope(artifact_id, permitted_scope, &handle.scope)?;
-
-        if handle.suppressed_at.is_some() {
-            enqueue_if_eligible(
-                &mut self.connection,
-                &handle.scope,
-                &handle.content_hash,
-                suppressed_at,
-            )?;
-            return Ok(SuppressionResult::AlreadySuppressed);
-        }
-
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let changed = transaction.execute(
-            r#"
-            UPDATE artifact_handles
-            SET suppressed_at_micros = ?1
-            WHERE artifact_id = ?2 AND suppressed_at_micros IS NULL
-            "#,
-            params![suppressed_at.get(), artifact_id.to_string()],
-        )?;
-        if changed != 1 {
-            return Err(RetentionError::ConcurrentSuppression(artifact_id));
-        }
-        transaction.commit()?;
-
+        let handle = load_handle(&transaction, artifact_id)?
+            .ok_or(RetentionError::ArtifactNotFound(artifact_id))?;
+        ensure_scope(artifact_id, permitted_scope, &handle.scope)?;
+        let result = if handle.suppressed_at.is_some() {
+            SuppressionResult::AlreadySuppressed
+        } else {
+            let changed = transaction.execute(
+                "UPDATE artifact_handles_all SET suppressed_at_micros = ?1 WHERE artifact_id = ?2 AND suppressed_at_micros IS NULL",
+                params![suppressed_at.get(), artifact_id.to_string()],
+            )?;
+            if changed != 1 {
+                return Err(RetentionError::ConcurrentSuppression(artifact_id));
+            }
+            SuppressionResult::Suppressed
+        };
         enqueue_if_eligible(
-            &mut self.connection,
+            &transaction,
             &handle.scope,
             &handle.content_hash,
             suppressed_at,
         )?;
-        Ok(SuppressionResult::Suppressed)
+        transaction.commit()?;
+        Ok(result)
     }
 
     pub fn remove_artifact_reference(
@@ -87,34 +76,25 @@ impl StateStore {
         reference_id: &BoundedText<256>,
         occurred_at: UnixTimestampMicros,
     ) -> Result<bool, RetentionError> {
-        let handle = load_handle(&self.connection, artifact_id)?
-            .ok_or(RetentionError::ArtifactNotFound(artifact_id))?;
-        ensure_scope(artifact_id, permitted_scope, &handle.scope)?;
-
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let handle = load_handle(&transaction, artifact_id)?
+            .ok_or(RetentionError::ArtifactNotFound(artifact_id))?;
+        ensure_scope(artifact_id, permitted_scope, &handle.scope)?;
         let changed = transaction.execute(
-            r#"
-            DELETE FROM artifact_references
-            WHERE artifact_id = ?1 AND reference_kind = ?2 AND reference_id = ?3
-            "#,
-            params![
-                artifact_id.to_string(),
-                reference_kind.as_str(),
-                reference_id.as_str(),
-            ],
+            "DELETE FROM artifact_references WHERE artifact_id = ?1 AND reference_kind = ?2 AND reference_id = ?3",
+            params![artifact_id.to_string(), reference_kind.as_str(), reference_id.as_str()],
         )?;
-        transaction.commit()?;
-
         if changed == 1 {
             enqueue_if_eligible(
-                &mut self.connection,
+                &transaction,
                 &handle.scope,
                 &handle.content_hash,
                 occurred_at,
             )?;
         }
+        transaction.commit()?;
         Ok(changed == 1)
     }
 
@@ -122,7 +102,10 @@ impl StateStore {
         &mut self,
         hold: ArtifactRetentionHold,
     ) -> Result<(), RetentionError> {
-        let handle = load_handle(&self.connection, hold.artifact_id)?
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let handle = load_handle(&transaction, hold.artifact_id)?
             .ok_or(RetentionError::ArtifactNotFound(hold.artifact_id))?;
         ensure_scope(hold.artifact_id, &hold.privacy_scope, &handle.scope)?;
         if let Some(expires_at) = hold.expires_at
@@ -131,9 +114,6 @@ impl StateStore {
             return Err(RetentionError::InvalidHoldExpiry);
         }
 
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute(
             r#"
             INSERT INTO artifact_retention_holds(
@@ -164,8 +144,10 @@ impl StateStore {
         permitted_scope: &ArtifactScope,
         occurred_at: UnixTimestampMicros,
     ) -> Result<bool, RetentionError> {
-        let raw: Option<(String, String)> = self
+        let transaction = self
             .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let raw: Option<(String, String)> = transaction
             .query_row(
                 r#"
                 SELECT privacy_scope, content_hash
@@ -183,17 +165,14 @@ impl StateStore {
             return Err(RetentionError::HoldAccessDenied);
         }
 
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let changed = transaction.execute(
             "DELETE FROM artifact_retention_holds WHERE hold_id = ?1",
             [hold_id.as_str()],
         )?;
-        transaction.commit()?;
         if changed == 1 {
-            enqueue_if_eligible(&mut self.connection, &scope, &content_hash, occurred_at)?;
+            enqueue_if_eligible(&transaction, &scope, &content_hash, occurred_at)?;
         }
+        transaction.commit()?;
         Ok(changed == 1)
     }
 
@@ -202,22 +181,47 @@ impl StateStore {
         now: UnixTimestampMicros,
         limit: usize,
     ) -> Result<usize, RetentionError> {
-        prune_expired_holds(&mut self.connection, now)?;
         let limit = limit.min(MAX_GC_BATCH);
         if limit == 0 {
             return Ok(0);
         }
-
-        let mut statement = self.connection.prepare(
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        prune_expired_holds(&transaction, now)?;
+        let mut statement = transaction.prepare(
             r#"
-            SELECT DISTINCT privacy_scope, content_hash
-            FROM artifact_handles
-            WHERE suppressed_at_micros IS NOT NULL
-            ORDER BY privacy_scope, content_hash
+            SELECT DISTINCT candidate.privacy_scope, candidate.content_hash
+            FROM artifact_handles_all AS candidate
+            WHERE candidate.suppressed_at_micros IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM artifact_handles_all AS live
+                  WHERE live.privacy_scope = candidate.privacy_scope
+                    AND live.content_hash = candidate.content_hash
+                    AND live.suppressed_at_micros IS NULL
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM artifact_references AS refs
+                  JOIN artifact_handles_all AS referenced ON referenced.artifact_id = refs.artifact_id
+                  WHERE referenced.privacy_scope = candidate.privacy_scope
+                    AND referenced.content_hash = candidate.content_hash
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM artifact_retention_holds AS hold
+                  WHERE hold.privacy_scope = candidate.privacy_scope
+                    AND hold.content_hash = candidate.content_hash
+                    AND (hold.expires_at_micros IS NULL OR hold.expires_at_micros > ?2)
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM artifact_gc_queue AS queued
+                  WHERE queued.privacy_scope = candidate.privacy_scope
+                    AND queued.content_hash = candidate.content_hash
+              )
+            ORDER BY candidate.privacy_scope, candidate.content_hash
             LIMIT ?1
             "#,
         )?;
-        let rows = statement.query_map([usize_to_i64(limit)?], |row| {
+        let rows = statement.query_map(params![usize_to_i64(limit)?, now.get()], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
         let mut keys = Vec::new();
@@ -225,13 +229,13 @@ impl StateStore {
             keys.push(row?);
         }
         drop(statement);
-
-        let mut enqueued = 0_usize;
+        let mut enqueued = 0;
         for (scope, hash) in keys {
-            if enqueue_if_eligible(&mut self.connection, &scope, &hash, now)? {
+            if enqueue_if_eligible(&transaction, &scope, &hash, now)? {
                 enqueued += 1;
             }
         }
+        transaction.commit()?;
         Ok(enqueued)
     }
 
@@ -241,18 +245,17 @@ impl StateStore {
         now: UnixTimestampMicros,
         limit: usize,
     ) -> Result<GcReport, RetentionError> {
-        prune_expired_holds(&mut self.connection, now)?;
         let limit = limit.min(MAX_GC_BATCH);
         if limit == 0 {
             return Ok(GcReport::default());
         }
-
+        prune_expired_holds(&self.connection, now)?;
         let mut statement = self.connection.prepare(
             r#"
             SELECT privacy_scope, content_hash
             FROM artifact_gc_queue
             WHERE state IN ('pending', 'deleting', 'failed')
-            ORDER BY enqueued_at_micros, privacy_scope, content_hash
+            ORDER BY attempt_count, updated_at_micros, privacy_scope, content_hash
             LIMIT ?1
             "#,
         )?;
@@ -264,88 +267,84 @@ impl StateStore {
             keys.push(row?);
         }
         drop(statement);
-
         let mut report = GcReport::default();
         for (scope, hash) in keys {
-            if !blob_is_eligible(&self.connection, &scope, &hash, now)? {
-                self.connection.execute(
-                    "DELETE FROM artifact_gc_queue WHERE privacy_scope = ?1 AND content_hash = ?2",
-                    params![scope, hash],
-                )?;
-                report.deferred_blobs += 1;
-                continue;
+            match self.collect_blob_with(root, &scope, &hash, now, remove_blob_and_sync)? {
+                GcOutcome::Deleted => report.deleted_blobs += 1,
+                GcOutcome::Deferred => report.deferred_blobs += 1,
+                GcOutcome::Failed => report.failed_blobs += 1,
             }
+        }
+        Ok(report)
+    }
 
-            let transaction = self
-                .connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)?;
-            transaction.execute(
-                r#"
-                UPDATE artifact_gc_queue
-                SET state = 'deleting', attempt_count = attempt_count + 1,
-                    updated_at_micros = ?1, last_error = NULL
-                WHERE privacy_scope = ?2 AND content_hash = ?3
-                "#,
-                params![now.get(), scope, hash],
-            )?;
-            transaction.commit()?;
-
-            let path = blob_path(root, &scope, &hash)?;
-            match remove_blob_and_sync(&path) {
-                Ok(()) => {}
-                Err(error) => {
-                    record_gc_failure(&mut self.connection, &scope, &hash, now, &error)?;
-                    report.failed_blobs += 1;
-                    continue;
-                }
-            }
-
-            let transaction = self
-                .connection
-                .transaction_with_behavior(TransactionBehavior::Immediate)?;
-            if !blob_is_eligible(&transaction, &scope, &hash, now)? {
-                transaction.execute(
-                    r#"
-                    UPDATE artifact_gc_queue
-                    SET state = 'failed', updated_at_micros = ?1,
-                        last_error = 'eligibility changed after file deletion'
-                    WHERE privacy_scope = ?2 AND content_hash = ?3
-                    "#,
-                    params![now.get(), scope, hash],
-                )?;
-                transaction.commit()?;
-                report.failed_blobs += 1;
-                continue;
-            }
-            transaction.execute(
-                r#"
-                DELETE FROM artifact_retention_holds
-                WHERE privacy_scope = ?1 AND content_hash = ?2
-                  AND expires_at_micros IS NOT NULL AND expires_at_micros <= ?3
-                "#,
-                params![scope, hash, now.get()],
-            )?;
-            transaction.execute(
-                r#"
-                DELETE FROM artifact_handles
-                WHERE privacy_scope = ?1 AND content_hash = ?2
-                  AND suppressed_at_micros IS NOT NULL
-                "#,
-                params![scope, hash],
-            )?;
+    fn collect_blob_with(
+        &mut self,
+        root: &Path,
+        scope: &str,
+        hash: &str,
+        now: UnixTimestampMicros,
+        remove: impl FnOnce(&Path) -> io::Result<()>,
+    ) -> Result<GcOutcome, RetentionError> {
+        // Publication takes the same SQLite writer lock before exposing a final blob.
+        // Keep this lock through unlink, directory sync and metadata cleanup.
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if !blob_is_eligible(&transaction, scope, hash, now)? {
             transaction.execute(
                 "DELETE FROM artifact_gc_queue WHERE privacy_scope = ?1 AND content_hash = ?2",
                 params![scope, hash],
             )?;
-            transaction.execute(
-                "DELETE FROM artifact_blobs WHERE privacy_scope = ?1 AND content_hash = ?2",
-                params![scope, hash],
-            )?;
             transaction.commit()?;
-            report.deleted_blobs += 1;
+            return Ok(GcOutcome::Deferred);
         }
-        Ok(report)
+        let changed = transaction.execute(
+            r#"
+            UPDATE artifact_gc_queue
+            SET state = 'deleting',
+                attempt_count = min(attempt_count, 9223372036854775806) + 1,
+                updated_at_micros = ?1, last_error = NULL
+            WHERE privacy_scope = ?2 AND content_hash = ?3
+            "#,
+            params![now.get(), scope, hash],
+        )?;
+        if changed != 1 {
+            transaction.commit()?;
+            return Ok(GcOutcome::Deferred);
+        }
+        let path = blob_path(root, scope, hash)?;
+        if let Err(error) = remove(&path) {
+            record_gc_failure(&transaction, scope, hash, now, &error)?;
+            transaction.commit()?;
+            return Ok(GcOutcome::Failed);
+        }
+        transaction.execute(
+            "DELETE FROM artifact_retention_holds WHERE privacy_scope = ?1 AND content_hash = ?2 AND expires_at_micros IS NOT NULL AND expires_at_micros <= ?3",
+            params![scope, hash, now.get()],
+        )?;
+        transaction.execute(
+            "DELETE FROM artifact_handles_all WHERE privacy_scope = ?1 AND content_hash = ?2 AND suppressed_at_micros IS NOT NULL",
+            params![scope, hash],
+        )?;
+        transaction.execute(
+            "DELETE FROM artifact_gc_queue WHERE privacy_scope = ?1 AND content_hash = ?2",
+            params![scope, hash],
+        )?;
+        transaction.execute(
+            "DELETE FROM artifact_blobs WHERE privacy_scope = ?1 AND content_hash = ?2",
+            params![scope, hash],
+        )?;
+        transaction.commit()?;
+        Ok(GcOutcome::Deleted)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum GcOutcome {
+    Deleted,
+    Deferred,
+    Failed,
 }
 
 #[derive(Debug)]
@@ -363,7 +362,7 @@ fn load_handle(
         .query_row(
             r#"
             SELECT privacy_scope, content_hash, suppressed_at_micros
-            FROM artifact_handles
+            FROM artifact_handles_all
             WHERE artifact_id = ?1
             "#,
             [artifact_id.to_string()],
@@ -392,18 +391,18 @@ fn ensure_scope(
 }
 
 fn prune_expired_holds(
-    connection: &mut rusqlite::Connection,
+    connection: &rusqlite::Connection,
     now: UnixTimestampMicros,
 ) -> Result<(), RetentionError> {
     connection.execute(
-        "DELETE FROM artifact_retention_holds WHERE expires_at_micros IS NOT NULL AND expires_at_micros <= ?1",
-        [now.get()],
+        "DELETE FROM artifact_retention_holds WHERE hold_id IN (SELECT hold_id FROM artifact_retention_holds WHERE expires_at_micros IS NOT NULL AND expires_at_micros <= ?1 ORDER BY expires_at_micros, hold_id LIMIT ?2)",
+        params![now.get(), usize_to_i64(MAX_GC_BATCH)?],
     )?;
     Ok(())
 }
 
 fn enqueue_if_eligible(
-    connection: &mut rusqlite::Connection,
+    connection: &rusqlite::Connection,
     scope: &str,
     content_hash: &str,
     now: UnixTimestampMicros,
@@ -434,14 +433,14 @@ fn blob_is_eligible(
         r#"
         SELECT
             NOT EXISTS(
-                SELECT 1 FROM artifact_handles
+                SELECT 1 FROM artifact_handles_all
                 WHERE privacy_scope = ?1 AND content_hash = ?2
                   AND suppressed_at_micros IS NULL
             )
             AND NOT EXISTS(
                 SELECT 1
                 FROM artifact_references AS refs
-                JOIN artifact_handles AS handles
+                JOIN artifact_handles_all AS handles
                   ON handles.artifact_id = refs.artifact_id
                 WHERE handles.privacy_scope = ?1 AND handles.content_hash = ?2
             )
@@ -451,7 +450,7 @@ fn blob_is_eligible(
                   AND (expires_at_micros IS NULL OR expires_at_micros > ?3)
             )
             AND EXISTS(
-                SELECT 1 FROM artifact_handles
+                SELECT 1 FROM artifact_handles_all
                 WHERE privacy_scope = ?1 AND content_hash = ?2
             )
         "#,
@@ -478,16 +477,26 @@ fn scope_namespace(scope: &str) -> String {
 }
 
 fn remove_blob_and_sync(path: &Path) -> io::Result<()> {
-    match fs::remove_file(path) {
-        Ok(()) => {
-            if let Some(parent) = path.parent() {
-                sync_directory(parent)?;
-            }
-            Ok(())
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
+    remove_blob_and_sync_with(path, |path| fs::remove_file(path), sync_directory)
+}
+
+fn remove_blob_and_sync_with(
+    path: &Path,
+    remove: impl FnOnce(&Path) -> io::Result<()>,
+    sync: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<()> {
+    match remove(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
     }
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "blob path has no parent directory",
+        )
+    })?;
+    sync(parent)
 }
 
 #[cfg(unix)]
@@ -497,20 +506,25 @@ fn sync_directory(path: &Path) -> io::Result<()> {
 
 #[cfg(not(unix))]
 fn sync_directory(_path: &Path) -> io::Result<()> {
-    Ok(())
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "durable artifact deletion is not implemented for this platform",
+    ))
 }
 
 fn record_gc_failure(
-    connection: &mut rusqlite::Connection,
+    connection: &rusqlite::Connection,
     scope: &str,
     content_hash: &str,
     now: UnixTimestampMicros,
     error: &io::Error,
 ) -> Result<(), RetentionError> {
     let mut detail = error.to_string();
-    if detail.len() > 2048 {
-        detail.truncate(2048);
+    let mut end = detail.len().min(2048);
+    while !detail.is_char_boundary(end) {
+        end -= 1;
     }
+    detail.truncate(end);
     connection.execute(
         r#"
         UPDATE artifact_gc_queue
@@ -747,3 +761,6 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod hardening_tests;

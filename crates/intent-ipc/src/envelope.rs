@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EnvelopeKind {
     Request { request_id: RequestId },
     Response { request_id: RequestId },
@@ -12,6 +12,7 @@ pub enum EnvelopeKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Envelope<T> {
     schema_version: SchemaVersion,
     trace_id: TraceId,
@@ -112,24 +113,7 @@ pub fn encode_control<T: Serialize>(
     envelope: &Envelope<T>,
     limits: WireLimits,
 ) -> Result<Frame, WireError> {
-    let payload = serde_json::to_vec(envelope).map_err(|error| {
-        WireError::new(
-            WireErrorCode::InvalidEnvelope,
-            format!("failed to serialize control envelope: {error}"),
-        )
-    })?;
-
-    if payload.len() > limits.max_control_frame_bytes {
-        return Err(WireError::new(
-            WireErrorCode::FrameTooLarge,
-            format!(
-                "control envelope is {} bytes but limit is {}",
-                payload.len(),
-                limits.max_control_frame_bytes
-            ),
-        ));
-    }
-
+    let payload = crate::bounded_json::encode(envelope, limits.max_control_frame_bytes)?;
     Ok(Frame::new(FrameLane::Control, payload))
 }
 
@@ -160,23 +144,35 @@ pub fn decode_control<T: DeserializeOwned>(
     })?;
     validate_json_value(&value, limits)?;
 
+    let schema_value = value.get("schema_version").cloned().ok_or_else(|| {
+        WireError::new(
+            WireErrorCode::InvalidEnvelope,
+            "missing envelope schema_version",
+        )
+    })?;
+    let schema: SchemaVersion = serde_json::from_value(schema_value).map_err(|error| {
+        WireError::new(
+            WireErrorCode::InvalidEnvelope,
+            format!("invalid envelope schema_version: {error}"),
+        )
+    })?;
+    if schema != SchemaVersion::V1 {
+        return Err(WireError::new(
+            WireErrorCode::UnsupportedSchema,
+            format!(
+                "unsupported envelope schema {}.{}",
+                schema.major(),
+                schema.minor()
+            ),
+        ));
+    }
+
     let envelope: Envelope<T> = serde_json::from_value(value).map_err(|error| {
         WireError::new(
             WireErrorCode::InvalidEnvelope,
             format!("invalid control envelope: {error}"),
         )
     })?;
-
-    if envelope.schema_version != SchemaVersion::V1 {
-        return Err(WireError::new(
-            WireErrorCode::UnsupportedSchema,
-            format!(
-                "unsupported envelope schema {}.{}",
-                envelope.schema_version.major(),
-                envelope.schema_version.minor()
-            ),
-        ));
-    }
 
     Ok(envelope)
 }
