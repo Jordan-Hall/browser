@@ -1,9 +1,5 @@
-use intent_contracts::{CurrencyCode, CurrencyScale, Money, SchemaVersion};
-use intent_ipc::{
-    ControlCodec, Envelope, Frame, FrameLane, MAX_PROTOCOL_CAPABILITIES, MAX_PROTOCOL_RANGES,
-    NegotiationError, ProtocolCapability, ProtocolOffer, ProtocolOfferError, ProtocolRange,
-    WireErrorCode, WireLimits, decode_control, encode_control,
-};
+use intent_contracts::*;
+use intent_ipc::*;
 use serde::{Serialize, Serializer, ser::SerializeSeq};
 use serde_json::{Value, json};
 use std::cell::Cell;
@@ -194,6 +190,31 @@ fn negotiated_control_codec_never_advertises_unimplemented_versions() -> Result<
     let frame = codec.encode(&value, WireLimits::for_tests())?;
     assert_eq!(
         codec.decode::<Value>(&frame, WireLimits::for_tests())?,
+        value
+    );
+    Ok(())
+}
+
+#[test]
+fn duplicate_keys_are_rejected_before_typed_payload_parsing() -> Result<(), Box<dyn Error>> {
+    for payload in [
+        r#"{"schema_version":{"major":1,"minor":0},"schema_version":{"major":2,"minor":0}}"#,
+        r#"{"payload":{"amount":1,"amount":2}}"#,
+        r#"{"payload":{"account":1,"\u0061ccount":2}}"#,
+        r#"{"payload":[{"allow":false,"allow":true}]}"#,
+    ] {
+        let frame = Frame::new(FrameLane::Control, payload.as_bytes().to_vec());
+        assert!(
+            matches!(decode_control::<Value>(&frame, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::DuplicateJsonKey)
+        );
+    }
+    let value = Envelope::event(
+        "018f47f7-5a86-7c00-8000-000000000501".parse()?,
+        json!({"first":{"id":1},"second":{"id":2}}),
+    );
+    let frame = encode_control(&value, WireLimits::for_tests())?;
+    assert_eq!(
+        decode_control::<Value>(&frame, WireLimits::for_tests())?,
         value
     );
     Ok(())

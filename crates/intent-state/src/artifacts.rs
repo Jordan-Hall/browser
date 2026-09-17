@@ -302,9 +302,10 @@ impl StateStore {
         }
         transaction.execute(
             r#"
-            INSERT OR IGNORE INTO artifact_references(
+            INSERT INTO artifact_references(
                 artifact_id, reference_kind, reference_id, created_at_micros
             ) VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(artifact_id, reference_kind, reference_id) DO NOTHING
             "#,
             params![
                 reference.artifact_id.to_string(),
@@ -833,6 +834,43 @@ mod tests {
         assert!(matches!(error, ArtifactError::ArtifactTooLarge { .. }));
         let quarantine = root.path().join("quarantine");
         assert_eq!(fs::read_dir(quarantine)?.count(), 0);
+        Ok(())
+    }
+    #[test]
+    fn invalid_reference_never_reports_a_successful_pin() -> Result<(), Box<dyn Error>> {
+        let root = TempRoot::new()?;
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        let id = artifact_id(20)?;
+        let scope = ArtifactScope::try_new("profile:test/private")?;
+        store.store_artifact(
+            root.path(),
+            new_artifact(id, scope.as_str())?,
+            &mut Cursor::new(b"keep"),
+        )?;
+        for (kind, reference) in [("", "ref"), ("evidence", "")] {
+            assert!(
+                store
+                    .register_artifact_reference(ArtifactReferenceRegistration {
+                        artifact_id: id,
+                        privacy_scope: scope.clone(),
+                        reference_kind: BoundedText::try_new(kind)?,
+                        reference_id: BoundedText::try_new(reference)?,
+                        created_at: UnixTimestampMicros::try_new(101)?,
+                    })
+                    .is_err()
+            );
+            assert_eq!(store.artifact_reference_count(id, &scope)?, 0);
+        }
+        let reference = ArtifactReferenceRegistration {
+            artifact_id: id,
+            privacy_scope: scope.clone(),
+            reference_kind: BoundedText::try_new("evidence")?,
+            reference_id: BoundedText::try_new("ref")?,
+            created_at: UnixTimestampMicros::try_new(101)?,
+        };
+        store.register_artifact_reference(reference.clone())?;
+        store.register_artifact_reference(reference)?;
+        assert_eq!(store.artifact_reference_count(id, &scope)?, 1);
         Ok(())
     }
 }

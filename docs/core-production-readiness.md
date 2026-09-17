@@ -28,8 +28,8 @@ Envelope unknown fields are rejected. A schema mismatch is rejected before
 interpreting a payload as the current Rust type. The byte writer bounds output
 while serializing; it cannot constrain arbitrary allocations or execution inside
 a caller-provided Serialize implementation. Nested JSON and frame limits remain
-in force. Duplicate JSON-key rejection is not provided by the intermediate
-serde_json::Value decoder and remains a parser-hardening gate.
+in force. Duplicate object keys, including equivalent escaped spellings, are rejected before
+typed payload parsing. Collection and node limits are also checked during decoding.
 
 Protocol-offer limits count input entries, including duplicates, rather than
 only unique set members. Construction consumes at most the configured maximum
@@ -142,3 +142,10 @@ silently repeated after a supervisor crash. Release acceptance must identify the
 exact tested commit, lockfiles, OS/filesystem and residual limitations. A passing
 CI smoke suite is necessary evidence for this PR, not sufficient evidence for
 epic closure.
+
+## Individual task references
+
+See [the complete CORE task matrix](core-task-coverage.md) and its
+[machine-readable inventory](core-task-coverage.json) for every feature, baseline
+and integration task. Source fixes have been backported to their owning PRs;
+this integration PR must not be used to bypass those reviews.

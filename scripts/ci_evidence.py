@@ -16,6 +16,7 @@ REQUIRED_CHECKS = (
     "toolchain",
     "dependencies",
     "lockfiles",
+    "core_coverage",
     "format",
     "clippy",
     "tests",

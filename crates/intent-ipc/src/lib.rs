@@ -12,6 +12,7 @@ mod frame;
 mod limits;
 mod negotiation;
 mod stream;
+mod strict_json;
 
 pub use cancellation::{
     CancellationError, CancellationRegistry, CancellationState, DeadlineStatus,
