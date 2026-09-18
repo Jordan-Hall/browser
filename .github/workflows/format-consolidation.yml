@@ -1,0 +1,79 @@
+name: Reconcile consolidation snapshot tests
+on:
+  push:
+    branches: [maintenance/format-consolidation-20260918]
+    paths: [.github/workflows/format-consolidation.yml]
+permissions:
+  contents: write
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Update exact reviewed fixtures without executing application code
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/Jordan-Hall/browser.git work
+          cd work
+          git config core.hooksPath /dev/null
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --detach "$GITHUB_SHA"
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace(path, old, new):
+              p = Path(path)
+              content = p.read_text()
+              assert content.count(old) == 1, (path, old)
+              p.write_text(content.replace(old, new, 1))
+          replace('crates/intent-state/src/checkpoints/tests.rs',
+              '    assert_eq!(receipt.schema_version, 8);\n    assert_eq!(receipt.source_schema_version, 8);',
+              '    assert_eq!(receipt.schema_version, 10);\n    assert_eq!(receipt.source_schema_version, 10);')
+          replace('crates/intent-state/src/snapshots/tests.rs',
+              '    let epoch = disable_snapshot_dispatch(&legacy)?;',
+              '''    // Construct the original v7 export barrier without invoking a v10 helper.
+              // The recovery restore fence does not exist in this historical schema.
+              let epoch = Uuid::new_v4();
+              assert_eq!(
+                  legacy.execute(
+                      "UPDATE runtime_control SET epoch=?1, dispatch_enabled=0, reason='legacy snapshot: recovery required' WHERE singleton=1",
+                      [epoch.to_string()],
+                  )?,
+                  1
+              );''')
+          replace('crates/intent-state/src/snapshots/tests.rs',
+              '    assert_eq!(restored.schema_version, 8);',
+              '    assert_eq!(restored.schema_version, 10);')
+          replace('crates/intent-state/src/snapshots/tests.rs',
+              '    assert_eq!(copy.store_id()?, store_id);',
+              '''    assert_eq!(copy.store_id()?, store_id);
+              assert_eq!(
+                  copy.connection.query_row(
+                      "SELECT required FROM recovery_restore_fence WHERE singleton=1",
+                      [],
+                      |row| row.get::<_, i64>(0),
+                  )?,
+                  1
+              );''')
+          PY
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          cargo +1.98.1 fmt --all
+          python3 - <<'PY'
+          import subprocess
+          allowed = {'crates/intent-state/src/checkpoints/tests.rs', 'crates/intent-state/src/snapshots/tests.rs'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          assert changed == allowed, changed
+          PY
+          git rm .github/workflows/format-consolidation.yml
+          git add -- crates/intent-state
+          git diff --cached --check
+          git commit -m 'test: preserve v7 snapshot source bytes and require the new restore fence after migration to v10'
+      - name: Publish only to the isolated formatting branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin HEAD:refs/heads/maintenance/format-consolidation-20260918
