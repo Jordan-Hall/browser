@@ -56,10 +56,9 @@ fn canonical_v8_upgrade_keeps_task_checkpoint_bytes_and_migration_checksums() ->
 fn divergent_branch_v8_history_is_rejected_without_appending_migrations() -> TestResult {
     let mut connection = Connection::open_in_memory()?;
     migrations::apply_migrations_through(&mut connection, 8)?;
-    let other_checksum = migrations::migration_checksum(include_str!(
-        "workspace_checkpoints/migration.sql"
-    ))
-    .to_hex();
+    let other_checksum =
+        migrations::migration_checksum(include_str!("workspace_checkpoints/migration.sql"))
+            .to_hex();
     connection.execute(
         "UPDATE schema_migrations SET checksum = ?1 WHERE version = 8",
         [other_checksum],
