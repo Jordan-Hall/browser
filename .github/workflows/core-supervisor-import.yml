@@ -1,0 +1,57 @@
+name: Import CORE supervisor implementation
+
+on:
+  push:
+    branches:
+      - core-03-supervisor-runtime
+    paths:
+      - '.github/core-supervisor.patch.xz'
+      - '.github/workflows/core-supervisor-import.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact transport commit
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify and apply locally tested source patch
+        run: |
+          set -euo pipefail
+          echo '835b5be22463d1b40e6ce221e25a04e82860bc8fc9b35e36aa8b051bc78c9b11  .github/core-supervisor.patch.xz' | sha256sum --check
+          xz --decompress --stdout .github/core-supervisor.patch.xz > /tmp/core-supervisor.patch
+          echo '9f2122fa1fad01f0aba6edc15e8fdcc904663bedd5a1571bacbd03b363afe84e  /tmp/core-supervisor.patch' | sha256sum --check
+          git apply --check --whitespace=error /tmp/core-supervisor.patch
+          git apply --whitespace=error /tmp/core-supervisor.patch
+
+      - name: Verify supervisor source before publication
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt
+          rustup default 1.98.1
+          cargo fmt --all -- --check
+          cargo clippy --locked -p intent-supervisor --all-targets -- -D warnings
+          cargo test --locked -p intent-supervisor --all-targets --no-fail-fast
+          git diff --check
+
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          git add -- Cargo.lock Cargo.toml crates/intent-contracts crates/intent-fixture-worker crates/intent-supervisor docs/core-supervisor.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(core): implement real-process supervisor runtime'
+
+      - name: Publish only the isolated supervisor branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin HEAD:refs/heads/core-03-supervisor-runtime
