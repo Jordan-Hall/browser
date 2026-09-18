@@ -50,8 +50,8 @@ fn user_version_disagreement_fails_without_rewriting_the_ledger() -> TestResult 
         StateStore::open(profile.database()),
         Err(StateError::MigrationVersionMismatch {
             user_version: 99,
-            ledger_version: 7
-        })
+            ledger_version,
+        }) if ledger_version == i64::try_from(crate::migrations::MIGRATIONS.len())?
     ));
     let connection = Connection::open(profile.database())?;
     assert_eq!(
@@ -61,7 +61,7 @@ fn user_version_disagreement_fails_without_rewriting_the_ledger() -> TestResult 
     assert_eq!(
         connection.query_row("SELECT count(*) FROM schema_migrations", [], |row| row
             .get::<_, i64>(0))?,
-        7
+        i64::try_from(crate::migrations::MIGRATIONS.len())?
     );
     Ok(())
 }
@@ -111,7 +111,7 @@ fn concurrent_initializers_select_migrations_after_acquiring_writer_lock() -> Te
     assert_eq!(
         connection.query_row("SELECT count(*) FROM schema_migrations", [], |row| row
             .get::<_, i64>(0))?,
-        7
+        i64::try_from(crate::migrations::MIGRATIONS.len())?
     );
     migrations::validate_applied_migrations(&connection)?;
     Ok(())

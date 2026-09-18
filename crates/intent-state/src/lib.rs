@@ -2,6 +2,10 @@
 #![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
 
 mod artifacts;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod checkpoints;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub use checkpoints::*;
 mod inbox;
 mod migrations;
 mod operations;
@@ -346,7 +350,10 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 7);
+        assert_eq!(
+            store.schema_version()?,
+            i64::try_from(crate::migrations::MIGRATIONS.len())?
+        );
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;

@@ -67,7 +67,7 @@ class CoverageTests(unittest.TestCase):
 
     def test_partial_implementation_requires_an_actual_source_contribution(self) -> None:
         task = next(t for t in self.data["tasks"] if t["issue"] == 146)
-        task["status"] = "partially_implemented"
+        task.update(status="partially_implemented", implementation_prs=[], implementation_evidence=[])
         self.reject()
 
     def test_unknown_status_fails_closed(self) -> None:
@@ -92,6 +92,7 @@ class CoverageTests(unittest.TestCase):
 
     def test_unpublished_changes_cannot_be_marked_accepted(self) -> None:
         task = next(t for t in self.data["tasks"] if t["issue"] == 137)
+        task["implementation_evidence"][0]["publication"] = "unpublished"
         task.update(status="accepted", implementation_prs=[785], remaining="")
         self.reject()
 
