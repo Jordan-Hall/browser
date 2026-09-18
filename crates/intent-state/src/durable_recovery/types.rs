@@ -154,3 +154,16 @@ pub struct RecoveryTaskView {
     pub plan: DurableRecoveryPlan,
     pub actions: Vec<RecoveryUiAction>,
 }
+
+/// Non-sendable dispatch metadata. No payload or destination is exposed before attempt commit.
+#[derive(Clone, Copy, Debug)]
+pub struct DispatchMetadata {
+    pub operation_id: OperationId,
+    pub attempt_id: OperationAttemptId,
+    pub task_id: TaskId,
+    pub account_id: AccountId,
+    pub capability_id: CapabilityId,
+    pub deadline: UnixTimestampMicros,
+    pub payload_bytes: u64,
+    pub routing_json_bytes: u64,
+}

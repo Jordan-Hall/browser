@@ -121,6 +121,12 @@ impl fmt::Debug for VerifiedReadOnlyEvidence {
             .finish_non_exhaustive()
     }
 }
+impl VerifiedReadOnlyEvidence {
+    pub fn binding(&self) -> intent_recovery::AttemptBinding {
+        self.value.binding
+    }
+}
+
 impl RuntimeOwner {
     pub fn revoke_evidence_key(
         &mut self,
