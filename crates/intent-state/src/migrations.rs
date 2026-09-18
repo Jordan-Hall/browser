@@ -279,6 +279,17 @@ CREATE INDEX artifact_gc_queue_state_idx
     ON artifact_gc_queue(state, enqueued_at_micros);
 "#;
 
+const MIGRATION_007: &str = r#"
+CREATE TABLE runtime_control (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    epoch TEXT NOT NULL CHECK (length(epoch) = 36),
+    dispatch_enabled INTEGER NOT NULL CHECK (dispatch_enabled IN (0, 1)),
+    reason TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 512)
+) STRICT;
+INSERT INTO runtime_control(singleton, epoch, dispatch_enabled, reason)
+VALUES (1, '00000000-0000-0000-0000-000000000000', 0, 'startup recovery required');
+"#;
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -309,6 +320,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 6,
         name: "artifact_retention_and_gc",
         sql: MIGRATION_006,
+    },
+    Migration {
+        version: 7,
+        name: "durable_runtime_dispatch_barrier",
+        sql: MIGRATION_007,
     },
 ];
 

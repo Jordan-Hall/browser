@@ -7,6 +7,17 @@ mod migrations;
 mod operations;
 mod outbox;
 mod retention;
+mod runtime_gate;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod snapshot_fs;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod snapshots;
+
+pub use runtime_gate::DispatchStatus;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub use snapshots::{
+    BackupKey, PlaintextExportConsent, SnapshotError, SnapshotLimits, SnapshotReceipt,
+};
 
 pub use artifacts::{
     ArtifactError, ArtifactMetadata, ArtifactReferenceRegistration, ArtifactScope,
@@ -43,6 +54,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug)]
 pub struct StateStore {
     connection: Connection,
+    runtime_epoch: Option<Uuid>,
 }
 
 impl StateStore {
@@ -51,7 +63,10 @@ impl StateStore {
         configure_connection(&mut connection, true)?;
         apply_migrations(&mut connection)?;
         initialize_store_metadata(&connection)?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            runtime_epoch: None,
+        })
     }
 
     #[doc(hidden)]
@@ -60,7 +75,15 @@ impl StateStore {
         configure_connection(&mut connection, false)?;
         apply_migrations(&mut connection)?;
         initialize_store_metadata(&connection)?;
-        Ok(Self { connection })
+        let epoch = Uuid::new_v4();
+        connection.execute(
+            "UPDATE runtime_control SET epoch = ?1, dispatch_enabled = 1, reason = 'isolated in-memory fixture' WHERE singleton = 1",
+            [epoch.to_string()],
+        )?;
+        Ok(Self {
+            connection,
+            runtime_epoch: Some(epoch),
+        })
     }
 
     pub fn schema_version(&self) -> Result<i64, StateError> {
@@ -323,7 +346,7 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 6);
+        assert_eq!(store.schema_version()?, 7);
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;

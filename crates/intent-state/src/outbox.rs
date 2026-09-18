@@ -353,6 +353,7 @@ impl StateStore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        crate::runtime_gate::require_dispatch(&transaction, self.runtime_epoch)?;
         let raw = load_outbox_from_connection(&transaction, outbox_id)?
             .ok_or(OutboxError::OutboxNotFound(outbox_id))?;
         if raw.state != OutboxState::Leased
@@ -692,6 +693,7 @@ fn to_sql_i64(value: u64, label: &'static str) -> Result<i64, OutboxError> {
 
 #[derive(Debug)]
 pub enum OutboxError {
+    RecoveryRequired,
     Sqlite(rusqlite::Error),
     OperationNotFound(OperationId),
     OutboxNotFound(OutboxMessageId),
@@ -723,6 +725,9 @@ pub enum OutboxError {
 impl fmt::Display for OutboxError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::RecoveryRequired => formatter.write_str(
+                "dispatch blocked: current runtime recovery and authority revalidation required",
+            ),
             Self::Sqlite(error) => write!(formatter, "SQLite outbox error: {error}"),
             Self::OperationNotFound(id) => write!(formatter, "operation {id} does not exist"),
             Self::OutboxNotFound(id) => write!(formatter, "outbox message {id} does not exist"),
