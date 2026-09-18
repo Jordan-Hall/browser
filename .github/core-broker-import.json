@@ -1,7 +1,0 @@
-{
-  "purpose": "Temporary transport marker for a verified source-only broker implementation import",
-  "base_commit": "420dbced30ad591f333f5c1fc25ac62f84479031",
-  "branch": "core-broker-supervisor-dispatch-20260918",
-  "production_ready": false,
-  "remove_before_final_verification": true
-}
