@@ -35,6 +35,7 @@ impl<'de> Deserialize<'de> for SchemaVersion {
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct RawVersion {
             major: u16,
             minor: u16,

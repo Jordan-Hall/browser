@@ -27,8 +27,9 @@ pub use ids::{
     WorkspaceId,
 };
 pub use migration::{
-    DocumentAccess, MAX_MIGRATION_STEPS, MigrationFailure, MigrationFn, MigrationOutcome,
-    MigrationRegistry, MigrationRegistryError, MigrationStep, RecordFamily, assess_document_access,
+    DocumentAccess, MAX_MIGRATION_DOCUMENT_BYTES, MAX_MIGRATION_ERROR_BYTES, MAX_MIGRATION_SCHEMAS,
+    MAX_MIGRATION_STEPS, MigrationFailure, MigrationFn, MigrationOutcome, MigrationRegistry,
+    MigrationRegistryError, MigrationStep, RecordFamily, SchemaValidatorFn, assess_document_access,
 };
 pub use records::{
     ActionProposal, ActionProposalDescriptor, Approval, ApprovalRequirement, ApprovalState,

@@ -172,7 +172,7 @@ pub fn decode_control<T: DeserializeOwned>(
     Ok(envelope)
 }
 
-fn preflight_json_structure(input: &[u8], max_depth: usize) -> Result<(), WireError> {
+pub(crate) fn preflight_json_structure(input: &[u8], max_depth: usize) -> Result<(), WireError> {
     let max_depth = max_depth.max(1);
     let mut depth = 0_usize;
     let mut in_string = false;
