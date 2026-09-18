@@ -480,6 +480,10 @@ fn disable_snapshot_dispatch(connection: &Connection) -> Result<Uuid, SnapshotEr
     if changed != 1 {
         return Err(SnapshotError::Invalid("missing runtime dispatch barrier"));
     }
+    connection.execute(
+        "UPDATE recovery_restore_fence SET required=1 WHERE singleton=1",
+        [],
+    )?;
     Ok(epoch)
 }
 

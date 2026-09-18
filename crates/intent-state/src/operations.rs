@@ -6,7 +6,8 @@ use intent_contracts::{
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use std::str::FromStr;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DurableOperationState {
     Prepared,
     Approved,
@@ -286,6 +287,16 @@ impl StateStore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let managed: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM recovery_actions WHERE operation_id=?1)",
+            [operation_id.to_string()],
+            |row| row.get(0),
+        )?;
+        if managed {
+            return Err(StateError::InvalidStoredOperation(
+                "managed actions require checked runtime transitions".to_owned(),
+            ));
+        }
         let current = load_operation_from_connection(&transaction, operation_id)?
             .ok_or(StateError::OperationNotFound(operation_id))?;
 

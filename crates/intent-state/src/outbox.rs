@@ -207,6 +207,14 @@ impl StateStore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let managed: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM recovery_actions WHERE operation_id=?1)",
+            [new.operation_id.to_string()],
+            |row| row.get(0),
+        )?;
+        if managed {
+            return Err(OutboxError::RecoveryRequired);
+        }
         let (operation_state, actual_revision): (String, i64) = transaction
             .query_row(
                 "SELECT state, revision FROM durable_operations WHERE operation_id = ?1",
@@ -306,6 +314,7 @@ impl StateStore {
                 FROM outbox_messages AS outbox
                 JOIN durable_operations AS operation ON operation.operation_id = outbox.operation_id
                 WHERE operation.state = 'dispatch_pending'
+                  AND NOT EXISTS (SELECT 1 FROM recovery_actions a WHERE a.operation_id=operation.operation_id)
                   AND (outbox.state = 'pending'
                     OR (outbox.state = 'leased' AND outbox.lease_expires_at_micros <= ?1))
                 ORDER BY outbox.created_at_micros ASC, outbox.outbox_id ASC
@@ -353,6 +362,9 @@ impl StateStore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if transaction.path() != Some("") {
+            return Err(OutboxError::RecoveryRequired);
+        }
         crate::runtime_gate::require_dispatch(&transaction, self.runtime_epoch)?;
         let raw = load_outbox_from_connection(&transaction, outbox_id)?
             .ok_or(OutboxError::OutboxNotFound(outbox_id))?;
@@ -443,6 +455,14 @@ impl StateStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let raw = load_outbox_from_connection(&transaction, outbox_id)?
             .ok_or(OutboxError::OutboxNotFound(outbox_id))?;
+        let managed: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM recovery_actions WHERE operation_id=?1)",
+            [raw.operation_id.to_string()],
+            |row| row.get(0),
+        )?;
+        if managed {
+            return Err(OutboxError::RecoveryRequired);
+        }
         if raw.state != OutboxState::Attempting {
             return Err(OutboxError::InvalidOutboxTransition {
                 outbox_id,
@@ -565,6 +585,14 @@ fn load_outbox_from_connection(
     connection: &rusqlite::Connection,
     outbox_id: OutboxMessageId,
 ) -> Result<Option<OutboxMessage>, OutboxError> {
+    let managed: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM recovery_attempts WHERE outbox_id=?1)",
+        [outbox_id.to_string()],
+        |row| row.get(0),
+    )?;
+    if managed {
+        return Err(OutboxError::RecoveryRequired);
+    }
     let raw = connection
         .query_row(
             r#"

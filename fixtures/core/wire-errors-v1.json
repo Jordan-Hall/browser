@@ -1,0 +1,50 @@
+[
+  {
+    "diagnostic_code": 1,
+    "json_name": "InvalidLane"
+  },
+  {
+    "diagnostic_code": 2,
+    "json_name": "FrameTooLarge"
+  },
+  {
+    "diagnostic_code": 3,
+    "json_name": "MalformedJson"
+  },
+  {
+    "diagnostic_code": 4,
+    "json_name": "JsonTooDeep"
+  },
+  {
+    "diagnostic_code": 5,
+    "json_name": "CollectionTooLarge"
+  },
+  {
+    "diagnostic_code": 6,
+    "json_name": "JsonNodeLimitExceeded"
+  },
+  {
+    "diagnostic_code": 7,
+    "json_name": "UnsupportedSchema"
+  },
+  {
+    "diagnostic_code": 8,
+    "json_name": "WrongLane"
+  },
+  {
+    "diagnostic_code": 9,
+    "json_name": "InvalidEnvelope"
+  },
+  {
+    "diagnostic_code": 10,
+    "json_name": "AllocationFailed"
+  },
+  {
+    "diagnostic_code": 11,
+    "json_name": "DuplicateJsonKey"
+  },
+  {
+    "diagnostic_code": 12,
+    "json_name": "InvalidRecord"
+  }
+]

@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod broker_effect;
+
 #[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use intent_contracts::{TraceId, UnixTimestampMicros};
@@ -176,6 +179,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     sequence,
                     scope: work_scope,
                     deadline,
+                    input,
+                    capability,
                     ..
                 } if generation == client.generation()
                     && work_scope == scope
@@ -187,6 +192,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )?)?;
                     if wall.get() >= deadline.get() {
                         return Err("expired worker request".into());
+                    }
+                    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+                    if mode.starts_with("broker-") {
+                        broker_effect::execute(
+                            mode,
+                            &args,
+                            input.as_str(),
+                            generation,
+                            request_id,
+                            work_scope,
+                            capability,
+                            wall,
+                        )?;
                     }
                     last_work = sequence;
                     if mode == "stalled-work" {

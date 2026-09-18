@@ -136,6 +136,7 @@ bounded_text_newtype!(ProviderAccountId, 256);
 bounded_text_newtype!(ProviderResourceId, 512);
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AccountQualifiedResourceId {
     provider: ProviderId,
     account: ProviderAccountId,
@@ -286,6 +287,7 @@ impl fmt::Display for CurrencyScaleError {
 impl Error for CurrencyScaleError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Money {
     currency: CurrencyCode,
     #[serde(with = "crate::decimal_i128")]

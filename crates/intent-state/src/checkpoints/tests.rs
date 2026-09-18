@@ -646,8 +646,8 @@ fn authenticated_profile_restore_preserves_checkpoint_graph_pins_and_dispatch_ba
         restored.artifact_reference_count(meta.artifact_id(), &scope()?)?,
         1
     );
-    assert_eq!(receipt.schema_version, 8);
-    assert_eq!(receipt.source_schema_version, 8);
+    assert_eq!(receipt.schema_version, 10);
+    assert_eq!(receipt.source_schema_version, 10);
     assert!(!restored.dispatch_status()?.enabled);
     Ok(())
 }

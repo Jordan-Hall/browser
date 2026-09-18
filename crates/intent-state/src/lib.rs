@@ -2,6 +2,23 @@
 #![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
 
 mod artifacts;
+mod recovery_error;
+pub use recovery_error::RecoveryError;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod durable_recovery;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub use durable_recovery::*;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub mod workspace_checkpoints;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub use workspace_checkpoints::{
+    CapturedCursor, CapturedOperation, CheckpointCursorKey,
+    CheckpointError as WorkspaceCheckpointError, CheckpointId as WorkspaceCheckpointId,
+    CheckpointProviderReference, CheckpointReceipt,
+    CheckpointRequest as WorkspaceCheckpointRequest, GraphRevision, MAX_CHECKPOINT_ARTIFACTS,
+    MAX_CHECKPOINT_BLOB_BYTES, MAX_CHECKPOINT_BYTES, MAX_CHECKPOINT_OPERATIONS, MAX_GRAPH_BYTES,
+    MAX_GRAPH_DEPENDENCIES, MAX_GRAPH_TASKS, TaskDependency, WorkspaceCheckpoint, WorkspaceGraph,
+};
 mod checkpoints;
 pub use checkpoints::{
     CheckpointCursor, CheckpointError, CheckpointGraph, CheckpointNode, CheckpointOperation,
@@ -357,7 +374,7 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 8);
+        assert_eq!(store.schema_version()?, 10);
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;
@@ -422,6 +439,8 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod consolidation_migration_tests;
 #[cfg(test)]
 mod hardening_tests;
 #[cfg(test)]
