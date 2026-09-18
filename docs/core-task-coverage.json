@@ -39,10 +39,28 @@
       "parent_issue": 2,
       "title": "Specify durable core record schemas",
       "implementation_prs": [
-        787
+        787,
+        813
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Complete record-family fixtures and authority semantics remain unaccepted."
+      "remaining": "Full/minimal v1 fixtures for all 13 families and nested unknown-field rejection are implemented in #813. Complete authority semantics, compatibility review and independent task acceptance remain.",
+      "implementation_evidence": [
+        {
+          "publication": "published",
+          "source_files": [
+            "crates/intent-contracts/src/records.rs",
+            "crates/intent-ipc/src/record_codec.rs",
+            "crates/intent-conformance/src/record_fixtures.rs"
+          ],
+          "test_files": [
+            "crates/intent-ipc/tests/record_codec.rs",
+            "fixtures/core/records-v1.json"
+          ],
+          "scope": "Exact v1 schema and migration validation plus bounded parser-fuzz infrastructure in #813. Execution results are recorded on the PR; these files do not establish full task or production acceptance.",
+          "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
+          "verification_report": "docs/verification/core-record-validation-20260918.json"
+        }
+      ]
     },
     {
       "issue": 124,
@@ -50,10 +68,27 @@
       "parent_issue": 2,
       "title": "Build bounded wire framing and errors",
       "implementation_prs": [
-        788
+        788,
+        813
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Stable error-wire representation and full parser/fuzz qualification remain."
+      "remaining": "#813 pins the existing JSON error spellings and adds bounded record imports with schema-first, duplicate-key and unknown-field checks. Extended parser qualification, compatibility review and independent task acceptance remain.",
+      "implementation_evidence": [
+        {
+          "publication": "published",
+          "source_files": [
+            "crates/intent-ipc/src/error.rs",
+            "crates/intent-ipc/src/record_codec.rs"
+          ],
+          "test_files": [
+            "crates/intent-ipc/tests/record_codec.rs",
+            "fixtures/core/wire-errors-v1.json"
+          ],
+          "scope": "Exact v1 schema and migration validation plus bounded parser-fuzz infrastructure in #813. Execution results are recorded on the PR; these files do not establish full task or production acceptance.",
+          "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
+          "verification_report": "docs/verification/core-record-validation-20260918.json"
+        }
+      ]
     },
     {
       "issue": 125,
@@ -89,10 +124,11 @@
       "title": "Implement version negotiation and schema evolution",
       "implementation_prs": [
         790,
-        805
+        805,
+        813
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "The local supervisor owns the negotiated implemented v1 codec. Durable migration validation, complete version/record-family fixtures and accepted product integration remain; the source is published in #805.",
+      "remaining": "#805 binds implemented v1 codecs to authenticated workers. #813 validates equal-version imports and every registered migration output. Only CORE schema 1.0 is implemented; legacy numeric-money migration, accepted import integration and independent compatibility review remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -105,6 +141,20 @@
           ],
           "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance.",
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
+        },
+        {
+          "publication": "published",
+          "source_files": [
+            "crates/intent-contracts/src/migration.rs",
+            "crates/intent-ipc/src/record_codec.rs"
+          ],
+          "test_files": [
+            "crates/intent-contracts/tests/migration_validation.rs",
+            "crates/intent-ipc/tests/record_codec.rs"
+          ],
+          "scope": "Exact v1 schema and migration validation plus bounded parser-fuzz infrastructure in #813. Execution results are recorded on the PR; these files do not establish full task or production acceptance.",
+          "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
+          "verification_report": "docs/verification/core-record-validation-20260918.json"
         }
       ]
     },
@@ -141,10 +191,31 @@
       "parent_issue": 2,
       "title": "Publish contract conformance and fuzz targets",
       "implementation_prs": [
-        792
+        792,
+        813
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Instrumented fuzz execution, complete schema fixtures and process conformance are missing."
+      "remaining": "#813 adds complete v1 record fixtures and a pinned three-target AddressSanitizer fuzz smoke workflow with retained execution evidence. The job is bounded smoke coverage, not exhaustive fuzzing, full process conformance or independent task acceptance.",
+      "implementation_evidence": [
+        {
+          "publication": "published",
+          "source_files": [
+            "crates/intent-conformance/src/record_fixtures.rs",
+            "fuzz/fuzz_targets/record_codec.rs",
+            "fuzz/fuzz_targets/frame_decoder.rs",
+            "scripts/fuzz_smoke.py",
+            ".github/workflows/core-fuzz.yml"
+          ],
+          "test_files": [
+            "crates/intent-ipc/tests/record_codec.rs",
+            "scripts/tests/test_fuzz_smoke.py",
+            "fixtures/core/records-v1.json"
+          ],
+          "scope": "Exact v1 schema and migration validation plus bounded parser-fuzz infrastructure in #813. Execution results are recorded on the PR; these files do not establish full task or production acceptance.",
+          "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
+          "verification_report": "docs/verification/core-record-validation-20260918.json"
+        }
+      ]
     },
     {
       "issue": 129,
@@ -159,7 +230,7 @@
       "remaining": "A Linux profile owner locks both the private directory and database inode in #807; transactional migrations and restore fencing are tested. All live artifact root/path isolation, uncooperative writers and platform qualification remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -169,7 +240,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -187,7 +259,7 @@
       "remaining": "The exact durable attempt is now carried through authenticated worker dispatch in #809 and reconciled from independently observed fixture evidence. Production adapters, compensation end-to-end scenarios and independent acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -197,7 +269,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -215,7 +288,7 @@
       "remaining": "PR #809 joins #807 authorization/opaque claims to immediate authenticated worker submission and distinguishes acceptance from verified receipts. The inline adapter is limited to 1 KiB; production provider/bulk transport, independent review and operational acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -225,7 +298,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -287,7 +361,7 @@
       "remaining": "Snapshot/checkpoint/dispatch interruption tests exist; #809 additionally kills the real broker around an independently observed effect. Actual VM/power-loss, disk-full and complete filesystem qualification remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -297,7 +371,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -430,7 +505,7 @@
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
         },
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -440,7 +515,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -534,7 +610,7 @@
       "remaining": "Pure classification in #804 is now fed durable actions, capability effect policies, attempts, evidence, source/authority facts and compensation linkage in #807. Trusted live adapters and independent acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -544,7 +620,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -588,7 +665,7 @@
       "remaining": "PR #809 exposes startup planning/guarded activation through the broker and uses fresh current authority per action. Production task-centre activation, restore-history integration and independent acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -598,7 +675,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -615,7 +693,7 @@
       "remaining": "PR #809 carries exact attempt identity to a real worker and reconciles only independently observed fixture evidence through #807. Trusted real provider/local evidence adapters and independent acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -625,7 +703,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -663,7 +742,7 @@
       "remaining": "#807 provides typed recovery views and current-epoch/revision-checked controls with no blind Retry. Native task-centre rendering, trusted bridge and end-to-end UI acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -673,7 +752,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -690,7 +770,7 @@
       "remaining": "PR #809 adds real broker interruption before send and after external fixture effect, with same-attempt recovery and no resend. System suspend, complete corrupt-state/disk/provider cases and platform qualification remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -700,7 +780,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -725,7 +806,7 @@
       "remaining": "Existing contracts/checkpoints plus #807 owner and authority/attempt boundaries provide implementation inputs. Complete accepted ownership inventory, real broker wiring and review remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -735,7 +816,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -752,7 +834,7 @@
       "remaining": "PR #809 now implements the cooperative inline supervisor/broker/durable-dispatch path with real effects in an independent fixture ledger. Production providers, bulk transport, UI/control latency and independent end-to-end acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -762,7 +844,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -779,7 +862,7 @@
       "remaining": "PR #809 joins real broker process interruption and independently observed effects without blind resend. Credential-isolated replay, full system/VM faults and independent acceptance remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/durable_recovery/mod.rs",
             "crates/intent-state/src/durable_recovery/dispatch.rs",
@@ -789,7 +872,8 @@
           "test_files": [
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
+          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
         }
       ]
     },
@@ -803,9 +887,11 @@
       "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
     }
   ],
-  "reviewed_remote_head": "5c6bbb4cc7af28fe1a20d0921409749bc74f2487",
-  "local_candidate": {
-    "publication": "unpublished",
-    "scope": "Linux cooperative worker supervisor and acceptance regressions; not published to GitHub and not CORE completion."
+  "reviewed_remote_head": "5cdcd5ef71940cd3bcc129cbd02ac68c20aa7ce7",
+  "current_source": {
+    "publication": "published",
+    "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
+    "implementation_pr": 813,
+    "scope": "Record and migration validation on the implemented broker/recovery stack. All task acceptance remains open."
   }
 }
