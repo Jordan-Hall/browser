@@ -1,0 +1,69 @@
+name: Import verified durable recovery source
+
+on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - '.github/core-recovery.patch.xz.part*'
+      - '.github/workflows/core-recovery-source-import.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    if: >-
+      github.event.pull_request.number == 807 &&
+      github.event.pull_request.head.repo.full_name == 'Jordan-Hall/browser' &&
+      github.event.pull_request.head.ref == 'core-04-durable-recovery-integration'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact isolated head without persistent credentials
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify and import tested source without executing it
+        env:
+          CHECKED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CHECKED_HEAD"
+          cat .github/core-recovery.patch.xz.part{1,2,3,4} > /tmp/core-recovery.patch.xz
+          echo '3e954acc713c33461dc694d83e4a49993b813e6e25127fb1b03144ebb48c54e5  /tmp/core-recovery.patch.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/core-recovery.patch.xz > /tmp/core-recovery.patch
+          echo 'ce4b763e08d748bdfe469380caf78eee3d7461293e1f61cd9d2fbcbca05a6cb7  /tmp/core-recovery.patch' | sha256sum --check
+          git apply --check --whitespace=error /tmp/core-recovery.patch
+          git apply --whitespace=error /tmp/core-recovery.patch
+          git add -- Cargo.lock crates docs
+          git diff --cached --check
+          cp .git/index /tmp/core-recovery-source.index
+          GIT_INDEX_FILE=/tmp/core-recovery-source.index git rm --cached -- .github/core-recovery.patch.xz.part{1,2,3,4} .github/workflows/core-recovery-source-import.yml
+          test "$(GIT_INDEX_FILE=/tmp/core-recovery-source.index git write-tree)" = '60d5553a31ce524f3702567a4cf938d91ed9c723'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(core): persist recovery authority, exact attempts and rollback-safe startup fencing'
+          mkdir -p /tmp/core-recovery-evidence
+          git rev-parse HEAD > /tmp/core-recovery-evidence/head.txt
+          git rev-parse HEAD^{tree} > /tmp/core-recovery-evidence/tree.txt
+
+      - name: Publish only to the isolated integration branch without force
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin HEAD:refs/heads/core-04-durable-recovery-integration
+
+      - name: Retain imported identity
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-recovery-import-${{ github.run_id }}
+          path: /tmp/core-recovery-evidence/
+          if-no-files-found: warn
+          retention-days: 2
