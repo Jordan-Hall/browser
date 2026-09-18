@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        id: checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        id: toolchain
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt
+          rustup default 1.98.1
+
+      - name: Resolve missing lockfiles for diagnostic evidence
+        id: dependencies
+        run: |
+          test -f Cargo.lock || cargo generate-lockfile
+          test -f fuzz/Cargo.lock || cargo generate-lockfile --manifest-path fuzz/Cargo.toml
+
+      - name: Require committed, unchanged lockfiles
+        id: lockfiles
+        run: |
+          git ls-files --error-unmatch Cargo.lock fuzz/Cargo.lock
+          git diff --exit-code -- Cargo.lock fuzz/Cargo.lock
+
+      - name: Check CORE task coverage
+        id: core_coverage
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: |
+          python3 -m unittest discover -s scripts/tests -v
+          python3 scripts/check_core_coverage.py
+
+      - name: Check formatting
+        id: format
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        id: clippy
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run unit and integration tests
+        id: tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: cargo test --locked --workspace --all-targets --no-fail-fast
+
+      - name: Run documentation tests
+        id: doctests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: cargo test --locked --workspace --doc --no-fail-fast
+
+      - name: Check excluded fuzz targets
+        id: fuzz_compile
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: cargo check --locked --manifest-path fuzz/Cargo.toml --bins
+
+      - name: Check architecture boundaries
+        id: architecture
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: cargo run --locked -p intent-xtask -- arch-check
+
+      - name: Run core contract smoke conformance
+        id: conformance
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: |
+          mkdir -p target/conformance
+          cargo run --locked -p intent-conformance --quiet > target/conformance/core-contracts.json
+
+      - name: Retain verification outcomes and exact build inputs
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        env:
+          CORE_STEP_RESULTS: ${{ toJSON(steps) }}
+        run: python3 scripts/ci_evidence.py
+
+      - name: Upload verification evidence even on failure
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/conformance/
+          if-no-files-found: error
+          retention-days: 14

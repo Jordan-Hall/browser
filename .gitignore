@@ -1,0 +1,10 @@
+/target/
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+/fuzz/target/
+__pycache__/
+*.py[cod]
