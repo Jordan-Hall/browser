@@ -1,0 +1,69 @@
+name: Import verified CORE snapshot implementation
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - '.github/core-snapshot.patch.xz.part*'
+      - '.github/workflows/core-snapshot-import.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    if: >-
+      github.event.pull_request.head.repo.full_name == 'Jordan-Hall/browser' &&
+      github.event.pull_request.head.ref == 'core-02-t07-authenticated-snapshots'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact isolated implementation head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify and apply the locally tested source patch
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 84d2dd0512fb8e6ae02e4b41562676f4b5e8a215 HEAD
+          cat .github/core-snapshot.patch.xz.part{1,2} > /tmp/core-snapshot.patch.xz
+          echo 'eb02ce1b553ea6219c5809df592bf0fea042ea77a4448dd5d48557ff5fcfb441  /tmp/core-snapshot.patch.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/core-snapshot.patch.xz > /tmp/core-snapshot.patch
+          echo '2d29afbe6ca4fc82f4b343f17287d9c53958535775a7c702578b9738802db72a  /tmp/core-snapshot.patch' | sha256sum --check
+          git apply --check --whitespace=error /tmp/core-snapshot.patch
+          git apply --whitespace=error /tmp/core-snapshot.patch
+          git add -- Cargo.toml Cargo.lock crates/intent-state docs/core-authenticated-snapshots.md
+          git diff --cached --check
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              'Cargo.toml', 'Cargo.lock', 'crates/intent-state/Cargo.toml',
+              'crates/intent-state/src/hardening_tests.rs',
+              'crates/intent-state/src/lib.rs',
+              'crates/intent-state/src/migrations.rs',
+              'crates/intent-state/src/outbox.rs',
+              'crates/intent-state/src/runtime_gate.rs',
+              'crates/intent-state/src/snapshot_fs.rs',
+              'crates/intent-state/src/snapshots.rs',
+              'crates/intent-state/src/snapshots/tests.rs',
+              'docs/core-authenticated-snapshots.md',
+          }
+          paths = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z']).decode().rstrip('\0').split('\0'))
+          if paths != expected:
+              raise SystemExit(f'unexpected staged paths: {paths ^ expected}')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(state): authenticated snapshots and dispatch-disabled restore' -m 'Refs #135 #136 #147; full CORE acceptance remains open.'
+
+      - name: Publish only the isolated feature branch without force
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin HEAD:refs/heads/core-02-t07-authenticated-snapshots
