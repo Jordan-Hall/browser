@@ -21,10 +21,10 @@ mod values;
 mod version;
 
 pub use ids::{
-    AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId, ConnectorId,
-    EvidenceId, GoalContractId, MemoryRecordId, ObservationId, OperationAttemptId, OperationId,
-    OutboxMessageId, ReceiptId, RequestId, TaskId, TraceId, ViewDefinitionId, WorkerInstanceId,
-    WorkspaceId,
+    AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId,
+    CheckpointId, ConnectorId, EvidenceId, GoalContractId, MemoryRecordId, ObservationId,
+    OperationAttemptId, OperationId, OutboxMessageId, ReceiptId, RequestId, TaskId, TraceId,
+    ViewDefinitionId, WorkerInstanceId, WorkspaceId,
 };
 pub use migration::{
     DocumentAccess, MAX_MIGRATION_STEPS, MigrationFailure, MigrationFn, MigrationOutcome,
