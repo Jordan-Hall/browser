@@ -6,6 +6,7 @@ members = [
     "crates/intent-fixture-worker",
     "crates/intent-conformance",
     "crates/intent-state",
+    "crates/intent-recovery",
     "crates/intent-xtask",
 ]
 exclude = ["fuzz"]

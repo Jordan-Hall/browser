@@ -247,6 +247,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "intent-recovery"
+version = "0.1.0"
+dependencies = [
+ "intent-contracts",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "intent-state"
 version = "0.1.0"
 dependencies = [
