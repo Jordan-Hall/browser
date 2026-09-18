@@ -1,0 +1,209 @@
+use nix::{
+    dir::Dir,
+    fcntl::{OFlag, RenameFlags, open, openat, renameat2},
+    sys::stat::{Mode, mkdirat},
+    unistd::{UnlinkatFlags, geteuid, unlinkat},
+};
+use std::{
+    fs::File,
+    io,
+    os::{fd::AsRawFd, unix::fs::MetadataExt},
+    path::{Component, Path, PathBuf},
+};
+use uuid::Uuid;
+
+const DIRECTORY_FLAGS: OFlag = OFlag::O_RDONLY
+    .union(OFlag::O_DIRECTORY)
+    .union(OFlag::O_NOFOLLOW)
+    .union(OFlag::O_CLOEXEC);
+
+#[derive(Debug)]
+pub(crate) struct Directory(File);
+
+impl Directory {
+    pub fn open_private(path: &Path) -> io::Result<Self> {
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(path)
+        };
+        let mut current = Self(File::from(open("/", DIRECTORY_FLAGS, Mode::empty())?));
+        for component in absolute.components() {
+            match component {
+                Component::RootDir | Component::CurDir => {}
+                Component::Normal(name) => {
+                    current = Self(File::from(openat(
+                        &current.0,
+                        name,
+                        DIRECTORY_FLAGS,
+                        Mode::empty(),
+                    )?));
+                }
+                _ => return Err(invalid("parent traversal is not allowed")),
+            }
+        }
+        let metadata = current.0.metadata()?;
+        if metadata.uid() != geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "snapshot roots must be owned by this user with no group/other permissions",
+            ));
+        }
+        Ok(current)
+    }
+
+    pub fn child(&self, name: &str) -> io::Result<Self> {
+        check_name(name)?;
+        Ok(Self(File::from(openat(
+            &self.0,
+            name,
+            DIRECTORY_FLAGS,
+            Mode::empty(),
+        )?)))
+    }
+
+    pub fn create_child(&self, name: &str) -> io::Result<Self> {
+        check_name(name)?;
+        mkdirat(&self.0, name, Mode::from_bits_truncate(0o700))?;
+        let child = self.child(name)?;
+        child.sync()?;
+        self.sync()?;
+        Ok(child)
+    }
+
+    pub fn open_file(&self, name: &str) -> io::Result<File> {
+        check_name(name)?;
+        let file = File::from(openat(
+            &self.0,
+            name,
+            OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
+            Mode::empty(),
+        )?);
+        if !file.metadata()?.is_file() {
+            return Err(invalid("snapshot entry is not a regular file"));
+        }
+        Ok(file)
+    }
+
+    pub fn create_file(&self, name: &str) -> io::Result<File> {
+        check_name(name)?;
+        Ok(File::from(openat(
+            &self.0,
+            name,
+            OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_EXCL | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
+            Mode::from_bits_truncate(0o600),
+        )?))
+    }
+
+    pub fn names(&self, maximum: usize) -> io::Result<Vec<String>> {
+        let mut directory = Dir::openat(&self.0, ".", DIRECTORY_FLAGS, Mode::empty())?;
+        let mut names = Vec::new();
+        for entry in directory.iter() {
+            let entry = entry?;
+            let name = entry
+                .file_name()
+                .to_str()
+                .map_err(|_| invalid("non-UTF-8 snapshot entry"))?;
+            if matches!(name, "." | "..") {
+                continue;
+            }
+            if names.len() >= maximum {
+                return Err(invalid("snapshot directory entry budget exceeded"));
+            }
+            names.push(name.to_owned());
+        }
+        names.sort();
+        Ok(names)
+    }
+
+    pub fn sqlite_path(&self) -> PathBuf {
+        PathBuf::from(format!(
+            "/proc/self/fd/{}/state.sqlite3",
+            self.0.as_raw_fd()
+        ))
+    }
+
+    pub fn sync(&self) -> io::Result<()> {
+        self.0.sync_all()
+    }
+
+    fn remove_tree(&self, name: &str, depth: usize) -> io::Result<()> {
+        if depth > 4 {
+            return Err(invalid("unexpected snapshot staging depth"));
+        }
+        match self.child(name) {
+            Ok(child) => {
+                for entry in child.names(8192)? {
+                    child.remove_tree(&entry, depth + 1)?;
+                }
+                unlinkat(&self.0, name, UnlinkatFlags::RemoveDir)?;
+            }
+            Err(_) => unlinkat(&self.0, name, UnlinkatFlags::NoRemoveDir)?,
+        }
+        Ok(())
+    }
+}
+
+pub(crate) struct StagingDirectory {
+    parent: Directory,
+    name: String,
+    pub directory: Directory,
+    published: bool,
+}
+
+impl StagingDirectory {
+    pub fn new(parent: Directory) -> io::Result<Self> {
+        let name = format!(".snapshot-pending-{}", Uuid::new_v4());
+        let directory = parent.create_child(&name)?;
+        Ok(Self {
+            parent,
+            name,
+            directory,
+            published: false,
+        })
+    }
+
+    pub fn publish(&mut self, name: &str) -> io::Result<()> {
+        check_name(name)?;
+        self.directory.sync()?;
+        renameat2(
+            &self.parent.0,
+            self.name.as_str(),
+            &self.parent.0,
+            name,
+            RenameFlags::RENAME_NOREPLACE,
+        )?;
+        self.published = true;
+        Ok(())
+    }
+
+    pub fn sync_parent(&self) -> io::Result<()> {
+        self.parent.sync()
+    }
+}
+
+impl Drop for StagingDirectory {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = self.parent.remove_tree(&self.name, 0);
+            let _ = self.parent.sync();
+        }
+    }
+}
+
+pub(crate) fn check_name(name: &str) -> io::Result<()> {
+    if name.is_empty()
+        || name.len() > 255
+        || name.contains('/')
+        || name.contains('\0')
+        || matches!(name, "." | "..")
+    {
+        Err(invalid("invalid snapshot component"))
+    } else {
+        Ok(())
+    }
+}
+
+fn invalid(detail: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, detail)
+}
