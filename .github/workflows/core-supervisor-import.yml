@@ -5,7 +5,7 @@ on:
     branches:
       - core-03-supervisor-runtime
     paths:
-      - '.github/core-supervisor.patch.xz'
+      - '.github/core-supervisor.patch.xz.part*'
       - '.github/workflows/core-supervisor-import.yml'
 
 permissions:
@@ -25,8 +25,9 @@ jobs:
       - name: Verify and apply locally tested source patch
         run: |
           set -euo pipefail
-          sha256sum .github/core-supervisor.patch.xz
-          xz --decompress --stdout .github/core-supervisor.patch.xz > /tmp/core-supervisor.patch
+          cat .github/core-supervisor.patch.xz.part{00,01,02,03,04} > /tmp/core-supervisor.patch.xz
+          echo '835b5be22463d1b40e6ce221e25a04e82860bc8fc9b35e36aa8b051bc78c9b11  /tmp/core-supervisor.patch.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/core-supervisor.patch.xz > /tmp/core-supervisor.patch
           echo '9f2122fa1fad01f0aba6edc15e8fdcc904663bedd5a1571bacbd03b363afe84e  /tmp/core-supervisor.patch' | sha256sum --check
           git apply --check --whitespace=error /tmp/core-supervisor.patch
           git apply --whitespace=error /tmp/core-supervisor.patch
