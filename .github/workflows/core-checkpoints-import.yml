@@ -1,0 +1,54 @@
+name: Import verified CORE checkpoint source
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - '.github/core-checkpoints.patch.xz.part*'
+      - '.github/workflows/core-checkpoints-import.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    if: >-
+      github.event.pull_request.head.repo.full_name == 'Jordan-Hall/browser' &&
+      github.event.pull_request.head.ref == 'core-04-t02-consistent-checkpoints' &&
+      github.event.pull_request.base.ref == 'core-03-supervision-acceptance-20260918'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact isolated branch without persistent credentials
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify and import authored source without executing it
+        run: |
+          set -euo pipefail
+          cat .github/core-checkpoints.patch.xz.part{1,2} > /tmp/core-checkpoints.patch.xz
+          echo '0d9ad701b38f752f51e699395aaea5a3efc149a52da6e658981fcc9093273f02  /tmp/core-checkpoints.patch.xz' | sha256sum --check
+          xz --decompress --stdout /tmp/core-checkpoints.patch.xz > /tmp/core-checkpoints.patch
+          echo 'c2d2fa16a14b8b1ad54a21b3fc800703f6abe59657f45d717e601f2e6615493d  /tmp/core-checkpoints.patch' | sha256sum --check
+          git apply --check --whitespace=error /tmp/core-checkpoints.patch
+          git apply --whitespace=error /tmp/core-checkpoints.patch
+          git add -- crates docs scripts
+          git diff --cached --check
+          cp .git/index /tmp/core-checkpoint-source.index
+          GIT_INDEX_FILE=/tmp/core-checkpoint-source.index git update-index --force-remove -- .github/core-checkpoints.patch.xz.part1 .github/core-checkpoints.patch.xz.part2 .github/workflows/core-checkpoints-import.yml
+          test "$(GIT_INDEX_FILE=/tmp/core-checkpoint-source.index git write-tree)" = '1973f7518243d52141ccde5e316be76f4a883762'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(core): add consistent workspace checkpoints and protected retention pins' -m 'Refs #146 #13 #1. Checkpoint verification does not grant execution authority.'
+
+      - name: Publish only to the isolated checkpoint branch without force
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin HEAD:refs/heads/core-04-t02-consistent-checkpoints
