@@ -462,7 +462,7 @@ fn append_journal(
     Ok(())
 }
 
-fn load_operation_from_connection(
+pub(crate) fn load_operation_from_connection(
     connection: &rusqlite::Connection,
     operation_id: OperationId,
 ) -> Result<Option<DurableOperation>, StateError> {

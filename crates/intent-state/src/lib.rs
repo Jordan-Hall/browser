@@ -2,6 +2,11 @@
 #![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
 
 mod artifacts;
+mod checkpoints;
+pub use checkpoints::{
+    CheckpointCursor, CheckpointError, CheckpointGraph, CheckpointNode, CheckpointOperation,
+    CheckpointRequest, CursorKey, ProviderCheckpointReference, StoredCheckpoint,
+};
 mod inbox;
 mod migrations;
 mod operations;
@@ -182,6 +187,9 @@ pub enum StateError {
     WalUnavailable(String),
     InvalidStoreId(String),
     IntegrityCheckFailed(String),
+    InvalidMigrationTarget {
+        version: i64,
+    },
     MigrationVersionMismatch {
         user_version: i64,
         ledger_version: i64,
@@ -235,6 +243,9 @@ impl fmt::Display for StateError {
             }
             Self::IntegrityCheckFailed(detail) => {
                 write!(formatter, "SQLite quick_check failed: {detail}")
+            }
+            Self::InvalidMigrationTarget { version } => {
+                write!(formatter, "unsupported migration boundary {version}")
             }
             Self::MigrationVersionMismatch {
                 user_version,
@@ -346,7 +357,7 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 7);
+        assert_eq!(store.schema_version()?, 8);
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;

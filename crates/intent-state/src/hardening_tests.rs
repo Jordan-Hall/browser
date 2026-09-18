@@ -50,7 +50,7 @@ fn user_version_disagreement_fails_without_rewriting_the_ledger() -> TestResult 
         StateStore::open(profile.database()),
         Err(StateError::MigrationVersionMismatch {
             user_version: 99,
-            ledger_version: 7
+            ledger_version: 8
         })
     ));
     let connection = Connection::open(profile.database())?;
@@ -61,7 +61,7 @@ fn user_version_disagreement_fails_without_rewriting_the_ledger() -> TestResult 
     assert_eq!(
         connection.query_row("SELECT count(*) FROM schema_migrations", [], |row| row
             .get::<_, i64>(0))?,
-        7
+        8
     );
     Ok(())
 }
@@ -111,7 +111,7 @@ fn concurrent_initializers_select_migrations_after_acquiring_writer_lock() -> Te
     assert_eq!(
         connection.query_row("SELECT count(*) FROM schema_migrations", [], |row| row
             .get::<_, i64>(0))?,
-        7
+        8
     );
     migrations::validate_applied_migrations(&connection)?;
     Ok(())

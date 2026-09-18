@@ -5,11 +5,14 @@ Programme #1; CORE epic #13; requirements #2 and #4. Source baseline: PR #804,
 PR #802. The downloaded, successful PR #804 CI source tree was compared with
 that head and contains no source difference.
 
-**Publication: local/unpublished. Acceptance: partial. Production ready: no.**
-This implementation was edited, compiled and tested in the current local
-execution environment. No GitHub branch, PR, review, issue state or remote CI
-result was changed for this candidate. The absence of a write-capable GitHub
-connection does not turn a local commit into a published implementation PR.
+**Publication: PR #805. Acceptance: partial. Production ready: no.**
+The source is published at `3bfdbc0f679e37368f5d8e04975390bb4d862295`.
+[CI run 35336466160](https://github.com/Jordan-Hall/browser/actions/runs/35336466160)
+executed 177 runtime tests, 5 doctests and 15 ledger tests, including twenty
+real-process scenarios. Formatting, Clippy, locked dependency checks, actual
+architecture checking, excluded fuzz-target compilation and smoke conformance
+also ran successfully. These are scoped verification results, not whole-CORE
+acceptance. Temporary import files/workflows are absent from the final tree.
 
 ## Implemented process boundary
 

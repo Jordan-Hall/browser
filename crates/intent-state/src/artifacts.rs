@@ -284,6 +284,11 @@ impl StateStore {
         &mut self,
         reference: ArtifactReferenceRegistration,
     ) -> Result<(), ArtifactError> {
+        if reference.reference_kind.as_str() == "runtime_checkpoint" {
+            return Err(ArtifactError::InvalidInput(
+                "checkpoint references are owned by the checkpoint transaction".to_owned(),
+            ));
+        }
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -336,47 +341,53 @@ impl StateStore {
         &self,
         artifact_id: ArtifactId,
     ) -> Result<Option<ArtifactMetadata>, ArtifactError> {
-        let raw = self
-            .connection
-            .query_row(
-                r#"
+        load_artifact_metadata(&self.connection, artifact_id)
+    }
+}
+
+pub(crate) fn load_artifact_metadata(
+    connection: &rusqlite::Connection,
+    artifact_id: ArtifactId,
+) -> Result<Option<ArtifactMetadata>, ArtifactError> {
+    let raw = connection
+        .query_row(
+            r#"
                 SELECT privacy_scope, content_hash, byte_size, media_type, created_at_micros
                 FROM artifact_handles
                 WHERE artifact_id = ?1
                 "#,
-                [artifact_id.to_string()],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, i64>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, i64>(4)?,
-                    ))
-                },
-            )
-            .optional()?;
-        let Some((scope, hash, byte_size, media_type, created_at)) = raw else {
-            return Ok(None);
-        };
-        Ok(Some(ArtifactMetadata {
-            artifact_id,
-            privacy_scope: ArtifactScope::try_new(scope)?,
-            content_hash: ContentHash::from_hex(&hash).map_err(|error| {
-                ArtifactError::InvalidStoredRecord(format!("invalid artifact hash: {error}"))
-            })?,
-            byte_size: nonnegative_u64(byte_size, "artifact byte size")?,
-            media_type: BoundedText::try_new(media_type).map_err(|error| {
-                ArtifactError::InvalidStoredRecord(format!("invalid artifact media type: {error}"))
-            })?,
-            created_at: UnixTimestampMicros::try_new(created_at).map_err(|error| {
-                ArtifactError::InvalidStoredRecord(format!("invalid artifact timestamp: {error}"))
-            })?,
-        }))
-    }
+            [artifact_id.to_string()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((scope, hash, byte_size, media_type, created_at)) = raw else {
+        return Ok(None);
+    };
+    Ok(Some(ArtifactMetadata {
+        artifact_id,
+        privacy_scope: ArtifactScope::try_new(scope)?,
+        content_hash: ContentHash::from_hex(&hash).map_err(|error| {
+            ArtifactError::InvalidStoredRecord(format!("invalid artifact hash: {error}"))
+        })?,
+        byte_size: nonnegative_u64(byte_size, "artifact byte size")?,
+        media_type: BoundedText::try_new(media_type).map_err(|error| {
+            ArtifactError::InvalidStoredRecord(format!("invalid artifact media type: {error}"))
+        })?,
+        created_at: UnixTimestampMicros::try_new(created_at).map_err(|error| {
+            ArtifactError::InvalidStoredRecord(format!("invalid artifact timestamp: {error}"))
+        })?,
+    }))
 }
 
-fn verify_blob(root: &Path, metadata: &ArtifactMetadata) -> Result<File, ArtifactError> {
+pub(crate) fn verify_blob(root: &Path, metadata: &ArtifactMetadata) -> Result<File, ArtifactError> {
     let path = artifact_blob_path(root, metadata);
     verify_blob_at(&path, metadata)
 }
@@ -430,7 +441,7 @@ fn map_missing_blob(error: io::Error, artifact_id: ArtifactId) -> ArtifactError 
     }
 }
 
-fn artifact_blob_path(root: &Path, metadata: &ArtifactMetadata) -> PathBuf {
+pub(crate) fn artifact_blob_path(root: &Path, metadata: &ArtifactMetadata) -> PathBuf {
     scope_blob_dir(root, &metadata.privacy_scope).join(metadata.content_hash.to_hex())
 }
 
