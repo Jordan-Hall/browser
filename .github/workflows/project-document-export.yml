@@ -28,16 +28,28 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
           fetch-depth: 1
+      - name: Permit the same repository canonical numeric pagination URL
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/export_project_archive.py')
+          source = path.read_text()
+          old = '    if not url.startswith(BASE):'
+          new = '    if not (url.lower().startswith(BASE.lower()) or url.startswith("https://api.github.com/repositories/1371315992/")):'
+          if old not in source and new not in source:
+              raise ValueError('Unexpected exporter source')
+          path.write_text(source.replace(old, new))
+          PY
       - name: Export full issues and comments with coverage checks
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/export_project_archive.py
-      - name: Commit only generated documents to the isolated PR branch
+      - name: Commit generated documents and canonical-pagination fix
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git add -- docs/project-archive
+          git add -- docs/project-archive scripts/export_project_archive.py
           git diff --cached --stat
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
