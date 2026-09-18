@@ -12,8 +12,12 @@ pub use durable_recovery::*;
 pub mod workspace_checkpoints;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub use workspace_checkpoints::{
+    CapturedCursor, CapturedOperation, CheckpointCursorKey,
     CheckpointError as WorkspaceCheckpointError, CheckpointId as WorkspaceCheckpointId,
-    CheckpointRequest as WorkspaceCheckpointRequest,
+    CheckpointProviderReference, CheckpointReceipt, CheckpointRequest as WorkspaceCheckpointRequest,
+    GraphRevision, MAX_CHECKPOINT_ARTIFACTS, MAX_CHECKPOINT_BLOB_BYTES, MAX_CHECKPOINT_BYTES,
+    MAX_CHECKPOINT_OPERATIONS, MAX_GRAPH_BYTES, MAX_GRAPH_DEPENDENCIES, MAX_GRAPH_TASKS,
+    TaskDependency, WorkspaceCheckpoint, WorkspaceGraph,
 };
 mod checkpoints;
 pub use checkpoints::{
@@ -435,6 +439,8 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod consolidation_migration_tests;
 #[cfg(test)]
 mod hardening_tests;
 #[cfg(test)]
