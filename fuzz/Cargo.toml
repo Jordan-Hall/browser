@@ -28,3 +28,10 @@ path = "fuzz_targets/control_envelope.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "record_codec"
+path = "fuzz_targets/record_codec.rs"
+test = false
+doc = false
+bench = false

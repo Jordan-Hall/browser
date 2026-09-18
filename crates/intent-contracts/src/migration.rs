@@ -4,6 +4,13 @@ use std::error::Error;
 use std::fmt;
 
 pub const MAX_MIGRATION_STEPS: usize = 256;
+pub const MAX_MIGRATION_SCHEMAS: usize = 512;
+pub const MAX_MIGRATION_DOCUMENT_BYTES: usize = 1024 * 1024;
+pub const MAX_MIGRATION_ERROR_BYTES: usize = 512;
+
+/// A trusted validator for one exact record family and schema version.
+/// Validation is required even when no migration step is necessary.
+pub type SchemaValidatorFn = fn(&[u8]) -> Result<(), MigrationFailure>;
 pub type MigrationFn = fn(&[u8]) -> Result<Vec<u8>, MigrationFailure>;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -29,8 +36,13 @@ pub struct MigrationFailure {
 impl MigrationFailure {
     #[must_use]
     pub fn new(detail: impl Into<Box<str>>) -> Self {
+        let detail = detail.into();
+        let mut end = detail.len().min(MAX_MIGRATION_ERROR_BYTES);
+        while !detail.is_char_boundary(end) {
+            end -= 1;
+        }
         Self {
-            detail: detail.into(),
+            detail: detail[..end].into(),
         }
     }
 
@@ -75,15 +87,90 @@ impl MigrationStep {
     }
 }
 
+#[derive(Debug)]
+struct RegisteredSchema {
+    family: RecordFamily,
+    version: SchemaVersion,
+    validate: SchemaValidatorFn,
+}
+
+/// Explicit transformations between registered, validated schemas.
+///
+/// Callbacks are trusted in-process code: the registry bounds admitted input and
+/// output, but cannot police allocations or I/O inside a callback. An outcome
+/// attests only to the registered validators, never to authority to execute it.
 #[derive(Debug, Default)]
 pub struct MigrationRegistry {
     steps: Vec<MigrationStep>,
+    schemas: Vec<RegisteredSchema>,
 }
 
 impl MigrationRegistry {
     #[must_use]
     pub const fn new() -> Self {
-        Self { steps: Vec::new() }
+        Self {
+            steps: Vec::new(),
+            schemas: Vec::new(),
+        }
+    }
+
+    pub fn register_schema(
+        &mut self,
+        family: RecordFamily,
+        version: SchemaVersion,
+        validate: SchemaValidatorFn,
+    ) -> Result<(), MigrationRegistryError> {
+        if self.schemas.len() >= MAX_MIGRATION_SCHEMAS {
+            return Err(MigrationRegistryError::SchemaRegistryFull);
+        }
+        if self
+            .schemas
+            .iter()
+            .any(|schema| schema.family == family && schema.version == version)
+        {
+            return Err(MigrationRegistryError::DuplicateSchema { family, version });
+        }
+        self.schemas.push(RegisteredSchema {
+            family,
+            version,
+            validate,
+        });
+        Ok(())
+    }
+
+    fn schema(
+        &self,
+        family: &RecordFamily,
+        version: SchemaVersion,
+    ) -> Result<&RegisteredSchema, MigrationRegistryError> {
+        self.schemas
+            .iter()
+            .find(|schema| schema.family == *family && schema.version == version)
+            .ok_or_else(|| MigrationRegistryError::UnregisteredSchema {
+                family: family.clone(),
+                version,
+            })
+    }
+
+    fn validate(
+        &self,
+        family: &RecordFamily,
+        version: SchemaVersion,
+        bytes: &[u8],
+    ) -> Result<(), MigrationRegistryError> {
+        if bytes.len() > MAX_MIGRATION_DOCUMENT_BYTES {
+            return Err(MigrationRegistryError::DocumentTooLarge {
+                size: bytes.len(),
+                limit: MAX_MIGRATION_DOCUMENT_BYTES,
+            });
+        }
+        (self.schema(family, version)?.validate)(bytes).map_err(|failure| {
+            MigrationRegistryError::SchemaValidationFailed {
+                family: family.clone(),
+                version,
+                detail: failure.detail,
+            }
+        })
     }
 
     pub fn register(&mut self, step: MigrationStep) -> Result<(), MigrationRegistryError> {
@@ -117,19 +204,15 @@ impl MigrationRegistry {
                 target: target_version,
             });
         }
-        if source_version == target_version {
-            return Ok(MigrationOutcome {
-                source_version,
-                target_version,
-                bytes: source_bytes.to_vec(),
-            });
-        }
+        self.validate(family, source_version, source_bytes)?;
+        self.schema(family, target_version)?;
 
+        // Resolve the entire path before invoking a transformation. Missing
+        // validators or an overshooting step must not leave a partial import.
         let mut current = source_version;
-        let mut bytes = source_bytes.to_vec();
-        let mut applied_steps = 0_usize;
+        let mut path = Vec::new();
         while current != target_version {
-            if applied_steps >= MAX_MIGRATION_STEPS {
+            if path.len() >= MAX_MIGRATION_STEPS {
                 return Err(MigrationRegistryError::MigrationLoop);
             }
             let step = self
@@ -148,6 +231,17 @@ impl MigrationRegistry {
                     target: target_version,
                 });
             }
+            self.schema(family, step.to)?;
+            path.push(step);
+            current = step.to;
+        }
+
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(source_bytes.len())
+            .map_err(|_| MigrationRegistryError::AllocationFailed)?;
+        bytes.extend_from_slice(source_bytes);
+        for step in path {
             bytes =
                 (step.migrate)(&bytes).map_err(|failure| MigrationRegistryError::StepFailed {
                     family: family.clone(),
@@ -155,10 +249,8 @@ impl MigrationRegistry {
                     to: step.to,
                     detail: failure.detail,
                 })?;
-            current = step.to;
-            applied_steps += 1;
+            self.validate(family, step.to, &bytes)?;
         }
-
         Ok(MigrationOutcome {
             source_version,
             target_version,
@@ -225,6 +317,25 @@ pub fn assess_document_access(
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MigrationRegistryError {
+    SchemaRegistryFull,
+    DuplicateSchema {
+        family: RecordFamily,
+        version: SchemaVersion,
+    },
+    UnregisteredSchema {
+        family: RecordFamily,
+        version: SchemaVersion,
+    },
+    SchemaValidationFailed {
+        family: RecordFamily,
+        version: SchemaVersion,
+        detail: Box<str>,
+    },
+    DocumentTooLarge {
+        size: usize,
+        limit: usize,
+    },
+    AllocationFailed,
     RegistryFull,
     NonForwardStep {
         from: SchemaVersion,
@@ -260,6 +371,38 @@ pub enum MigrationRegistryError {
 impl fmt::Display for MigrationRegistryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::SchemaRegistryFull => formatter.write_str("schema validator registry is full"),
+            Self::DuplicateSchema { family, version } => write!(
+                formatter,
+                "schema validator already registered for {} {}.{}",
+                family.as_str(),
+                version.major(),
+                version.minor()
+            ),
+            Self::UnregisteredSchema { family, version } => write!(
+                formatter,
+                "no schema validator for {} {}.{}",
+                family.as_str(),
+                version.major(),
+                version.minor()
+            ),
+            Self::SchemaValidationFailed {
+                family,
+                version,
+                detail,
+            } => write!(
+                formatter,
+                "schema validation failed for {} {}.{}: {}",
+                family.as_str(),
+                version.major(),
+                version.minor(),
+                detail
+            ),
+            Self::DocumentTooLarge { size, limit } => write!(
+                formatter,
+                "migration document is {size} bytes; limit is {limit}"
+            ),
+            Self::AllocationFailed => formatter.write_str("migration buffer allocation failed"),
             Self::RegistryFull => formatter.write_str("migration registry is full"),
             Self::NonForwardStep { from, to } => write!(
                 formatter,
@@ -352,6 +495,17 @@ mod tests {
         serde_json::to_vec(&value).map_err(|error| MigrationFailure::new(error.to_string()))
     }
 
+    fn validate_synthetic(input: &[u8]) -> Result<(), MigrationFailure> {
+        let value: Value = serde_json::from_slice(input)
+            .map_err(|error| MigrationFailure::new(error.to_string()))?;
+        if value.get("id").and_then(Value::as_str) != Some("workspace-1") {
+            return Err(MigrationFailure::new(
+                "synthetic fixture requires workspace-1",
+            ));
+        }
+        Ok(())
+    }
+
     #[test]
     fn migration_preserves_source_version_and_applies_explicit_chain() -> Result<(), Box<dyn Error>>
     {
@@ -360,6 +514,9 @@ mod tests {
         let v1_1 = SchemaVersion::try_new(1, 1)?;
         let v1_2 = SchemaVersion::try_new(1, 2)?;
         let mut registry = MigrationRegistry::new();
+        for version in [v1, v1_1, v1_2] {
+            registry.register_schema(family.clone(), version, validate_synthetic)?;
+        }
         registry.register(MigrationStep::try_new(
             family.clone(),
             v1,

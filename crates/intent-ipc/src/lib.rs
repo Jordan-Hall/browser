@@ -11,6 +11,7 @@ mod flow;
 mod frame;
 mod limits;
 mod negotiation;
+mod record_codec;
 mod stream;
 mod strict_json;
 
@@ -32,6 +33,7 @@ pub use negotiation::{
     ProtocolCapability, ProtocolChangeClass, ProtocolOffer, ProtocolOfferError, ProtocolRange,
     VersionChangeError, negotiate_protocol, validate_version_change,
 };
+pub use record_codec::{CoreRecord, CoreRecordKind, decode_core_record};
 pub use stream::{StreamEndpoint, StreamError, StreamEvent};
 
 /// Stable schema-family identifier for IPC envelopes.

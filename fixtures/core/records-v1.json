@@ -1,0 +1,512 @@
+[
+  {
+    "family": "intent.goal_contract",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000001",
+      "original_request": "Compare source-backed options",
+      "clarified_constraints": [
+        {
+          "key": "region",
+          "value": "GB"
+        }
+      ],
+      "authorized_accounts": [
+        "018f47f7-5a86-7c00-8000-000000000006"
+      ],
+      "inference_mode": "offline",
+      "budget": {
+        "currency": "GBP",
+        "minor_units": "170141183460469231731687303715884105727",
+        "scale": "unknown"
+      },
+      "deadline": 1800000000,
+      "desired_representation": "table",
+      "success_predicate": "Return a comparison with source references",
+      "approval_requirement": "always"
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000001",
+      "original_request": "Compare source-backed options",
+      "inference_mode": "offline",
+      "success_predicate": "Return a comparison with source references",
+      "approval_requirement": "always"
+    }
+  },
+  {
+    "family": "intent.workspace",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000002",
+      "goal_contract_id": "018f47f7-5a86-7c00-8000-000000000001",
+      "title": "Source comparison",
+      "state": "active",
+      "revision": 7,
+      "active_view": "018f47f7-5a86-7c00-8000-000000000013",
+      "created_at": 1000,
+      "updated_at": 2000
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000002",
+      "title": "Source comparison",
+      "state": "active",
+      "revision": 7,
+      "created_at": 1000,
+      "updated_at": 2000
+    }
+  },
+  {
+    "family": "intent.task",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000003",
+      "workspace_id": "018f47f7-5a86-7c00-8000-000000000002",
+      "goal_contract_id": "018f47f7-5a86-7c00-8000-000000000001",
+      "state": "needs_reconciliation",
+      "success_predicate": "Verify the provider result",
+      "required_capabilities": [
+        "018f47f7-5a86-7c00-8000-000000000004"
+      ],
+      "result_artifacts": [
+        {
+          "schema_version": {
+            "major": 1,
+            "minor": 0
+          },
+          "id": "018f47f7-5a86-7c00-8000-000000000015",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "byte_size": 2,
+          "media_type": "application/json"
+        }
+      ],
+      "failure_detail": "Provider outcome is unknown",
+      "created_at": 1000,
+      "updated_at": 2000
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000003",
+      "workspace_id": "018f47f7-5a86-7c00-8000-000000000002",
+      "state": "needs_reconciliation",
+      "success_predicate": "Verify the provider result",
+      "created_at": 1000,
+      "updated_at": 2000
+    }
+  },
+  {
+    "family": "intent.capability",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000004",
+      "connector_id": "018f47f7-5a86-7c00-8000-000000000005",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "name": "fixture.compare",
+      "effect_class": "read_only",
+      "resource_scope": "fixture:items",
+      "input_schema_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "output_schema_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "support_level": "sandbox"
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000004",
+      "connector_id": "018f47f7-5a86-7c00-8000-000000000005",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "name": "fixture.compare",
+      "effect_class": "read_only",
+      "resource_scope": "fixture:items",
+      "input_schema_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "output_schema_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "support_level": "sandbox"
+    }
+  },
+  {
+    "family": "intent.observation",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000007",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "source": {
+        "provider": "fixture",
+        "account": "fixture-account-a",
+        "resource": "resource-1"
+      },
+      "kind": "source",
+      "observed_at": 1500,
+      "source_revision": "etag-7",
+      "payload": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0
+        },
+        "id": "018f47f7-5a86-7c00-8000-000000000015",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 2,
+        "media_type": "application/json"
+      }
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000007",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "source": {
+        "provider": "fixture",
+        "account": "fixture-account-a",
+        "resource": "resource-1"
+      },
+      "kind": "source",
+      "observed_at": 1500,
+      "payload": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0
+        },
+        "id": "018f47f7-5a86-7c00-8000-000000000015",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 2,
+        "media_type": "application/json"
+      }
+    }
+  },
+  {
+    "family": "intent.evidence",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000008",
+      "workspace_id": "018f47f7-5a86-7c00-8000-000000000002",
+      "claim": "A source states this value",
+      "source_observations": [
+        "018f47f7-5a86-7c00-8000-000000000007"
+      ],
+      "relation": "unknown",
+      "origin": {
+        "kind": "model_derived",
+        "provider": "fixture",
+        "model": "fixture-model",
+        "generated_at": 1800
+      }
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000008",
+      "workspace_id": "018f47f7-5a86-7c00-8000-000000000002",
+      "claim": "A source states this value",
+      "relation": "unknown",
+      "origin": {
+        "kind": "model_derived",
+        "provider": "fixture",
+        "model": "fixture-model",
+        "generated_at": 1800
+      }
+    }
+  },
+  {
+    "family": "intent.action_proposal",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000009",
+      "task_id": "018f47f7-5a86-7c00-8000-000000000003",
+      "capability_id": "018f47f7-5a86-7c00-8000-000000000004",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "target_resource": {
+        "provider": "fixture",
+        "account": "fixture-account-a",
+        "resource": "resource-1"
+      },
+      "canonical_arguments": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0
+        },
+        "id": "018f47f7-5a86-7c00-8000-000000000015",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 2,
+        "media_type": "application/json"
+      },
+      "arguments_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "effect_class": "irreversible_or_uncertain",
+      "expires_at": 2200,
+      "approval_requirement": "always"
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000009",
+      "task_id": "018f47f7-5a86-7c00-8000-000000000003",
+      "capability_id": "018f47f7-5a86-7c00-8000-000000000004",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "canonical_arguments": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0
+        },
+        "id": "018f47f7-5a86-7c00-8000-000000000015",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 2,
+        "media_type": "application/json"
+      },
+      "arguments_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "effect_class": "irreversible_or_uncertain",
+      "approval_requirement": "always"
+    }
+  },
+  {
+    "family": "intent.approval",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000010",
+      "action_proposal_id": "018f47f7-5a86-7c00-8000-000000000009",
+      "exact_arguments_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "state": {
+        "state": "approved",
+        "details": {
+          "approved_at": 1500,
+          "expires_at": 2200
+        }
+      }
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000010",
+      "action_proposal_id": "018f47f7-5a86-7c00-8000-000000000009",
+      "exact_arguments_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "state": {
+        "state": "approved",
+        "details": {
+          "approved_at": 1500
+        }
+      }
+    }
+  },
+  {
+    "family": "intent.operation",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000011",
+      "action_proposal_id": "018f47f7-5a86-7c00-8000-000000000009",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "idempotency_key": "fixture-operation-1",
+      "state": {
+        "state": "needs_reconciliation",
+        "details": {
+          "reason": "Provider may have accepted the request",
+          "last_checked_at": 1800
+        }
+      },
+      "last_reconciled_at": 1800
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000011",
+      "action_proposal_id": "018f47f7-5a86-7c00-8000-000000000009",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "idempotency_key": "fixture-operation-1",
+      "state": {
+        "state": "needs_reconciliation",
+        "details": {
+          "reason": "Provider may have accepted the request"
+        }
+      }
+    }
+  },
+  {
+    "family": "intent.receipt",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000012",
+      "operation_id": "018f47f7-5a86-7c00-8000-000000000011",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "provider_receipt_id": "fixture-receipt-1",
+      "outcome": "compensated",
+      "verified_at": 2000,
+      "evidence_ids": [
+        "018f47f7-5a86-7c00-8000-000000000008"
+      ]
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000012",
+      "operation_id": "018f47f7-5a86-7c00-8000-000000000011",
+      "account_id": "018f47f7-5a86-7c00-8000-000000000006",
+      "provider_receipt_id": "fixture-receipt-1",
+      "outcome": "compensated",
+      "verified_at": 2000
+    }
+  },
+  {
+    "family": "intent.view_definition",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000013",
+      "workspace_id": "018f47f7-5a86-7c00-8000-000000000002",
+      "revision": 7,
+      "layout": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0
+        },
+        "id": "018f47f7-5a86-7c00-8000-000000000015",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 2,
+        "media_type": "application/json"
+      },
+      "bindings": [
+        {
+          "key": "comparison",
+          "artifact": {
+            "schema_version": {
+              "major": 1,
+              "minor": 0
+            },
+            "id": "018f47f7-5a86-7c00-8000-000000000015",
+            "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+            "byte_size": 2,
+            "media_type": "application/json"
+          }
+        }
+      ],
+      "action_capabilities": [
+        "018f47f7-5a86-7c00-8000-000000000004"
+      ]
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000013",
+      "workspace_id": "018f47f7-5a86-7c00-8000-000000000002",
+      "revision": 7,
+      "layout": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0
+        },
+        "id": "018f47f7-5a86-7c00-8000-000000000015",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "byte_size": 2,
+        "media_type": "application/json"
+      }
+    }
+  },
+  {
+    "family": "intent.memory_record",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000014",
+      "scope": {
+        "scope": "account",
+        "id": "018f47f7-5a86-7c00-8000-000000000006"
+      },
+      "kind": "explicit_preference",
+      "value": "Prefer GBP",
+      "provenance_evidence": "018f47f7-5a86-7c00-8000-000000000008",
+      "created_at": 1000,
+      "expires_at": 9000
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000014",
+      "scope": {
+        "scope": "account",
+        "id": "018f47f7-5a86-7c00-8000-000000000006"
+      },
+      "kind": "explicit_preference",
+      "value": "Prefer GBP",
+      "created_at": 1000
+    }
+  },
+  {
+    "family": "intent.artifact_reference",
+    "full": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000015",
+      "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "byte_size": 2,
+      "media_type": "application/json"
+    },
+    "minimal": {
+      "schema_version": {
+        "major": 1,
+        "minor": 0
+      },
+      "id": "018f47f7-5a86-7c00-8000-000000000015",
+      "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "byte_size": 2,
+      "media_type": "application/json"
+    }
+  }
+]

@@ -16,6 +16,8 @@ use serde::Serialize;
 use std::error::Error;
 use std::str::FromStr;
 
+mod record_fixtures;
+
 pub const CONFORMANCE_FORMAT_VERSION: u16 = 1;
 pub type ConformanceResult<T> = Result<T, Box<dyn Error>>;
 
@@ -66,6 +68,7 @@ pub fn run_conformance() -> ConformanceResult<ConformanceReport> {
     check_negative_worker_authentication()?;
     check_role_capability_binding()?;
     check_malformed_approval_rejected()?;
+    let record_checks = record_fixtures::check()?;
     let current = SchemaVersion::V1;
 
     Ok(ConformanceReport {
@@ -75,32 +78,36 @@ pub fn run_conformance() -> ConformanceResult<ConformanceReport> {
         ipc_schema_family: intent_ipc::IPC_SCHEMA_FAMILY,
         current_schema_version: format!("{}.{}", current.major(), current.minor()),
         canonical_protocol_fixture,
-        checks: vec![
-            ConformanceCheck {
-                name: "canonical_protocol_fixture",
-                passed: true,
-            },
-            ConformanceCheck {
-                name: "migration_chain",
-                passed: true,
-            },
-            ConformanceCheck {
-                name: "outdated_worker_rejected",
-                passed: true,
-            },
-            ConformanceCheck {
-                name: "negative_worker_authentication",
-                passed: true,
-            },
-            ConformanceCheck {
-                name: "role_capability_binding_negative",
-                passed: true,
-            },
-            ConformanceCheck {
-                name: "malformed_approval_rejected",
-                passed: true,
-            },
-        ],
+        checks: {
+            let mut checks = vec![
+                ConformanceCheck {
+                    name: "canonical_protocol_fixture",
+                    passed: true,
+                },
+                ConformanceCheck {
+                    name: "migration_chain",
+                    passed: true,
+                },
+                ConformanceCheck {
+                    name: "outdated_worker_rejected",
+                    passed: true,
+                },
+                ConformanceCheck {
+                    name: "negative_worker_authentication",
+                    passed: true,
+                },
+                ConformanceCheck {
+                    name: "role_capability_binding_negative",
+                    passed: true,
+                },
+                ConformanceCheck {
+                    name: "malformed_approval_rejected",
+                    passed: true,
+                },
+            ];
+            checks.extend(record_checks);
+            checks
+        },
     })
 }
 
@@ -130,10 +137,25 @@ fn check_migration_chain() -> ConformanceResult<()> {
         Ok(migrated)
     }
 
+    fn validate_source(input: &[u8]) -> Result<(), MigrationFailure> {
+        if input != b"v1" {
+            return Err(MigrationFailure::new("invalid synthetic v1 fixture"));
+        }
+        Ok(())
+    }
+    fn validate_target(input: &[u8]) -> Result<(), MigrationFailure> {
+        if input != b"v1|v1.1" {
+            return Err(MigrationFailure::new("invalid synthetic v1.1 fixture"));
+        }
+        Ok(())
+    }
+
     let family = RecordFamily::try_new("intent.conformance.fixture")?;
     let source = SchemaVersion::V1;
     let target = SchemaVersion::try_new(1, 1)?;
     let mut registry = MigrationRegistry::new();
+    registry.register_schema(family.clone(), source, validate_source)?;
+    registry.register_schema(family.clone(), target, validate_target)?;
     registry.register(MigrationStep::try_new(
         family.clone(),
         source,

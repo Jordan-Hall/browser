@@ -14,6 +14,7 @@ mod proposal_validation;
 mod state_accessors;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactReference {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -62,6 +63,7 @@ impl ArtifactReference {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GoalConstraint {
     key: BoundedText<128>,
     value: BoundedText<4096>,
@@ -91,6 +93,7 @@ pub enum ApprovalRequirement {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GoalContract {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -179,6 +182,7 @@ pub enum WorkspaceState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Workspace {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -243,6 +247,7 @@ pub enum TaskState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Task {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -341,6 +346,7 @@ pub struct CapabilityDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Capability {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -391,6 +397,7 @@ pub enum ObservationKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Observation {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -437,7 +444,7 @@ pub enum EvidenceRelation {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EvidenceOrigin {
     Deterministic,
     ModelDerived {
@@ -448,6 +455,7 @@ pub enum EvidenceOrigin {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Evidence {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -533,7 +541,12 @@ impl ActionProposal {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "state", content = "details", rename_all = "snake_case")]
+#[serde(
+    tag = "state",
+    content = "details",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum ApprovalState {
     Pending,
     Approved {
@@ -553,6 +566,7 @@ pub enum ApprovalState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Approval {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -581,7 +595,12 @@ impl Approval {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "state", content = "details", rename_all = "snake_case")]
+#[serde(
+    tag = "state",
+    content = "details",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum OperationState {
     Prepared,
     Dispatching,
@@ -600,6 +619,7 @@ pub enum OperationState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Operation {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -647,6 +667,7 @@ pub enum ReceiptOutcome {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Receipt {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -684,6 +705,7 @@ impl Receipt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ViewBinding {
     key: BoundedText<128>,
     artifact: ArtifactReference,
@@ -697,6 +719,7 @@ impl ViewBinding {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ViewDefinition {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -731,7 +754,12 @@ impl ViewDefinition {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "scope", content = "id", rename_all = "snake_case")]
+#[serde(
+    tag = "scope",
+    content = "id",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum MemoryScope {
     Global,
     Workspace(WorkspaceId),
@@ -747,6 +775,7 @@ pub enum MemoryKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryRecord {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,

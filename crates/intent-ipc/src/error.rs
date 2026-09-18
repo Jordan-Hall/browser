@@ -1,10 +1,11 @@
-use serde::{Deserialize, Serialize};
+use intent_contracts::BoundedText;
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::error::Error;
 use std::fmt;
 
 const MAX_ERROR_DETAIL_BYTES: usize = 512;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u16)]
 pub enum WireErrorCode {
     InvalidLane = 1,
@@ -18,6 +19,56 @@ pub enum WireErrorCode {
     InvalidEnvelope = 9,
     AllocationFailed = 10,
     DuplicateJsonKey = 11,
+    InvalidRecord = 12,
+}
+
+impl WireErrorCode {
+    /// Stable v1 JSON spelling. Numeric discriminants are local diagnostics,
+    /// not an alternative encoding accepted by the JSON protocol.
+    #[must_use]
+    pub const fn wire_name(self) -> &'static str {
+        match self {
+            Self::InvalidLane => "InvalidLane",
+            Self::FrameTooLarge => "FrameTooLarge",
+            Self::MalformedJson => "MalformedJson",
+            Self::JsonTooDeep => "JsonTooDeep",
+            Self::CollectionTooLarge => "CollectionTooLarge",
+            Self::JsonNodeLimitExceeded => "JsonNodeLimitExceeded",
+            Self::UnsupportedSchema => "UnsupportedSchema",
+            Self::WrongLane => "WrongLane",
+            Self::InvalidEnvelope => "InvalidEnvelope",
+            Self::AllocationFailed => "AllocationFailed",
+            Self::DuplicateJsonKey => "DuplicateJsonKey",
+            Self::InvalidRecord => "InvalidRecord",
+        }
+    }
+}
+
+impl Serialize for WireErrorCode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.wire_name())
+    }
+}
+
+impl<'de> Deserialize<'de> for WireErrorCode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = BoundedText::<64>::deserialize(deserializer)?;
+        match name.as_str() {
+            "InvalidLane" => Ok(Self::InvalidLane),
+            "FrameTooLarge" => Ok(Self::FrameTooLarge),
+            "MalformedJson" => Ok(Self::MalformedJson),
+            "JsonTooDeep" => Ok(Self::JsonTooDeep),
+            "CollectionTooLarge" => Ok(Self::CollectionTooLarge),
+            "JsonNodeLimitExceeded" => Ok(Self::JsonNodeLimitExceeded),
+            "UnsupportedSchema" => Ok(Self::UnsupportedSchema),
+            "WrongLane" => Ok(Self::WrongLane),
+            "InvalidEnvelope" => Ok(Self::InvalidEnvelope),
+            "AllocationFailed" => Ok(Self::AllocationFailed),
+            "DuplicateJsonKey" => Ok(Self::DuplicateJsonKey),
+            "InvalidRecord" => Ok(Self::InvalidRecord),
+            _ => Err(de::Error::custom("unsupported v1 wire error code")),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
