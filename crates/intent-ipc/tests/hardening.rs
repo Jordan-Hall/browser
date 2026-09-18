@@ -133,6 +133,69 @@ fn full_money_domain_roundtrips_through_the_real_envelope_codec() -> Result<(), 
 }
 
 #[test]
+fn infinite_duplicate_capabilities_are_rejected_after_bounded_consumption()
+-> Result<(), Box<dyn Error>> {
+    let count = Cell::new(0);
+    let capability = ProtocolCapability::try_new("cancel")?;
+    let repeated = std::iter::repeat_with(|| {
+        count.set(count.get() + 1);
+        capability.clone()
+    });
+    let result = ProtocolOffer::try_new(vec![ProtocolRange::try_new(1, 0, 0)?], repeated);
+    assert!(matches!(
+        result,
+        Err(ProtocolOfferError::TooManyCapabilities(65))
+    ));
+    assert_eq!(count.get(), MAX_PROTOCOL_CAPABILITIES + 1);
+    assert!(
+        ProtocolOffer::try_new(
+            vec![ProtocolRange::try_new(1, 0, 0)?],
+            std::iter::repeat_n(capability, MAX_PROTOCOL_CAPABILITIES)
+        )
+        .is_ok()
+    );
+    Ok(())
+}
+
+#[test]
+fn wire_offer_sequence_limits_include_duplicate_entries() -> Result<(), Box<dyn Error>> {
+    let wire = json!({"ranges": [{"major":1,"min_minor":0,"max_minor":0}],
+        "capabilities": vec!["cancel"; MAX_PROTOCOL_CAPABILITIES + 1]});
+    assert!(serde_json::from_value::<ProtocolOffer>(wire).is_err());
+    let wire = json!({"ranges": vec![json!({"major":1,"min_minor":0,"max_minor":0}); MAX_PROTOCOL_RANGES + 1]});
+    assert!(serde_json::from_value::<ProtocolOffer>(wire).is_err());
+    Ok(())
+}
+
+#[test]
+fn negotiated_control_codec_never_advertises_unimplemented_versions() -> Result<(), Box<dyn Error>>
+{
+    for range in [
+        ProtocolRange::try_new(1, 1, 1)?,
+        ProtocolRange::try_new(2, 0, 0)?,
+    ] {
+        let remote = ProtocolOffer::try_new(vec![range], [])?;
+        assert!(matches!(
+            ControlCodec::negotiate(&remote),
+            Err(NegotiationError::NoCompatibleVersion)
+        ));
+    }
+    let remote = ProtocolOffer::try_new(vec![ProtocolRange::try_new(1, 0, 5)?], [])?;
+    let codec = ControlCodec::negotiate(&remote)?;
+    assert_eq!(codec.protocol().version(), SchemaVersion::V1);
+    let value = Envelope::event(
+        "018f47f7-5a86-7c00-8000-000000000501".parse()?,
+        json!({"read":true}),
+    );
+    let frame = codec.encode(&value, WireLimits::for_tests())?;
+    assert_eq!(
+        codec.decode::<Value>(&frame, WireLimits::for_tests())?,
+        value
+    );
+    Ok(())
+}
+
+#[test]
 fn duplicate_keys_are_rejected_before_typed_payload_parsing() -> Result<(), Box<dyn Error>> {
     for payload in [
         r#"{"schema_version":{"major":1,"minor":0},"schema_version":{"major":2,"minor":0}}"#,

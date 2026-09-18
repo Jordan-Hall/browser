@@ -51,6 +51,8 @@ typed_uuid!(
     ActionProposalId,
     ApprovalId,
     OperationId,
+    OperationAttemptId,
+    OutboxMessageId,
     ReceiptId,
     ViewDefinitionId,
     MemoryRecordId,
@@ -61,6 +63,7 @@ typed_uuid!(
     CancellationId,
     TraceId,
     WorkerInstanceId,
+    CheckpointId,
 );
 
 #[cfg(test)]
