@@ -290,6 +290,8 @@ INSERT INTO runtime_control(singleton, epoch, dispatch_enabled, reason)
 VALUES (1, '00000000-0000-0000-0000-000000000000', 0, 'startup recovery required');
 "#;
 
+const MIGRATION_008: &str = include_str!("checkpoints/schema.sql");
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -326,9 +328,28 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         name: "durable_runtime_dispatch_barrier",
         sql: MIGRATION_007,
     },
+    Migration {
+        version: 8,
+        name: "consistent_task_checkpoints",
+        sql: MIGRATION_008,
+    },
 ];
 
 pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateError> {
+    let target = MIGRATIONS.last().map_or(0, |migration| migration.version);
+    apply_migrations_through(connection, target)
+}
+
+pub(crate) fn apply_migrations_through(
+    connection: &mut Connection,
+    target: i64,
+) -> Result<(), StateError> {
+    if !MIGRATIONS
+        .iter()
+        .any(|migration| migration.version == target)
+    {
+        return Err(StateError::InvalidMigrationTarget { version: target });
+    }
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     transaction.execute_batch(
         r#"
@@ -346,9 +367,12 @@ pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateE
         [],
         |row| row.get(0),
     )?;
+    if highest > target {
+        return Err(StateError::InvalidMigrationTarget { version: target });
+    }
     for migration in MIGRATIONS
         .iter()
-        .filter(|migration| migration.version > highest)
+        .filter(|migration| migration.version > highest && migration.version <= target)
     {
         let checksum = migration_checksum(migration.sql).to_hex();
         transaction.execute_batch(migration.sql)?;

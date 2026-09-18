@@ -45,7 +45,9 @@ jobs:
       - name: Check CORE task coverage
         id: core_coverage
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: python3 scripts/check_core_coverage.py
+        run: |
+          python3 -m unittest discover -s scripts/tests -v
+          python3 scripts/check_core_coverage.py
 
       - name: Check formatting
         id: format

@@ -7,6 +7,7 @@ members = [
     "crates/intent-conformance",
     "crates/intent-state",
     "crates/intent-recovery",
+    "crates/intent-supervisor",
     "crates/intent-xtask",
 ]
 exclude = ["fuzz"]
@@ -21,7 +22,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 getrandom = "0.3.3"
 hmac = "0.12.1"
-nix = { version = "0.31.3", default-features = false, features = ["socket", "user", "fs", "dir"] }
+nix = { version = "0.31.3", default-features = false, features = ["socket", "user", "fs", "dir", "signal", "process", "resource"] }
 rusqlite = { version = "0.40.1", features = ["bundled", "backup"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"

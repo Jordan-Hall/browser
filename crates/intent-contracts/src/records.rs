@@ -11,6 +11,7 @@ use crate::version::{SchemaVersion, deserialize_v1_schema};
 use serde::{Deserialize, Serialize};
 
 mod proposal_validation;
+mod state_accessors;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ArtifactReference {

@@ -63,6 +63,7 @@ typed_uuid!(
     CancellationId,
     TraceId,
     WorkerInstanceId,
+    CheckpointId,
 );
 
 #[cfg(test)]

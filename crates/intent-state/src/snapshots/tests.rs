@@ -593,3 +593,109 @@ fn actual_process_death_does_not_activate_a_partial_export_or_hold_gc_locks() ->
     }
     Ok(())
 }
+
+#[test]
+fn authenticated_version_seven_snapshot_upgrades_only_the_private_restore_candidate() -> TestResult
+{
+    let f = Fixture::new()?;
+    let parent = Directory::open_private(&f.root)?;
+    let source = parent.create_child("backup")?;
+    drop(source.create_file("state.sqlite3")?);
+    let mut legacy = Connection::open(source.sqlite_path())?;
+    legacy.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")?;
+    legacy.pragma_update(None, "application_id", crate::APPLICATION_ID)?;
+    crate::migrations::apply_migrations_through(&mut legacy, 7)?;
+    let store_id = Uuid::new_v4();
+    legacy.execute(
+        "INSERT INTO store_metadata(singleton,store_uuid,created_unix_seconds) VALUES (1,?1,0)",
+        [store_id.to_string()],
+    )?;
+    let epoch = disable_snapshot_dispatch(&legacy)?;
+    validate_database_version(&legacy, false)?;
+    assert!(validate_database(&legacy).is_err());
+    legacy.close().map_err(|(_, e)| e)?;
+    let (database_hash, database_bytes) = hash_file(
+        source.open_file("state.sqlite3")?,
+        MAX_DATABASE_BYTES,
+        &Budget::new(SnapshotLimits::default()),
+    )?;
+    let manifest = Manifest {
+        format_version: FORMAT_VERSION,
+        snapshot_id: Uuid::new_v4(),
+        store_id,
+        runtime_epoch: epoch,
+        schema_version: 7,
+        journal_sequence: 0,
+        created_at: time(100)?,
+        database_hash,
+        database_bytes,
+        blobs: vec![],
+    };
+    source.create_child("blobs")?;
+    write_manifest(&source, &f.key(), &manifest)?;
+    let restored = StateStore::restore_authenticated_plaintext_snapshot(
+        &f.snapshot(),
+        &f.restored(),
+        &f.key(),
+        SnapshotLimits::default(),
+    )?;
+    assert_eq!(restored.source_schema_version, 7);
+    assert_eq!(restored.schema_version, 8);
+    assert_ne!(restored.runtime_epoch, epoch);
+    let copy = StateStore::open(f.restored().join("state.sqlite3"))?;
+    assert!(!copy.dispatch_status()?.enabled);
+    assert_eq!(copy.store_id()?, store_id);
+    assert_eq!(
+        copy.connection
+            .query_row("SELECT COUNT(*) FROM task_checkpoints", [], |r| r
+                .get::<_, i64>(0))?,
+        0
+    );
+    let original = Connection::open(source.sqlite_path())?;
+    assert_eq!(
+        original.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        7
+    );
+    let (actual_hash, actual_size) = hash_file(
+        source.open_file("state.sqlite3")?,
+        MAX_DATABASE_BYTES,
+        &Budget::new(SnapshotLimits::default()),
+    )?;
+    assert_eq!((actual_hash, actual_size), (database_hash, database_bytes));
+    Ok(())
+}
+
+#[test]
+fn unknown_or_tampered_legacy_snapshot_schema_is_not_migrated() -> TestResult {
+    let f = Fixture::new()?;
+    let (mut store, _) = f.populated()?;
+    f.export(&mut store)?;
+    let backup = Directory::open_private(&f.snapshot())?;
+    let mut manifest = read_manifest(&backup, &f.key(), SnapshotLimits::default())?;
+    let database = Connection::open(backup.sqlite_path())?;
+    database.execute_batch("CREATE TABLE unexpected_authority(enabled INTEGER)")?;
+    database.close().map_err(|(_, e)| e)?;
+    let (hash, size) = hash_file(
+        backup.open_file("state.sqlite3")?,
+        MAX_DATABASE_BYTES,
+        &Budget::new(SnapshotLimits::default()),
+    )?;
+    manifest.database_hash = hash;
+    manifest.database_bytes = size;
+    // A valid MAC from a trusted exporter is not permission to interpret an
+    // unexpected database schema, even when its declared version is supported.
+    fs::remove_file(f.snapshot().join("manifest.json"))?;
+    fs::remove_file(f.snapshot().join("manifest.hmac"))?;
+    write_manifest(&backup, &f.key(), &manifest)?;
+    assert!(
+        StateStore::restore_authenticated_plaintext_snapshot(
+            &f.snapshot(),
+            &f.restored(),
+            &f.key(),
+            SnapshotLimits::default()
+        )
+        .is_err()
+    );
+    assert!(!f.restored().exists());
+    Ok(())
+}

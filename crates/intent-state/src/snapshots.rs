@@ -3,7 +3,7 @@
 
 use crate::{
     MAX_ARTIFACT_BYTES, StateError, StateStore,
-    migrations::{MIGRATIONS, apply_migrations, validate_applied_migrations},
+    migrations::{MIGRATIONS, validate_applied_migrations},
     snapshot_fs::{Directory, StagingDirectory, check_name},
 };
 use hmac::{Hmac, Mac};
@@ -121,6 +121,7 @@ pub struct SnapshotReceipt {
     pub store_id: Uuid,
     pub runtime_epoch: Uuid,
     pub schema_version: i64,
+    pub source_schema_version: i64,
     pub journal_sequence: u64,
     pub blob_count: usize,
 }
@@ -377,11 +378,11 @@ impl StateStore {
             &budget,
         )?;
         progress(SnapshotPhase::DatabaseCopied)?;
-        let snapshot = Connection::open(staging.directory.sqlite_path())?;
+        let mut snapshot = Connection::open(staging.directory.sqlite_path())?;
         snapshot.execute_batch(
             "PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;",
         )?;
-        validate_database(&snapshot)?;
+        validate_database_version(&snapshot, false)?;
         let schema_version: i64 = snapshot.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if schema_version != manifest.schema_version
             || database_store_id(&snapshot)? != manifest.store_id
@@ -409,12 +410,19 @@ impl StateStore {
             &budget,
             progress,
         )?;
+        // Source bytes, schema, manifest and complete blob inventory have already
+        // been authenticated. Upgrade only this private restore candidate.
+        crate::migrations::apply_migrations(&mut snapshot)?;
+        validate_database(&snapshot)?;
+        let restored_schema: i64 = snapshot.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         let runtime_epoch = disable_snapshot_dispatch(&snapshot)?;
         snapshot.pragma_update(None, "journal_mode", "DELETE")?;
         snapshot.close().map_err(|(_, error)| error)?;
         staging.directory.open_file("state.sqlite3")?.sync_all()?;
         publish(&mut staging, name, destination, &budget, progress)?;
-        Ok(receipt(destination, &manifest, runtime_epoch))
+        let mut restored_receipt = receipt(destination, &manifest, runtime_epoch);
+        restored_receipt.schema_version = restored_schema;
+        Ok(restored_receipt)
     }
 }
 
@@ -457,6 +465,7 @@ fn receipt(path: &Path, manifest: &Manifest, runtime_epoch: Uuid) -> SnapshotRec
         store_id: manifest.store_id,
         runtime_epoch,
         schema_version: manifest.schema_version,
+        source_schema_version: manifest.schema_version,
         journal_sequence: manifest.journal_sequence,
         blob_count: manifest.blobs.len(),
     }
@@ -506,9 +515,19 @@ fn schema_inventory(
 }
 
 fn validate_database(connection: &Connection) -> Result<(), SnapshotError> {
+    validate_database_version(connection, true)
+}
+
+fn validate_database_version(
+    connection: &Connection,
+    require_latest: bool,
+) -> Result<(), SnapshotError> {
     let application: i64 = connection.query_row("PRAGMA application_id", [], |r| r.get(0))?;
     let version: i64 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    if application != crate::APPLICATION_ID || Some(version) != MIGRATIONS.last().map(|m| m.version)
+    let latest = MIGRATIONS.last().map_or(0, |migration| migration.version);
+    if application != crate::APPLICATION_ID
+        || !(7..=latest).contains(&version)
+        || (require_latest && version != latest)
     {
         return Err(SnapshotError::Invalid(
             "unsupported snapshot database identity or schema",
@@ -516,7 +535,7 @@ fn validate_database(connection: &Connection) -> Result<(), SnapshotError> {
     }
     validate_applied_migrations(connection)?;
     let mut expected = Connection::open_in_memory()?;
-    apply_migrations(&mut expected)?;
+    crate::migrations::apply_migrations_through(&mut expected, version)?;
     if schema_inventory(connection)? != schema_inventory(&expected)? {
         return Err(SnapshotError::Invalid(
             "snapshot schema differs from compiled schema",
