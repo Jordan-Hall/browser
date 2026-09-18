@@ -222,7 +222,14 @@ dependencies = [
 name = "intent-fixture-worker"
 version = "0.1.0"
 dependencies = [
+ "intent-contracts",
  "intent-ipc",
+ "intent-local-transport",
+ "intent-supervisor",
+ "nix",
+ "serde_json",
+ "sha2",
+ "uuid",
 ]
 
 [[package]]
@@ -265,6 +272,20 @@ dependencies = [
  "intent-contracts",
  "nix",
  "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
+name = "intent-supervisor"
+version = "0.1.0"
+dependencies = [
+ "intent-contracts",
+ "intent-ipc",
+ "intent-local-transport",
+ "nix",
  "serde",
  "serde_json",
  "sha2",

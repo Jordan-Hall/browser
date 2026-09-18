@@ -1,9 +1,15 @@
 # CORE hardening status and release gates
 
-This change remediates the integrated CORE-01 / CORE-02 stack through retention
-(PR #801). It is not completion of epic #13, and it is not a production release
-qualification. Tasks #135–#152, baseline #113 and integration/readiness tasks
-#211–#214 remain open. No issue is closed by this document.
+The integrated published stack now includes retention (#801), the #802 tracker,
+authenticated snapshots (#803), and pure recovery/replay/provider policy (#804).
+The current local candidate adds real Linux cooperative-worker supervision and
+acceptance regressions; see [its exact scope and limits](core-worker-supervision-acceptance.md).
+The candidate is unpublished: no new GitHub PR or CI result is claimed.
+
+This is not completion of epic #13 or a production release qualification. All
+37 feature/baseline/integration acceptance states remain open. The corrected
+[task ledger](core-task-coverage.md) separates published source, partial source,
+unpublished source and absent implementation. No issue is closed by this document.
 
 ## Compatibility decisions
 
@@ -35,8 +41,9 @@ Protocol-offer limits count input entries, including duplicates, rather than
 only unique set members. Construction consumes at most the configured maximum
 plus one item, and wire sequences reject excess entries during deserialization.
 An arbitrary iterator can still block inside next(). ControlCodec advertises
-only the implemented v1.0 envelope codec. It is not an authenticated negotiated
-session; the supervisor must own and enforce the selected codec and capabilities.
+only the implemented v1.0 envelope codec. The local supervisor candidate now
+owns that codec after each authenticated live-channel handshake; the codec alone
+still is not authority. Accepted production/durable migration integration remains.
 
 ## SQLite, publication and collection
 
@@ -67,8 +74,9 @@ also repeat the target-directory barrier, including deduplication arrivals.
 The invariant requires every lifecycle participant to use the SAME database
 and a trusted, exclusively assigned artifact root. It does not isolate an
 attacker that can replace root ancestors, edit the database directly, or use a
-second database against the same root. Descriptor-relative filesystem traversal,
-profile ownership, same-user threat modelling, backup coordination and platform
+second database against the same root. #803 adds descriptor-relative snapshot
+traversal and backup/GC exclusion. Complete trusted-path coverage for live artifact
+APIs, lifetime profile ownership, same-user threat modelling and platform
 power-loss qualification remain release gates. Non-Unix directory durability
 now fails with Unsupported rather than returning false success; this PR does
 not qualify Windows support or macOS power-loss behavior.
@@ -125,19 +133,22 @@ unit/integration and deterministic fault-injection tests, NOT power-loss tests.
 
 Outstanding implementation and evidence:
 
-- #135–#136: consistent backup/restore and storage/process/power-loss qualification.
-- #137–#144: launch registry, real worker authentication/readiness, admission,
-  platform constraints, lease-first revocation, bounded restart, accounting and
-  concurrent real-process scheduler qualification.
-- #145–#152: durable recovery classification/checkpoints, startup dispatch barrier,
-  read-only external reconciliation, bounded credential-isolated replay, provider
-  reseeding, truthful recovery UI and independently observed restart scenarios.
+- #135–#136: #803 implements authenticated snapshots; key custody/product and
+  activation integration plus storage/process/VM power-loss qualification remain.
+- #137–#144: the unpublished supervisor supplies cooperative Linux launch,
+  authentication/readiness, admission, limits, revocation, restart and accounting
+  with real-process tests. Durable broker integration, hostile containment,
+  complete resource isolation and product/platform qualification remain.
+- #145–#152: #804 supplies pure classification/replay/provider planning. Trusted
+  durable-fact integration, checkpoints, startup activation, read-only external
+  reconciliation, credential-isolated replay workers, provider integration,
+  recovery UI and independently observed restart scenarios remain unfinished.
 - #113 and #211–#214: baseline, integrated acceptance and operational readiness.
 
-Before release, also supply authenticated codec integration, complete schema
-fixtures and authority checks, committed reproducible dependencies, pinned
-instrumented and resource-bounded fuzz execution, filesystem isolation, restore
-validation, and an external-effect ledger proving uncertain effects are not
+Before release, also complete production codec integration, schema fixtures and
+authority checks; maintain committed reproducible dependencies; supply pinned
+instrumented and resource-bounded fuzz execution, filesystem isolation, complete
+restore acceptance, and an external-effect ledger proving uncertain effects are not
 silently repeated after a supervisor crash. Release acceptance must identify the
 exact tested commit, lockfiles, OS/filesystem and residual limitations. A passing
 CI smoke suite is necessary evidence for this PR, not sufficient evidence for
@@ -147,5 +158,6 @@ epic closure.
 
 See [the complete CORE task matrix](core-task-coverage.md) and its
 [machine-readable inventory](core-task-coverage.json) for every feature, baseline
-and integration task. Source fixes have been backported to their owning PRs;
-this integration PR must not be used to bypass those reviews.
+and integration task. The earlier #802 hardening was backported to its owning
+PRs. The current supervisor candidate has not been published or backported;
+its local test evidence must not be used to bypass independent source reviews.

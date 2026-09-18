@@ -2,47 +2,55 @@
 
 Programme #1; epic #13; requirements #2, #3, #4 and #5; integration tracker #802.
 
-**CORE is not complete.** This matrix separates source implementation from accepted task completion. All 32 feature tasks, baseline #113 and each of #211, #212, #213 and #214 are listed individually. PR references do not close tasks.
+**CORE remains incomplete and unaccepted.** This candidate is based on PR #804 at `5c6bbb4cc7af28fe1a20d0921409749bc74f2487`. The new supervisor source and this corrected ledger are **local/unpublished**; no new implementation PR is invented. #803 and #804 are existing published PRs with partial acceptance still open.
 
-| Task | Issue | Implementation PR | Status / remaining acceptance |
+A PR link names a source contribution, not completion. The 37-row ledger separates partial source from accepted tasks. All acceptance states remain open. The normal CI check validates the recorded inventory; `python3 scripts/check_core_coverage.py --require-accepted` intentionally fails until every task has reviewed acceptance evidence.
+
+See [local worker acceptance and limits](core-worker-supervision-acceptance.md) for executed scenarios and remaining boundaries. A process result is not an external receipt; a yield acknowledgement does not establish GPU eviction.
+
+| Task | Issue | Source PRs / local source | Status and remaining acceptance |
 |---|---|---|---|
 | `CORE-01.T01` — Bootstrap the Rust workspace and architectural checks | #121 | #785 | implemented_pending_acceptance: Initial host checks pass; independent review and merge remain. |
 | `CORE-01.T02` — Define typed identities and value objects | #122 | #786 | implemented_pending_acceptance: Wire representation and provider-resource validation require baseline sign-off. |
 | `CORE-01.T03` — Specify durable core record schemas | #123 | #787 | implemented_pending_acceptance: Complete record-family fixtures and authority semantics remain unaccepted. |
 | `CORE-01.T04` — Build bounded wire framing and errors | #124 | #788 | implemented_pending_acceptance: Stable error-wire representation and full parser/fuzz qualification remain. |
-| `CORE-01.T05` — Authenticate locally launched worker channels | #125 | #789 | implemented_pending_acceptance: Actual spawned-process authentication and registry-owned one-use launch bindings are missing. |
-| `CORE-01.T06` — Implement version negotiation and schema evolution | #126 | #790 | implemented_pending_acceptance: Authenticated production session and validated durable migration integration are missing. |
-| `CORE-01.T07` — Wire cancellation, deadlines and backpressure | #127 | #791 | implemented_pending_acceptance: Real worker cancellation, deadlines, generation fencing and bounded retirement are missing. |
+| `CORE-01.T05` — Authenticate locally launched worker channels | #125 | #789; unpublished supervisor candidate | implemented_pending_acceptance: Real post-spawn peer credentials, one-use bootstrap and role binding are tested locally. Independent threat-boundary review, hostile same-user isolation and platform qualification remain; source is unpublished. |
+| `CORE-01.T06` — Implement version negotiation and schema evolution | #126 | #790; unpublished supervisor candidate | implemented_pending_acceptance: The local supervisor owns the negotiated implemented v1 codec. Durable migration validation, complete version/record-family fixtures and accepted product integration remain; source is unpublished. |
+| `CORE-01.T07` — Wire cancellation, deadlines and backpressure | #127 | #791; unpublished supervisor candidate | implemented_pending_acceptance: Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; source is unpublished. |
 | `CORE-01.T08` — Publish contract conformance and fuzz targets | #128 | #792 | implemented_pending_acceptance: Instrumented fuzz execution, complete schema fixtures and process conformance are missing. |
-| `CORE-02.T01` — Establish database ownership and migrations | #129 | #793 | implemented_pending_acceptance: Profile-wide ownership, filesystem trust boundary and restore validation are missing. |
+| `CORE-02.T01` — Establish database ownership and migrations | #129 | #793 | implemented_pending_acceptance: Transactional migration hardening and authenticated restore primitives exist. Lifetime profile ownership, shared-root isolation and complete platform qualification remain. |
 | `CORE-02.T02` — Model durable operation and journal records | #130 | #794 | implemented_pending_acceptance: Evidence-bound state transitions and original/compensation lineage are missing. |
 | `CORE-02.T03` — Implement transactional outbox dispatch | #131 | #795 | implemented_pending_acceptance: Authority-bound opaque dispatch, fencing and abandoned-attempt recovery are missing. |
 | `CORE-02.T04` — Add inbox deduplication and consumer cursors | #132 | #796 | implemented_pending_acceptance: Source-precondition integration and repair/recovery acceptance are missing. |
-| `CORE-02.T05` — Implement scoped immutable artifact storage | #133 | #797 | implemented_pending_acceptance: Exclusive root ownership, hostile-path protection and platform durability qualification are missing. |
-| `CORE-02.T06` — Implement reference-safe retention and deletion | #134 | #801 | implemented_pending_acceptance: Profile/backup coordination and process/power-loss qualification are missing. |
-| `CORE-02.T07` — Build backup, restore and integrity checks | #135 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-02.T08` — Run storage fault and power-loss qualification | #136 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T01` — Define worker registry and launch specifications | #137 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T02` — Implement process lifecycle and health | #138 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T03` — Implement admission and foreground priorities | #139 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T04` — Enforce platform resource constraints | #140 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T05` — Implement lease-first cancellation and revocation | #141 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T06` — Add crash-loop policy and degraded service | #142 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T07` — Integrate resource observation and cooperative yields | #143 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-03.T08` — Verify supervisor robustness under concurrency | #144 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T01` — Classify every recoverable operation | #145 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T02` — Implement consistent checkpoints | #146 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T03` — Plan startup recovery before dispatch | #147 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T04` — Reconcile local writes and uncertain external state | #148 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T05` — Build no-production replay contexts | #149 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T06` — Implement provider resume and reseeding policy | #150 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T07` — Expose recovery decisions in the task centre | #151 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `CORE-04.T08` — Qualify restart, suspend and corrupt-state cases | #152 | None | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
-| `PROGRAMME.T03` — Freeze core contracts and process authority inventory | #113 | None | blocked: Required integration/ownership/qualification evidence has not been supplied. |
-| `EPIC-CORE.T01` — Agree runtime ownership and wire contracts | #211 | None | blocked: Required integration/ownership/qualification evidence has not been supplied. |
-| `EPIC-CORE.T02` — Integrate durable dispatch and worker supervision | #212 | None | blocked: Required integration/ownership/qualification evidence has not been supplied. |
-| `EPIC-CORE.T03` — Exercise crash and bounded replay end to end | #213 | None | blocked: Required integration/ownership/qualification evidence has not been supplied. |
-| `EPIC-CORE.T04` — Publish runtime operational readiness | #214 | None | blocked: Required integration/ownership/qualification evidence has not been supplied. |
+| `CORE-02.T05` — Implement scoped immutable artifact storage | #133 | #797 | implemented_pending_acceptance: Artifact lifecycle is serialized; #803 adds descriptor-relative snapshot traversal. Exclusive root ownership and all live-artifact path boundaries, plus platform durability, remain unaccepted. |
+| `CORE-02.T06` — Implement reference-safe retention and deletion | #134 | #801 | implemented_pending_acceptance: Snapshot/GC writer exclusion exists in #803. Lifetime profile coordination and process/VM power-loss qualification remain. |
+| `CORE-02.T07` — Build backup, restore and integrity checks | #135 | #803 | implemented_pending_acceptance: Authenticated plaintext snapshots and fail-closed restore are implemented in #803. Key custody/product integration, lifetime profile ownership, activation and platform/power-loss qualification remain. |
+| `CORE-02.T08` — Run storage fault and power-loss qualification | #136 | #803 | partially_implemented: Snapshot interruption/corruption/writer-exclusion tests exist in #803; storage/VM power-loss, disk-full and filesystem qualification are not complete. |
+| `CORE-03.T01` — Define worker registry and launch specifications | #137 | No published implementation; unpublished supervisor candidate | partially_implemented: Verified sealed image/specification and real kernel-peer handshake exist locally. Launch registry is not wired to the durable broker/ownership baseline; hostile-process and multi-platform qualification remain. |
+| `CORE-03.T02` — Implement process lifecycle and health | #138 | No published implementation; unpublished supervisor candidate | partially_implemented: Local real-process readiness, heartbeat/progress/OS-exit classification and cooperative cleanup exist. Production broker/app integration, noncooperative descendant containment and kernel-uninterruptible cleanup are not qualified. |
+| `CORE-03.T03` — Implement admission and foreground priorities | #139 | No published implementation; unpublished supervisor candidate | partially_implemented: Local bounded count/byte queues and CPU/memory admission reservations exist. Reservations are estimates, not aggregate OS containment; native foreground/speech responsiveness and integrated load acceptance remain. |
+| `CORE-03.T04` — Enforce platform resource constraints | #140 | No published implementation; unpublished supervisor candidate | partially_implemented: Linux per-process hard AS/CPU/file limits, NO_NEW_PRIVS and descriptor hygiene are locally tested. Aggregate cgroup/VM/sandbox containment, descendant escape prevention and other platforms remain unsupported; unattended-untrusted launch is rejected. |
+| `CORE-03.T05` — Implement lease-first cancellation and revocation | #141 | No published implementation; unpublished supervisor candidate | partially_implemented: Local generation revocation precedes worker notification; late responses and post-revocation admission are rejected. Actual provider/outbox send is not in this atomic boundary and durable uncertain attempts are not integrated. |
+| `CORE-03.T06` — Add crash-loop policy and degraded service | #142 | No published implementation; unpublished supervisor candidate | partially_implemented: Local bounded backoff/circuit and preserved lifetime with fresh generation are tested. Restart does not replay outstanding requests. Durable checkpoint, budget persistence and production degraded-service integration remain. |
+| `CORE-03.T07` — Integrate resource observation and cooperative yields | #143 | No published implementation; unpublished supervisor candidate | partially_implemented: Bounded content-free process sampling and coalesced yield messages are implemented locally. GPU metrics/enforcement, actual model unload/KV eviction and speech/frontend latency qualification remain absent. |
+| `CORE-03.T08` — Verify supervisor robustness under concurrency | #144 | No published implementation; unpublished supervisor candidate | partially_implemented: Real subprocess churn, saturation, SIGSTOP/SIGCONT, scoped cancellation, late results and cooperative descendants are tested locally. Hostile process-tree escape, supervisor-crash integration, system suspend and cross-platform qualification remain. |
+| `CORE-04.T01` — Classify every recoverable operation | #145 | #804 | partially_implemented: Pure deterministic recovery policy exists in #804; trusted durable-fact/evidence adapters, persisted original/compensation lineage and live integration remain. |
+| `CORE-04.T02` — Implement consistent checkpoints | #146 | No published implementation | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
+| `CORE-04.T03` — Plan startup recovery before dispatch | #147 | #803 | partially_implemented: Restored stores deny dispatch in #803; startup classification, authoritative revalidation and safe activation are not implemented. |
+| `CORE-04.T04` — Reconcile local writes and uncertain external state | #148 | No published implementation | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
+| `CORE-04.T05` — Build no-production replay contexts | #149 | #804 | partially_implemented: Captured-only replay validation exists in #804; credential-isolated worker execution, production dispatch separation and end-to-end recovery qualification remain. |
+| `CORE-04.T06` — Implement provider resume and reseeding policy | #150 | #804 | partially_implemented: Read-only provider resume/reseed planning exists in #804; provider SDK/credential integration and durable resume-attempt accounting remain. |
+| `CORE-04.T07` — Expose recovery decisions in the task centre | #151 | No published implementation | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
+| `CORE-04.T08` — Qualify restart, suspend and corrupt-state cases | #152 | No published implementation | not_implemented: No implementation or task acceptance evidence in the reviewed stack. |
+| `PROGRAMME.T03` — Freeze core contracts and process authority inventory | #113 | No published implementation | blocked: Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance. |
+| `EPIC-CORE.T01` — Agree runtime ownership and wire contracts | #211 | No published implementation | blocked: Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance. |
+| `EPIC-CORE.T02` — Integrate durable dispatch and worker supervision | #212 | No published implementation | blocked: Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance. |
+| `EPIC-CORE.T03` — Exercise crash and bounded replay end to end | #213 | No published implementation | blocked: Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance. |
+| `EPIC-CORE.T04` — Publish runtime operational readiness | #214 | No published implementation | blocked: Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance. |
+
+## Evidence interpretation
+
+The release-mode check validates required evidence shape and refuses unfinished tasks; it does not authenticate reports or certify live behaviour from links. Acceptance needs an independent review of actual source, test outcomes and task-specific limits. Local findings have not been pushed into #802 or any owning PR.
 
 ## Restacked branch verification
 

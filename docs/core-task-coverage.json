@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "programme_issue": 1,
   "epic_issue": 13,
   "parent_issues": [
@@ -64,7 +64,21 @@
         789
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Actual spawned-process authentication and registry-owned one-use launch bindings are missing."
+      "remaining": "Real post-spawn peer credentials, one-use bootstrap and role binding are tested locally. Independent threat-boundary review, hostile same-user isolation and platform qualification remain; source is unpublished.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/wire.rs",
+            "crates/intent-supervisor/src/platform.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 126,
@@ -75,7 +89,20 @@
         790
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Authenticated production session and validated durable migration integration are missing."
+      "remaining": "The local supervisor owns the negotiated implemented v1 codec. Durable migration validation, complete version/record-family fixtures and accepted product integration remain; source is unpublished.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/wire.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 127,
@@ -86,7 +113,21 @@
         791
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Real worker cancellation, deadlines, generation fencing and bounded retirement are missing."
+      "remaining": "Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; source is unpublished.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/lease.rs",
+            "crates/intent-supervisor/src/admission.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 128,
@@ -108,7 +149,7 @@
         793
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Profile-wide ownership, filesystem trust boundary and restore validation are missing."
+      "remaining": "Transactional migration hardening and authenticated restore primitives exist. Lifetime profile ownership, shared-root isolation and complete platform qualification remain."
     },
     {
       "issue": 130,
@@ -152,7 +193,7 @@
         797
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Exclusive root ownership, hostile-path protection and platform durability qualification are missing."
+      "remaining": "Artifact lifecycle is serialized; #803 adds descriptor-relative snapshot traversal. Exclusive root ownership and all live-artifact path boundaries, plus platform durability, remain unaccepted."
     },
     {
       "issue": 134,
@@ -163,25 +204,29 @@
         801
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Profile/backup coordination and process/power-loss qualification are missing."
+      "remaining": "Snapshot/GC writer exclusion exists in #803. Lifetime profile coordination and process/VM power-loss qualification remain."
     },
     {
       "issue": 135,
       "task": "CORE-02.T07",
       "parent_issue": 3,
       "title": "Build backup, restore and integrity checks",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        803
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Authenticated plaintext snapshots and fail-closed restore are implemented in #803. Key custody/product integration, lifetime profile ownership, activation and platform/power-loss qualification remain."
     },
     {
       "issue": 136,
       "task": "CORE-02.T08",
       "parent_issue": 3,
       "title": "Run storage fault and power-loss qualification",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        803
+      ],
+      "status": "partially_implemented",
+      "remaining": "Snapshot interruption/corruption/writer-exclusion tests exist in #803; storage/VM power-loss, disk-full and filesystem qualification are not complete."
     },
     {
       "issue": 137,
@@ -189,8 +234,22 @@
       "parent_issue": 4,
       "title": "Define worker registry and launch specifications",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Verified sealed image/specification and real kernel-peer handshake exist locally. Launch registry is not wired to the durable broker/ownership baseline; hostile-process and multi-platform qualification remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/spec.rs",
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/runtime.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 138,
@@ -198,8 +257,21 @@
       "parent_issue": 4,
       "title": "Implement process lifecycle and health",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Local real-process readiness, heartbeat/progress/OS-exit classification and cooperative cleanup exist. Production broker/app integration, noncooperative descendant containment and kernel-uninterruptible cleanup are not qualified.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/worker.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 139,
@@ -207,8 +279,21 @@
       "parent_issue": 4,
       "title": "Implement admission and foreground priorities",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Local bounded count/byte queues and CPU/memory admission reservations exist. Reservations are estimates, not aggregate OS containment; native foreground/speech responsiveness and integrated load acceptance remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/admission.rs",
+            "crates/intent-supervisor/src/runtime.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 140,
@@ -216,8 +301,21 @@
       "parent_issue": 4,
       "title": "Enforce platform resource constraints",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Linux per-process hard AS/CPU/file limits, NO_NEW_PRIVS and descriptor hygiene are locally tested. Aggregate cgroup/VM/sandbox containment, descendant escape prevention and other platforms remain unsupported; unattended-untrusted launch is rejected.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/spec.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 141,
@@ -225,8 +323,21 @@
       "parent_issue": 4,
       "title": "Implement lease-first cancellation and revocation",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Local generation revocation precedes worker notification; late responses and post-revocation admission are rejected. Actual provider/outbox send is not in this atomic boundary and durable uncertain attempts are not integrated.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/lease.rs",
+            "crates/intent-supervisor/src/runtime.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 142,
@@ -234,8 +345,21 @@
       "parent_issue": 4,
       "title": "Add crash-loop policy and degraded service",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Local bounded backoff/circuit and preserved lifetime with fresh generation are tested. Restart does not replay outstanding requests. Durable checkpoint, budget persistence and production degraded-service integration remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/restart.rs",
+            "crates/intent-supervisor/src/runtime.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 143,
@@ -243,8 +367,21 @@
       "parent_issue": 4,
       "title": "Integrate resource observation and cooperative yields",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Bounded content-free process sampling and coalesced yield messages are implemented locally. GPU metrics/enforcement, actual model unload/KV eviction and speech/frontend latency qualification remain absent.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/runtime.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 144,
@@ -252,17 +389,33 @@
       "parent_issue": 4,
       "title": "Verify supervisor robustness under concurrency",
       "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "status": "partially_implemented",
+      "remaining": "Real subprocess churn, saturation, SIGSTOP/SIGCONT, scoped cancellation, late results and cooperative descendants are tested locally. Hostile process-tree escape, supervisor-crash integration, system suspend and cross-platform qualification remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/wire.rs",
+            "crates/intent-supervisor/src/platform.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance."
+        }
+      ]
     },
     {
       "issue": 145,
       "task": "CORE-04.T01",
       "parent_issue": 5,
       "title": "Classify every recoverable operation",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        804
+      ],
+      "status": "partially_implemented",
+      "remaining": "Pure deterministic recovery policy exists in #804; trusted durable-fact/evidence adapters, persisted original/compensation lineage and live integration remain."
     },
     {
       "issue": 146,
@@ -278,9 +431,11 @@
       "task": "CORE-04.T03",
       "parent_issue": 5,
       "title": "Plan startup recovery before dispatch",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        803
+      ],
+      "status": "partially_implemented",
+      "remaining": "Restored stores deny dispatch in #803; startup classification, authoritative revalidation and safe activation are not implemented."
     },
     {
       "issue": 148,
@@ -296,18 +451,22 @@
       "task": "CORE-04.T05",
       "parent_issue": 5,
       "title": "Build no-production replay contexts",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        804
+      ],
+      "status": "partially_implemented",
+      "remaining": "Captured-only replay validation exists in #804; credential-isolated worker execution, production dispatch separation and end-to-end recovery qualification remain."
     },
     {
       "issue": 150,
       "task": "CORE-04.T06",
       "parent_issue": 5,
       "title": "Implement provider resume and reseeding policy",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        804
+      ],
+      "status": "partially_implemented",
+      "remaining": "Read-only provider resume/reseed planning exists in #804; provider SDK/credential integration and durable resume-attempt accounting remain."
     },
     {
       "issue": 151,
@@ -334,7 +493,7 @@
       "title": "Freeze core contracts and process authority inventory",
       "implementation_prs": [],
       "status": "blocked",
-      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
     },
     {
       "issue": 211,
@@ -343,7 +502,7 @@
       "title": "Agree runtime ownership and wire contracts",
       "implementation_prs": [],
       "status": "blocked",
-      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
     },
     {
       "issue": 212,
@@ -352,7 +511,7 @@
       "title": "Integrate durable dispatch and worker supervision",
       "implementation_prs": [],
       "status": "blocked",
-      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
     },
     {
       "issue": 213,
@@ -361,7 +520,7 @@
       "title": "Exercise crash and bounded replay end to end",
       "implementation_prs": [],
       "status": "blocked",
-      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
     },
     {
       "issue": 214,
@@ -370,7 +529,12 @@
       "title": "Publish runtime operational readiness",
       "implementation_prs": [],
       "status": "blocked",
-      "remaining": "Required integration/ownership/qualification evidence has not been supplied."
+      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
     }
-  ]
+  ],
+  "reviewed_remote_head": "5c6bbb4cc7af28fe1a20d0921409749bc74f2487",
+  "local_candidate": {
+    "publication": "unpublished",
+    "scope": "Linux cooperative worker supervisor and acceptance regressions; not published to GitHub and not CORE completion."
+  }
 }
