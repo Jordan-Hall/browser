@@ -287,6 +287,16 @@ impl StateStore {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let managed: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM recovery_actions WHERE operation_id=?1)",
+            [operation_id.to_string()],
+            |row| row.get(0),
+        )?;
+        if managed {
+            return Err(StateError::InvalidStoredOperation(
+                "managed actions require checked runtime transitions".to_owned(),
+            ));
+        }
         let current = load_operation_from_connection(&transaction, operation_id)?
             .ok_or(StateError::OperationNotFound(operation_id))?;
 

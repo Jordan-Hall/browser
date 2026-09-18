@@ -333,6 +333,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         name: "consistent_workspace_checkpoints",
         sql: MIGRATION_008,
     },
+    Migration {
+        version: 9,
+        name: "durable_recovery_authority_and_attempts",
+        sql: include_str!("durable_recovery/migration.sql"),
+    },
 ];
 
 pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), StateError> {

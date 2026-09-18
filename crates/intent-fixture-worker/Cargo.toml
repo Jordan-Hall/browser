@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+intent-broker = { path = "../intent-broker" }
 intent-ipc = { path = "../intent-ipc" }
 intent-contracts = { path = "../intent-contracts" }
 intent-supervisor = { path = "../intent-supervisor" }
@@ -17,6 +18,11 @@ uuid.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix.workspace = true
+
+[dev-dependencies]
+intent-state = { path = "../intent-state" }
+intent-recovery = { path = "../intent-recovery" }
+hmac.workspace = true
 
 [lints]
 workspace = true
