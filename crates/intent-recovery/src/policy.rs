@@ -72,6 +72,7 @@ pub struct AttemptBinding {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RecordedOutcome {
     Inconclusive,
+    ReadCompleted { capture: ContentHash },
     ProvenNotCommitted,
     AcceptedUnverified,
     ExternalCommitted { receipt: ContentHash },
@@ -127,6 +128,7 @@ pub enum ObservedOutcome {
     OriginalCommitted,
     CompensationCommitted,
     LocalCommitted,
+    ReadCompleted,
     Conflict,
 }
 
@@ -134,8 +136,10 @@ pub enum ObservedOutcome {
 #[serde(rename_all = "snake_case")]
 pub enum RecoveryDisposition {
     UnsupportedManualRecovery,
+    RestoreHistoryUncertain,
     BlockedInvalidFacts,
     NoReplayKnownCommit,
+    NoReplayCapturedRead,
     NoReplayCompensationConfirmed,
     NoReplayLocalCommit,
     TerminalWithoutReplay,
@@ -156,6 +160,7 @@ pub enum RecoveryDisposition {
 pub enum RequiredEvidence {
     None,
     SupportedVersionAndEffect,
+    IndependentRollbackDomainHistory,
     ConsistentAttemptLineage,
     CurrentAuthorityAndFreshPreconditions,
     LocalBeforeAfterVersions,
@@ -259,8 +264,9 @@ pub fn classify_recovery(facts: &RecoveryFacts, now: UnixTimestampMicros) -> Rec
         || facts
             .idempotency
             .is_some_and(|value| Some(value.binding) != binding);
-    let invalid_outcome = (facts.idempotency.is_some()
-        && facts.effect != RecoveryEffect::ExternalWrite)
+    let invalid_outcome = (facts.effect != RecoveryEffect::ReadOnly
+        && matches!(outcome, Some(RecordedOutcome::ReadCompleted { .. })))
+        || (facts.idempotency.is_some() && facts.effect != RecoveryEffect::ExternalWrite)
         || (facts.effect == RecoveryEffect::LocalReversible
             && matches!(outcome, Some(RecordedOutcome::ExternalCommitted { .. })))
         || matches!(outcome, Some(RecordedOutcome::Contradictory))
@@ -291,6 +297,9 @@ pub fn classify_recovery(facts: &RecoveryFacts, now: UnixTimestampMicros) -> Rec
         );
     }
 
+    if matches!(outcome, Some(RecordedOutcome::ReadCompleted { .. })) {
+        return facts.decision(O::ReadCompleted, D::NoReplayCapturedRead, E::None);
+    }
     // Strong bound commit evidence wins over a lost response, expired grant or
     // cancelled worker. None of those observations undoes an external effect.
     if matches!(outcome, Some(RecordedOutcome::ExternalCommitted { .. })) {

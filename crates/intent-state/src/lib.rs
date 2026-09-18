@@ -2,6 +2,12 @@
 #![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
 
 mod artifacts;
+mod recovery_error;
+pub use recovery_error::RecoveryError;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod durable_recovery;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub use durable_recovery::*;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 mod checkpoints;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]

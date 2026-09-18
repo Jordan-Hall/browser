@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+intent-recovery = { path = "../intent-recovery" }
 intent-contracts = { path = "../intent-contracts" }
 rusqlite.workspace = true
 serde.workspace = true

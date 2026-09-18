@@ -65,7 +65,7 @@
         805
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Real post-spawn peer credentials, one-use bootstrap and role binding are tested locally. Independent threat-boundary review, hostile same-user isolation and platform qualification remain; source is unpublished.",
+      "remaining": "Real post-spawn peer credentials, one-use bootstrap and role binding are tested locally. Independent threat-boundary review, hostile same-user isolation and platform qualification remain; the source is published in #805.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -92,7 +92,7 @@
         805
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "The local supervisor owns the negotiated implemented v1 codec. Durable migration validation, complete version/record-family fixtures and accepted product integration remain; source is unpublished.",
+      "remaining": "The local supervisor owns the negotiated implemented v1 codec. Durable migration validation, complete version/record-family fixtures and accepted product integration remain; the source is published in #805.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -118,7 +118,7 @@
         805
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; source is unpublished.",
+      "remaining": "Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; the source is published in #805.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -152,10 +152,26 @@
       "parent_issue": 3,
       "title": "Establish database ownership and migrations",
       "implementation_prs": [
-        793
+        793,
+        807
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Transactional migration hardening and authenticated restore primitives exist. Lifetime profile ownership, shared-root isolation and complete platform qualification remain."
+      "remaining": "A Linux profile owner locks both the private directory and database inode in #807; transactional migrations and restore fencing are tested. All live artifact root/path isolation, uncooperative writers and platform qualification remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 130,
@@ -163,10 +179,26 @@
       "parent_issue": 3,
       "title": "Model durable operation and journal records",
       "implementation_prs": [
-        794
+        794,
+        807
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Evidence-bound state transitions and original/compensation lineage are missing."
+      "remaining": "Immutable original/compensation operation and attempt lineage, signed evidence and checked transitions are implemented in #807. Independent review and live broker/provider adapter qualification remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 131,
@@ -174,10 +206,26 @@
       "parent_issue": 3,
       "title": "Implement transactional outbox dispatch",
       "implementation_prs": [
-        795
+        795,
+        807
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Authority-bound opaque dispatch, fencing and abandoned-attempt recovery are missing."
+      "remaining": "Managed opaque claims, exact approved bytes, current authority/source/worker checks and durable attempt start are implemented in #807; generic file dispatch cannot bypass them. Actual supervisor/broker transport integration and independent review remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 132,
@@ -229,10 +277,26 @@
       "parent_issue": 3,
       "title": "Run storage fault and power-loss qualification",
       "implementation_prs": [
-        803
+        803,
+        807
       ],
       "status": "partially_implemented",
-      "remaining": "Snapshot interruption/corruption/writer-exclusion tests exist in #803; storage/VM power-loss, disk-full and filesystem qualification are not complete."
+      "remaining": "Snapshot, checkpoint and four durable-dispatch process-kill phases are tested in #803/#806/#807. Actual VM/power-loss, disk-full and complete filesystem qualification remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 137,
@@ -341,10 +405,11 @@
       "parent_issue": 4,
       "title": "Implement lease-first cancellation and revocation",
       "implementation_prs": [
-        805
+        805,
+        807
       ],
       "status": "partially_implemented",
-      "remaining": "Local generation revocation precedes worker notification; late responses and post-revocation admission are rejected. Actual provider/outbox send is not in this atomic boundary and durable uncertain attempts are not integrated.",
+      "remaining": "#805 supplies local revocation; #807 supplies durable worker-generation checks and revocation. The actual broker must join these boundaries and qualify control latency and in-flight effects.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -357,6 +422,19 @@
           ],
           "scope": "Linux approved/cooperative worker process boundary and local regression evidence only; not external-effect authorization or whole-task acceptance.",
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
+        },
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
         }
       ]
     },
@@ -442,22 +520,40 @@
       "parent_issue": 5,
       "title": "Classify every recoverable operation",
       "implementation_prs": [
-        804
+        804,
+        807
       ],
       "status": "partially_implemented",
-      "remaining": "Pure deterministic recovery policy exists in #804; trusted durable-fact/evidence adapters, persisted original/compensation lineage and live integration remain."
+      "remaining": "Pure classification in #804 is now fed durable actions, capability effect policies, attempts, evidence, source/authority facts and compensation linkage in #807. Trusted live adapters and independent acceptance remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 146,
       "task": "CORE-04.T02",
       "parent_issue": 5,
       "title": "Implement consistent checkpoints",
-      "implementation_prs": [],
-      "status": "partially_implemented",
-      "remaining": "Independent review and acceptance of the published checkpoint implementation and its declared limits; live startup/broker/provider integrations and platform/power-loss qualification remain separate open gates.",
+      "implementation_prs": [
+        806
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "#806 implements immutable bounded graph/cursor/operation checkpoints and protected pins. Independent acceptance and platform/power-loss qualification remain; startup integration is in #807.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "scope": "Atomic bounded domain-graph checkpoints with complete operation/cursor capture, verified artifact pins, idempotent publication, protected release, authenticated snapshot round-trip and real process-kill regression.",
           "source_files": [
             "crates/intent-state/src/checkpoints.rs",
@@ -466,7 +562,8 @@
           ],
           "test_files": [
             "crates/intent-state/src/checkpoints/tests.rs"
-          ]
+          ],
+          "commit": "85f5e8a3578e7f90f34597f616dc49c9df130166"
         }
       ]
     },
@@ -476,19 +573,52 @@
       "parent_issue": 5,
       "title": "Plan startup recovery before dispatch",
       "implementation_prs": [
-        803
+        803,
+        807
       ],
       "status": "partially_implemented",
-      "remaining": "Restored stores deny dispatch in #803; startup classification, authoritative revalidation and safe activation are not implemented."
+      "remaining": "#807 implements a lifetime profile owner, startup epoch fence, bounded durable plans, per-action reauthorization and guarded activation. Restored writes remain blocked pending independent rollback-domain history; live broker/product integration and independent acceptance remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 148,
       "task": "CORE-04.T04",
       "parent_issue": 5,
       "title": "Reconcile local writes and uncertain external state",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        807
+      ],
+      "status": "partially_implemented",
+      "remaining": "#807 implements exact-attempt authenticated read-only attestations, idempotent/conflicting outcome handling, local before/after and separate compensation lineage. Actual trusted provider/local evidence adapters and independent acceptance remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 149,
@@ -517,18 +647,52 @@
       "task": "CORE-04.T07",
       "parent_issue": 5,
       "title": "Expose recovery decisions in the task centre",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        807
+      ],
+      "status": "partially_implemented",
+      "remaining": "#807 provides typed recovery views and current-epoch/revision-checked controls with no blind Retry. Native task-centre rendering, trusted bridge and end-to-end UI acceptance remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 152,
       "task": "CORE-04.T08",
       "parent_issue": 5,
       "title": "Qualify restart, suspend and corrupt-state cases",
-      "implementation_prs": [],
-      "status": "not_implemented",
-      "remaining": "No implementation or task acceptance evidence in the reviewed stack."
+      "implementation_prs": [
+        807
+      ],
+      "status": "partially_implemented",
+      "remaining": "#807 adds actual kills around dispatch and a pre-effect-snapshot rollback test against an independent external ledger. System suspend, complete corrupt-state/disk-failure/provider scenarios and platform qualification remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 113,
@@ -544,27 +708,78 @@
       "task": "EPIC-CORE.T01",
       "parent_issue": 13,
       "title": "Agree runtime ownership and wire contracts",
-      "implementation_prs": [],
-      "status": "blocked",
-      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
+      "implementation_prs": [
+        807
+      ],
+      "status": "partially_implemented",
+      "remaining": "Existing contracts/checkpoints plus #807 owner and authority/attempt boundaries provide implementation inputs. Complete accepted ownership inventory, real broker wiring and review remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 212,
       "task": "EPIC-CORE.T02",
       "parent_issue": 13,
       "title": "Integrate durable dispatch and worker supervision",
-      "implementation_prs": [],
-      "status": "blocked",
-      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
+      "implementation_prs": [
+        807
+      ],
+      "status": "partially_implemented",
+      "remaining": "#807 supplies durable approval, opaque claim, attempt and revocation gates over #805/#806. Actual supervisor/broker send/result integration and accepted end-to-end evidence remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 213,
       "task": "EPIC-CORE.T03",
       "parent_issue": 13,
       "title": "Exercise crash and bounded replay end to end",
-      "implementation_prs": [],
-      "status": "blocked",
-      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance."
+      "implementation_prs": [
+        807
+      ],
+      "status": "partially_implemented",
+      "remaining": "#806/#807 add real checkpoint/dispatch interruption and independent rollback-domain tests. Complete credential-isolated replay, supervisor integration and system/VM fault qualification remain.",
+      "implementation_evidence": [
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-state/src/durable_recovery/mod.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs",
+            "crates/intent-state/src/durable_recovery/evidence.rs",
+            "crates/intent-state/src/durable_recovery/planner.rs"
+          ],
+          "test_files": [
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
+        }
+      ]
     },
     {
       "issue": 214,

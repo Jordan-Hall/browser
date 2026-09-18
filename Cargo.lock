@@ -270,6 +270,7 @@ dependencies = [
  "getrandom 0.3.4",
  "hmac",
  "intent-contracts",
+ "intent-recovery",
  "nix",
  "rusqlite",
  "serde",
