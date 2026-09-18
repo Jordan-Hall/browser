@@ -6,8 +6,7 @@ use intent_contracts::{
 };
 use intent_state::{
     ArtifactScope, CheckpointGraph, CheckpointRequest, StateStore, WorkspaceCheckpointError,
-    WorkspaceCheckpointId, WorkspaceCheckpointRequest,
-    workspace_checkpoints::WorkspaceGraph,
+    WorkspaceCheckpointId, WorkspaceCheckpointRequest, workspace_checkpoints::WorkspaceGraph,
 };
 use std::{error::Error, fs, os::unix::fs::DirBuilderExt, path::PathBuf};
 use uuid::Uuid;
