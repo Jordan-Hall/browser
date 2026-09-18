@@ -1,5 +1,5 @@
 [package]
-name = "intent-fixture-worker"
+name = "intent-state"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,15 +7,16 @@ license.workspace = true
 publish = false
 
 [dependencies]
-intent-ipc = { path = "../intent-ipc" }
 intent-contracts = { path = "../intent-contracts" }
-intent-supervisor = { path = "../intent-supervisor" }
-intent-local-transport = { path = "../intent-local-transport" }
+rusqlite.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+hmac.workspace = true
+getrandom.workspace = true
 sha2.workspace = true
 uuid.workspace = true
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
 nix.workspace = true
 
 [lints]

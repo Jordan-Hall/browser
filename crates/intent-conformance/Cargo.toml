@@ -1,22 +1,18 @@
 [package]
-name = "intent-fixture-worker"
+name = "intent-conformance"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+build = "build.rs"
 
 [dependencies]
-intent-ipc = { path = "../intent-ipc" }
 intent-contracts = { path = "../intent-contracts" }
-intent-supervisor = { path = "../intent-supervisor" }
+intent-ipc = { path = "../intent-ipc" }
 intent-local-transport = { path = "../intent-local-transport" }
+serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
-uuid.workspace = true
-
-[target.'cfg(target_os = "linux")'.dependencies]
-nix.workspace = true
 
 [lints]
 workspace = true
