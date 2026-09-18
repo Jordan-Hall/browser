@@ -21,7 +21,7 @@ def now():
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 def api(url):
-    if not url.startswith(BASE):
+    if not (url.lower().startswith(BASE.lower()) or url.startswith("https://api.github.com/repositories/1371315992/")):
         raise ValueError("Request must stay inside the selected repository")
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "browser-project-document-export"}
     if os.environ.get("GH_TOKEN"):
