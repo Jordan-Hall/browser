@@ -290,6 +290,8 @@ INSERT INTO runtime_control(singleton, epoch, dispatch_enabled, reason)
 VALUES (1, '00000000-0000-0000-0000-000000000000', 0, 'startup recovery required');
 "#;
 
+const MIGRATION_008: &str = include_str!("checkpoints/migration.sql");
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -325,6 +327,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 7,
         name: "durable_runtime_dispatch_barrier",
         sql: MIGRATION_007,
+    },
+    Migration {
+        version: 8,
+        name: "consistent_workspace_checkpoints",
+        sql: MIGRATION_008,
     },
 ];
 

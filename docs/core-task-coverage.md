@@ -78,3 +78,7 @@ Formatting, Clippy with warnings denied, unit/integration tests, doctests and th
 The two additional fixes in this pass reject duplicate JSON keys (including equivalent escaped keys) before typed payload parsing, and reject invalid artifact-reference inserts instead of reporting a retention pin that does not exist. They are owned by #788/#124 and #797/#133 respectively.
 
 No production release, merge, issue closure or blanket review resolution is authorized by this matrix.
+
+## Checkpoint implementation follow-through
+
+CORE-04.T02 / #146 now has local source in `crates/intent-state/src/checkpoints.rs`, additive migration 008, typed checkpoint records and a 21-test regression suite including process death and authenticated backup restore. This change records implementation, not acceptance. Publication identity and the exact remote CI run will be recorded on its owning PR. The previously preserved supervisor source is published in #805 at `3bfdbc0f679e37368f5d8e04975390bb4d862295`; its Linux CI run 35336466160 passes. Earlier source snapshots and their counts above are historical, not an all-tasks completion declaration.

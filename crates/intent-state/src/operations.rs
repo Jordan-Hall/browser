@@ -6,7 +6,8 @@ use intent_contracts::{
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use std::str::FromStr;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DurableOperationState {
     Prepared,
     Approved,
@@ -462,7 +463,7 @@ fn append_journal(
     Ok(())
 }
 
-fn load_operation_from_connection(
+pub(crate) fn load_operation_from_connection(
     connection: &rusqlite::Connection,
     operation_id: OperationId,
 ) -> Result<Option<DurableOperation>, StateError> {
