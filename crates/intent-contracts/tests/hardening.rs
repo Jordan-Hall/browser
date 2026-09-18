@@ -1,4 +1,8 @@
-use intent_contracts::{BoundedText, CurrencyCode, CurrencyScale, KnownCurrencyScale, Money};
+use intent_contracts::{
+    ActionProposal, ActionProposalDescriptor, ApprovalRequirement, ArtifactReference, BoundedText,
+    ByteSize, CapabilityEffectClass, ContentHash, CurrencyCode, CurrencyScale, KnownCurrencyScale,
+    Money,
+};
 use serde_json::{Value, json};
 use std::error::Error;
 
@@ -57,6 +61,47 @@ fn money_rejects_ambiguous_spellings_and_numeric_json() -> Result<(), Box<dyn Er
         value["minor_units"] = invalid;
         assert!(serde_json::from_value::<Money>(value).is_err());
     }
+    Ok(())
+}
+
+fn proposal() -> Result<ActionProposal, Box<dyn Error>> {
+    let id = "018f47f7-5a86-7c00-8000-000000000401";
+    Ok(ActionProposal::new(
+        id.parse()?,
+        id.parse()?,
+        id.parse()?,
+        id.parse()?,
+        ActionProposalDescriptor {
+            canonical_arguments: ArtifactReference::new(
+                id.parse()?,
+                ContentHash::from_bytes([1; 32]),
+                ByteSize::from_bytes(2),
+                BoundedText::try_new("application/json")?,
+            ),
+            effect_class: CapabilityEffectClass::IrreversibleOrUncertain,
+            approval_requirement: ApprovalRequirement::Always,
+        },
+    ))
+}
+
+#[test]
+fn proposal_construction_and_wire_enforce_the_same_hash_binding() -> Result<(), Box<dyn Error>> {
+    let proposal = proposal()?;
+    let value = serde_json::to_value(&proposal)?;
+    assert_eq!(
+        value["arguments_hash"],
+        value["canonical_arguments"]["content_hash"]
+    );
+    assert_eq!(
+        serde_json::from_value::<ActionProposal>(value.clone())?,
+        proposal
+    );
+    let mut mismatched = value.clone();
+    mismatched["arguments_hash"] = json!("00".repeat(32));
+    assert!(serde_json::from_value::<ActionProposal>(mismatched).is_err());
+    let mut unknown = value;
+    unknown["destination_override"] = json!("unsupported restriction");
+    assert!(serde_json::from_value::<ActionProposal>(unknown).is_err());
     Ok(())
 }
 

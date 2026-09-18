@@ -34,12 +34,20 @@ jobs:
         id: dependencies
         run: |
           test -f Cargo.lock || cargo generate-lockfile
+          test -f fuzz/Cargo.lock || cargo generate-lockfile --manifest-path fuzz/Cargo.toml
 
       - name: Require committed, unchanged lockfiles
         id: lockfiles
         run: |
-          git ls-files --error-unmatch Cargo.lock
-          git diff --exit-code -- Cargo.lock
+          git ls-files --error-unmatch Cargo.lock fuzz/Cargo.lock
+          git diff --exit-code -- Cargo.lock fuzz/Cargo.lock
+
+      - name: Check CORE task coverage
+        id: core_coverage
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: |
+          python3 -m unittest discover -s scripts/tests -v
+          python3 scripts/check_core_coverage.py
 
       - name: Check formatting
         id: format
@@ -61,10 +69,22 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: cargo test --locked --workspace --doc --no-fail-fast
 
+      - name: Check excluded fuzz targets
+        id: fuzz_compile
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: cargo check --locked --manifest-path fuzz/Cargo.toml --bins
+
       - name: Check architecture boundaries
         id: architecture
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: cargo run --locked -p intent-xtask -- arch-check
+
+      - name: Run core contract smoke conformance
+        id: conformance
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: |
+          mkdir -p target/conformance
+          cargo run --locked -p intent-conformance --quiet > target/conformance/core-contracts.json
 
       - name: Retain verification outcomes and exact build inputs
         if: ${{ always() && steps.checkout.outcome == 'success' }}
