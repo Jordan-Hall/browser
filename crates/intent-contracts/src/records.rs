@@ -113,6 +113,11 @@ pub struct GoalContract {
 
 impl GoalContract {
     #[must_use]
+    pub const fn goal_contract_id(&self) -> GoalContractId {
+        self.id
+    }
+
+    #[must_use]
     pub fn new(
         id: GoalContractId,
         original_request: BoundedText<16384>,
@@ -191,6 +196,16 @@ pub struct Workspace {
 
 impl Workspace {
     #[must_use]
+    pub const fn workspace_id(&self) -> WorkspaceId {
+        self.id
+    }
+
+    #[must_use]
+    pub const fn goal_contract_id(&self) -> Option<GoalContractId> {
+        self.goal_contract_id
+    }
+
+    #[must_use]
     pub const fn new(
         id: WorkspaceId,
         title: BoundedText<512>,
@@ -248,6 +263,31 @@ pub struct Task {
 }
 
 impl Task {
+    #[must_use]
+    pub const fn task_id(&self) -> TaskId {
+        self.id
+    }
+
+    #[must_use]
+    pub const fn workspace_id(&self) -> WorkspaceId {
+        self.workspace_id
+    }
+
+    #[must_use]
+    pub const fn goal_contract_id(&self) -> Option<GoalContractId> {
+        self.goal_contract_id
+    }
+
+    #[must_use]
+    pub fn result_artifacts(&self) -> &[ArtifactReference] {
+        &self.result_artifacts
+    }
+
+    #[must_use]
+    pub fn required_capabilities(&self) -> &[CapabilityId] {
+        &self.required_capabilities
+    }
+
     #[must_use]
     pub const fn new(
         id: TaskId,

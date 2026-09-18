@@ -166,6 +166,12 @@ impl WorkerConfig {
             restart,
         })
     }
+    pub fn capabilities(&self) -> impl Iterator<Item = CapabilityId> + '_ {
+        self.capabilities.iter().copied()
+    }
+    pub const fn lifetime(&self) -> Duration {
+        self.lifetime
+    }
     pub const fn scope(&self) -> WorkerScope {
         self.scope
     }

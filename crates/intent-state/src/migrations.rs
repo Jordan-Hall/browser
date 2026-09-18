@@ -291,6 +291,8 @@ VALUES (1, '00000000-0000-0000-0000-000000000000', 0, 'startup recovery required
 "#;
 
 const MIGRATION_008: &str = include_str!("checkpoints/schema.sql");
+const MIGRATION_009: &str = include_str!("workspace_checkpoints/migration.sql");
+const MIGRATION_010: &str = include_str!("durable_recovery/migration.sql");
 
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -332,6 +334,16 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 8,
         name: "consistent_task_checkpoints",
         sql: MIGRATION_008,
+    },
+    Migration {
+        version: 9,
+        name: "consistent_workspace_checkpoints",
+        sql: MIGRATION_009,
+    },
+    Migration {
+        version: 10,
+        name: "durable_recovery_authority",
+        sql: MIGRATION_010,
     },
 ];
 

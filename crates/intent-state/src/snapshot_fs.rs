@@ -116,6 +116,36 @@ impl Directory {
         Ok(names)
     }
 
+    pub fn lock_profile(&self) -> io::Result<File> {
+        self.0
+            .try_lock()
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        let file = File::from(openat(
+            &self.0,
+            "state.sqlite3",
+            OFlag::O_RDWR
+                | OFlag::O_CREAT
+                | OFlag::O_NOFOLLOW
+                | OFlag::O_CLOEXEC
+                | OFlag::O_NONBLOCK,
+            Mode::from_bits_truncate(0o600),
+        )?);
+        let metadata = file.metadata()?;
+        if !metadata.is_file()
+            || metadata.nlink() != 1
+            || metadata.uid() != geteuid().as_raw()
+            || metadata.mode() & 0o077 != 0
+        {
+            return Err(invalid(
+                "profile database must be a private, singly linked regular file",
+            ));
+        }
+        file.try_lock()
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        self.sync()?;
+        Ok(file)
+    }
+
     pub fn sqlite_path(&self) -> PathBuf {
         PathBuf::from(format!(
             "/proc/self/fd/{}/state.sqlite3",

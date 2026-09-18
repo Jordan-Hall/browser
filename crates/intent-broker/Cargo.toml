@@ -1,5 +1,5 @@
 [package]
-name = "intent-state"
+name = "intent-broker"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,18 +7,16 @@ license.workspace = true
 publish = false
 
 [dependencies]
-intent-recovery = { path = "../intent-recovery" }
 intent-contracts = { path = "../intent-contracts" }
-rusqlite.workspace = true
+intent-ipc = { path = "../intent-ipc" }
+intent-local-transport = { path = "../intent-local-transport" }
+intent-recovery = { path = "../intent-recovery" }
+intent-state = { path = "../intent-state" }
+intent-supervisor = { path = "../intent-supervisor" }
 serde.workspace = true
 serde_json.workspace = true
-hmac.workspace = true
-getrandom.workspace = true
 sha2.workspace = true
 uuid.workspace = true
-
-[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
-nix.workspace = true
 
 [lints]
 workspace = true
