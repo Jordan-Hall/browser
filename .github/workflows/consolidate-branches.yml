@@ -1,0 +1,59 @@
+name: Audit branch consolidation
+on:
+  push:
+    branches: [maintenance/consolidate-20260918]
+    paths: [.github/workflows/consolidate-branches.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Inspect ancestry and conflicts without running repository code
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/Jordan-Hall/browser.git work
+          cd work
+          git config core.hooksPath /dev/null
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          def git(*args, check=True):
+              return subprocess.run(['git', *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=check)
+          target = git('rev-parse', 'origin/main').stdout.strip()
+          records = []
+          for line in git('for-each-ref', '--format=%(refname:strip=3) %(objectname)', 'refs/remotes/origin').stdout.splitlines():
+              branch, sha = line.split(' ', 1)
+              if branch == 'HEAD':
+                  continue
+              records.append({'branch': branch, 'sha': sha, 'ancestor_of_main': git('merge-base', '--is-ancestor', sha, target, check=False).returncode == 0, 'ahead_of_main': int(git('rev-list', '--count', target+'..'+sha).stdout)})
+          audit = {'main': target, 'branches': records, 'merges': []}
+          diffs = []
+          for branch in ['core-04-t02-consistent-checkpoints', 'core-01-record-validation-20260918']:
+              git('checkout', '--detach', target)
+              result = git('merge', '--no-commit', '--no-ff', 'origin/'+branch, check=False)
+              paths = git('diff', '--name-only', '--diff-filter=U').stdout.splitlines()
+              audit['merges'].append({'branch': branch, 'returncode': result.returncode, 'output': result.stdout, 'conflicts': paths, 'stages': git('ls-files', '--unmerged').stdout})
+              diffs.append('### '+branch+'\n'+git('diff', '--no-ext-diff', '--cc').stdout)
+              git('merge', '--abort', check=False)
+              git('reset', '--hard', target)
+          git('checkout', '--detach', os.environ['GITHUB_SHA'])
+          Path('consolidation-audit.json').write_text(json.dumps(audit, indent=2)+'\n')
+          Path('consolidation-conflicts.diff').write_text('\n'.join(diffs))
+          git('add', '--', 'consolidation-audit.json', 'consolidation-conflicts.diff')
+          git('commit', '-m', 'chore: record branch ancestry and unresolved merge hunks')
+          PY
+      - name: Publish audit only to the isolated maintenance branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin HEAD:refs/heads/maintenance/consolidate-20260918
