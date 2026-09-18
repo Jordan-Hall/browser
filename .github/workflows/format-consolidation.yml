@@ -1,0 +1,43 @@
+name: Format consolidation candidate
+on:
+  push:
+    branches: [maintenance/format-consolidation-20260918]
+    paths: [.github/workflows/format-consolidation.yml]
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Format source without building or executing application code
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/Jordan-Hall/browser.git work
+          cd work
+          git config core.hooksPath /dev/null
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --detach "$GITHUB_SHA"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          cargo +1.98.1 fmt --all
+          cargo +1.98.1 fmt --manifest-path fuzz/Cargo.toml -- --check
+          python3 - <<'PY'
+          import subprocess
+          allowed = {'crates/intent-state/src/lib.rs', 'crates/intent-state/src/consolidation_migration_tests.rs', 'crates/intent-state/tests/checkpoint_consolidation.rs'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          assert changed <= allowed, changed
+          PY
+          git rm .github/workflows/format-consolidation.yml
+          git add -- crates/intent-state
+          git diff --cached --check
+          git commit -m 'style: format consolidated exports and migration regressions; remove temporary formatter'
+      - name: Publish only to the isolated formatting branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          git -c credential.helper= -c 'credential.helper=!f() { printf "username=x-access-token\npassword=%s\n" "$GH_TOKEN"; }; f' push origin HEAD:refs/heads/maintenance/format-consolidation-20260918
