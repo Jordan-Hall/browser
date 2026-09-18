@@ -5,6 +5,42 @@ use intent_recovery::RecoveryEffect;
 use rusqlite::{OptionalExtension, params};
 
 impl RuntimeOwner {
+    /// Snapshot-only preflight; claim/start still recheck all authority under the writer lock.
+    pub fn dispatch_metadata(
+        &self,
+        outbox: OutboxMessageId,
+    ) -> Result<DispatchMetadata, RecoveryError> {
+        let tx = self.store.connection.unchecked_transaction()?;
+        current_epoch(&tx, self.epoch, true)?;
+        let row: Option<(String, String, i64, i64, String, String)> = tx.query_row(
+            "SELECT a.operation_id,a.attempt_id,p.deadline_micros,length(p.payload),p.destination,p.message_kind FROM recovery_attempts a JOIN recovery_actions p ON p.operation_id=a.operation_id WHERE a.outbox_id=?1 AND a.runtime_epoch=?2 AND a.started_at_micros IS NULL AND length(CAST(p.destination AS BLOB))<=512 AND length(CAST(p.message_kind AS BLOB))<=128",
+            params![outbox.to_string(), self.epoch.to_string()],
+            |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)),
+        ).optional()?;
+        let (operation, attempt, deadline, size, destination, kind) =
+            row.ok_or(RecoveryError::Denied("no current unsent managed attempt"))?;
+        let op = load(&tx, parse(&operation)?)?;
+        let attempt_id = parse(&attempt)?;
+        if op.state() != DurableOperationState::DispatchPending
+            || op.attempt_identity() != Some(attempt_id)
+        {
+            return Err(RecoveryError::Denied("operation no longer dispatchable"));
+        }
+        let result = DispatchMetadata {
+            operation_id: op.operation_id(),
+            attempt_id,
+            task_id: op.task_id(),
+            account_id: op.account_id(),
+            capability_id: op.capability_id(),
+            deadline: UnixTimestampMicros::try_new(deadline)
+                .map_err(|_| RecoveryError::Integrity("action deadline"))?,
+            payload_bytes: unsigned(size)?,
+            routing_json_bytes: (serde_json::to_string(&destination)?.len()
+                + serde_json::to_string(&kind)?.len()) as u64,
+        };
+        tx.commit()?;
+        Ok(result)
+    }
     pub fn prepare_action(
         &mut self,
         action: RecoverableAction,

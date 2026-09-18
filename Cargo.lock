@@ -199,6 +199,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "intent-broker"
+version = "0.1.0"
+dependencies = [
+ "intent-contracts",
+ "intent-ipc",
+ "intent-local-transport",
+ "intent-recovery",
+ "intent-state",
+ "intent-supervisor",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
 name = "intent-conformance"
 version = "0.1.0"
 dependencies = [
@@ -222,9 +238,13 @@ dependencies = [
 name = "intent-fixture-worker"
 version = "0.1.0"
 dependencies = [
+ "hmac",
+ "intent-broker",
  "intent-contracts",
  "intent-ipc",
  "intent-local-transport",
+ "intent-recovery",
+ "intent-state",
  "intent-supervisor",
  "nix",
  "serde_json",

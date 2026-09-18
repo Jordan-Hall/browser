@@ -821,6 +821,47 @@ impl Supervisor {
         permit: RequestPermit,
         input: BoundedText<4096>,
     ) -> Result<(), SupervisorError> {
+        self.submit_inner(permit, input, false)
+    }
+    /// Checks capacity without consuming the permit or starting a durable attempt.
+    pub fn can_submit_immediate(&self, permit: &RequestPermit) -> Result<(), SupervisorError> {
+        let entry = self
+            .entries
+            .get(&permit.generation())
+            .ok_or(SupervisorError::UnknownWorker)?;
+        permit.validate(&entry.lease, Instant::now())?;
+        if entry.state != WorkerState::Ready {
+            return Err(SupervisorError::InvalidState);
+        }
+        if entry.pending.len() + entry.observations.len() >= MAX_PENDING_REQUESTS
+            || entry.pending.contains_key(&permit.request_id)
+            || entry.observations.contains_key(&permit.request_id)
+            || !entry
+                .control
+                .socket
+                .as_ref()
+                .is_some_and(FramedSocket::idle)
+        {
+            return Err(SupervisorError::QueueFull);
+        }
+        Ok(())
+    }
+    /// Starts a bounded socket write now, without entering the best-effort work queue.
+    /// An error can follow a partial write; callers must retain the durable attempt as uncertain.
+    pub fn submit_immediate(
+        &mut self,
+        permit: RequestPermit,
+        input: BoundedText<4096>,
+    ) -> Result<(), SupervisorError> {
+        self.can_submit_immediate(&permit)?;
+        self.submit_inner(permit, input, true)
+    }
+    fn submit_inner(
+        &mut self,
+        permit: RequestPermit,
+        input: BoundedText<4096>,
+        immediate: bool,
+    ) -> Result<(), SupervisorError> {
         let now = Instant::now();
         let entry = self
             .entries
@@ -850,7 +891,7 @@ impl Supervisor {
         let pending = PendingRequest {
             sequence: permit.sequence(),
             expires: permit.expires,
-            sent: false,
+            sent: immediate,
         };
         let envelope = Envelope::request(
             TraceId::from_uuid(Uuid::new_v4()),
@@ -869,6 +910,21 @@ impl Supervisor {
         .with_deadline(deadline)
         .with_cancellation_id(CancellationId::from_uuid(entry.generation.as_uuid()));
         let bytes = encode_envelope(&envelope, entry.control.codec.as_ref())?;
+        if immediate {
+            let socket = entry
+                .control
+                .socket
+                .as_mut()
+                .ok_or(SupervisorError::InvalidState)?;
+            socket.queue(bytes)?;
+            entry.pending.insert(request_id, pending);
+            entry.progress_at = now;
+            if let Err(error) = socket.flush(4096) {
+                entry.fail(now, WorkerFailure::OsFailure);
+                return Err(error.into());
+            }
+            return Ok(());
+        }
         self.queues.enqueue(
             entry.config.priority,
             ScheduledMessage {
