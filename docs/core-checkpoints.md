@@ -97,3 +97,5 @@ Process kills do not qualify abrupt VM/power loss. Native task-centre integratio
 authoritative graph mutation, profile ownership, fresh authority/source checks,
 startup activation, reconciliation and whole-task acceptance remain separate
 requirements. No acceptance checkbox is changed merely by adding these tests.
+
+Publication: PR #808; initial source commit `de2832606f7fcc31513f1f81ac3d497845a92e10`. Remote source CI is recorded in the PR after it actually executes.

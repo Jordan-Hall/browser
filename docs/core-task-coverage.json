@@ -218,13 +218,14 @@
       "parent_issue": 3,
       "title": "Build backup, restore and integrity checks",
       "implementation_prs": [
-        803
+        803,
+        808
       ],
       "status": "implemented_pending_acceptance",
       "remaining": "Authenticated plaintext snapshots and fail-closed restore are implemented in #803. Key custody/product integration, lifetime profile ownership, activation and platform/power-loss qualification remain.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/snapshots.rs",
             "crates/intent-state/src/migrations.rs"
@@ -233,7 +234,8 @@
             "crates/intent-state/src/snapshots/tests.rs",
             "crates/intent-state/src/checkpoints/tests.rs"
           ],
-          "scope": "Authenticated version-7 to version-8 restore, checkpoint/retention preservation and real process kills around commit; not VM/power-loss qualification."
+          "scope": "Authenticated version-7 to version-8 restore, checkpoint/retention preservation and real process kills around commit; not VM/power-loss qualification.",
+          "commit": "de2832606f7fcc31513f1f81ac3d497845a92e10"
         }
       ]
     },
@@ -243,13 +245,14 @@
       "parent_issue": 3,
       "title": "Run storage fault and power-loss qualification",
       "implementation_prs": [
-        803
+        803,
+        808
       ],
       "status": "partially_implemented",
       "remaining": "Snapshot interruption/corruption/writer-exclusion tests exist in #803; storage/VM power-loss, disk-full and filesystem qualification are not complete.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/snapshots.rs",
             "crates/intent-state/src/migrations.rs"
@@ -258,7 +261,8 @@
             "crates/intent-state/src/snapshots/tests.rs",
             "crates/intent-state/src/checkpoints/tests.rs"
           ],
-          "scope": "Authenticated version-7 to version-8 restore, checkpoint/retention preservation and real process kills around commit; not VM/power-loss qualification."
+          "scope": "Authenticated version-7 to version-8 restore, checkpoint/retention preservation and real process kills around commit; not VM/power-loss qualification.",
+          "commit": "de2832606f7fcc31513f1f81ac3d497845a92e10"
         }
       ]
     },
@@ -480,12 +484,14 @@
       "task": "CORE-04.T02",
       "parent_issue": 5,
       "title": "Implement consistent checkpoints",
-      "implementation_prs": [],
-      "status": "partially_implemented",
-      "remaining": "Checkpoint storage, CAS graph revision, dependency verification, retention ownership and process-interruption tests implemented in this candidate; publication, runtime graph integration and independent whole-task acceptance remain open.",
+      "implementation_prs": [
+        808
+      ],
+      "status": "implemented_pending_acceptance",
+      "remaining": "Checkpoint storage, CAS graph revision, dependency verification, retention ownership and process-interruption regressions are published; live runtime graph integration and independent whole-task acceptance remain open.",
       "implementation_evidence": [
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-state/src/checkpoints.rs",
             "crates/intent-state/src/checkpoints/schema.sql"
@@ -493,7 +499,8 @@
           "test_files": [
             "crates/intent-state/src/checkpoints/tests.rs"
           ],
-          "scope": "Atomic historical task checkpoints with exact operation/cursor observations and protected artifact pins; never execution authority."
+          "scope": "Atomic historical task checkpoints with exact operation/cursor observations and protected artifact pins; never execution authority.",
+          "commit": "de2832606f7fcc31513f1f81ac3d497845a92e10"
         }
       ]
     },
