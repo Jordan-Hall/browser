@@ -610,7 +610,16 @@ fn authenticated_version_seven_snapshot_upgrades_only_the_private_restore_candid
         "INSERT INTO store_metadata(singleton,store_uuid,created_unix_seconds) VALUES (1,?1,0)",
         [store_id.to_string()],
     )?;
-    let epoch = disable_snapshot_dispatch(&legacy)?;
+    // Construct the original v7 export barrier without invoking a v10 helper.
+    // The recovery restore fence does not exist in this historical schema.
+    let epoch = Uuid::new_v4();
+    assert_eq!(
+        legacy.execute(
+            "UPDATE runtime_control SET epoch=?1, dispatch_enabled=0, reason='legacy snapshot: recovery required' WHERE singleton=1",
+            [epoch.to_string()],
+        )?,
+        1
+    );
     validate_database_version(&legacy, false)?;
     assert!(validate_database(&legacy).is_err());
     legacy.close().map_err(|(_, e)| e)?;
@@ -640,11 +649,19 @@ fn authenticated_version_seven_snapshot_upgrades_only_the_private_restore_candid
         SnapshotLimits::default(),
     )?;
     assert_eq!(restored.source_schema_version, 7);
-    assert_eq!(restored.schema_version, 8);
+    assert_eq!(restored.schema_version, 10);
     assert_ne!(restored.runtime_epoch, epoch);
     let copy = StateStore::open(f.restored().join("state.sqlite3"))?;
     assert!(!copy.dispatch_status()?.enabled);
     assert_eq!(copy.store_id()?, store_id);
+    assert_eq!(
+        copy.connection.query_row(
+            "SELECT required FROM recovery_restore_fence WHERE singleton=1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?,
+        1
+    );
     assert_eq!(
         copy.connection
             .query_row("SELECT COUNT(*) FROM task_checkpoints", [], |r| r
