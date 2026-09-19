@@ -367,6 +367,7 @@ impl StateStore {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn load_outbox(
         &self,
         outbox_id: OutboxMessageId,
