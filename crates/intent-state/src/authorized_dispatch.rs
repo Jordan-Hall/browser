@@ -21,7 +21,9 @@ pub enum AuthorizedDispatchError {
 impl fmt::Display for AuthorizedDispatchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::State(error) => write!(formatter, "state error while authorizing dispatch: {error}"),
+            Self::State(error) => {
+                write!(formatter, "state error while authorizing dispatch: {error}")
+            }
             Self::Outbox(error) => write!(formatter, "outbox error after authorization: {error}"),
             Self::OperationNotFound(operation_id) => {
                 write!(formatter, "durable operation {operation_id} does not exist")
@@ -99,10 +101,14 @@ impl StateStore {
             return Err(AuthorizedDispatchError::TargetBindingUnsupported);
         }
         if approval.action_proposal_id() != proposal.action_proposal_id() {
-            return Err(AuthorizedDispatchError::BindingMismatch("approval proposal id"));
+            return Err(AuthorizedDispatchError::BindingMismatch(
+                "approval proposal id",
+            ));
         }
         if approval.exact_arguments_hash() != proposal.arguments_hash() {
-            return Err(AuthorizedDispatchError::BindingMismatch("approval argument hash"));
+            return Err(AuthorizedDispatchError::BindingMismatch(
+                "approval argument hash",
+            ));
         }
         if proposal
             .expires_at()
@@ -138,10 +144,10 @@ mod tests {
         OutboxState, StateStore,
     };
     use intent_contracts::{
-        AccountId, ActionProposal, ActionProposalDescriptor, ActionProposalId, Approval, ApprovalId,
-        ApprovalRequirement, ApprovalState, ArtifactReference, BoundedText, ByteSize, CapabilityEffectClass,
-        CapabilityId, ContentHash, OperationAttemptId, OperationId, OutboxMessageId, SchemaVersion,
-        TaskId, UnixTimestampMicros,
+        AccountId, ActionProposal, ActionProposalDescriptor, ActionProposalId, Approval,
+        ApprovalId, ApprovalRequirement, ApprovalState, ArtifactReference, BoundedText, ByteSize,
+        CapabilityEffectClass, CapabilityId, ContentHash, OperationAttemptId, OperationId,
+        OutboxMessageId, SchemaVersion, TaskId, UnixTimestampMicros,
     };
     use serde_json::json;
     use std::error::Error;
@@ -158,9 +164,7 @@ mod tests {
     }
 
     fn account_id() -> Result<AccountId, Box<dyn Error>> {
-        Ok(AccountId::from_str(
-            "018f47f7-5a86-7c00-8000-000000000a03",
-        )?)
+        Ok(AccountId::from_str("018f47f7-5a86-7c00-8000-000000000a03")?)
     }
 
     fn capability_id() -> Result<CapabilityId, Box<dyn Error>> {
