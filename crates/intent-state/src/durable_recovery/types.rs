@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+/// Canonicalization contract for immutable action bytes admitted by the durable broker.
+pub const ACTION_CANONICALIZATION_VERSION: u16 = 1;
+
 /// Supplied only by the trusted account/policy and read-only source adapters.
 #[derive(Clone, Debug)]
 pub struct AuthorityUpdate {
@@ -33,6 +36,7 @@ pub struct RecoverableAction {
     pub scope: ArtifactScope,
     pub effect: RecoveryEffect,
     pub source_revision: ContentHash,
+    pub canonicalization_version: u16,
     pub destination: BoundedText<512>,
     pub message_kind: BoundedText<128>,
     pub payload: Vec<u8>,
