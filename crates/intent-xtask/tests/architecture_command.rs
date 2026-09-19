@@ -26,7 +26,7 @@ fn actual_checker_rejects_target_specific_dependency_renamed_to_an_allowed_name(
     )?;
     fs::write(
         root.0.join("contracts/Cargo.toml"),
-        "[package]\nname=\"intent-contracts\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[target.'cfg(any())'.dependencies]\nserde={package=\"provider-fixture\",path=\"../provider\"}\n",
+        "[package]\nname=\"intent-contracts\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[target.'cfg(all())'.dependencies]\nserde={package=\"provider-fixture\",path=\"../provider\"}\n",
     )?;
     fs::write(
         root.0.join("provider/Cargo.toml"),
