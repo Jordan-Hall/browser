@@ -1,7 +1,10 @@
-use crate::{DurableOperationState, NewOutboxMessage, OutboxError, StateError, StateStore};
+use crate::{
+    DurableOperationState, NewOutboxMessage, OutboxError, OutboxMessage, OutboxState, StateError,
+    StateStore,
+};
 use intent_contracts::{
-    ActionProposal, Approval, ApprovalState, ContentHash, OperationAttemptId, OperationId,
-    OutboxMessageId, UnixTimestampMicros,
+    ActionProposal, Approval, ApprovalState, BoundedText, ContentHash, OperationAttemptId,
+    OperationId, OutboxMessageId, UnixTimestampMicros,
 };
 use sha2::{Digest, Sha256};
 use std::error::Error;
@@ -104,6 +107,42 @@ fn hash_payload(payload: &[u8]) -> ContentHash {
     ContentHash::from_bytes(Sha256::digest(payload).into())
 }
 
+struct ExpectedStoredOutbox<'a> {
+    outbox_id: OutboxMessageId,
+    operation_id: OperationId,
+    attempt_identity: OperationAttemptId,
+    destination: &'a BoundedText<512>,
+    message_kind: &'a BoundedText<128>,
+    payload_hash: ContentHash,
+    staged_at: UnixTimestampMicros,
+}
+
+fn verify_stored_outbox_projection(
+    stored: &OutboxMessage,
+    expected: ExpectedStoredOutbox<'_>,
+) -> Result<(), AuthorizedDispatchError> {
+    let exact_projection = stored.outbox_id() == expected.outbox_id
+        && stored.operation_id() == expected.operation_id
+        && stored.attempt_identity() == expected.attempt_identity
+        && stored.destination() == expected.destination
+        && stored.message_kind() == expected.message_kind
+        && stored.payload_hash() == expected.payload_hash
+        && hash_payload(stored.payload()) == expected.payload_hash
+        && stored.state() == OutboxState::Pending
+        && stored.lease_owner().is_none()
+        && stored.lease_expires_at().is_none()
+        && stored.dispatch_started_at().is_none()
+        && stored.created_at() == expected.staged_at
+        && stored.updated_at() == expected.staged_at;
+    if exact_projection {
+        Ok(())
+    } else {
+        Err(AuthorizedDispatchError::BindingMismatch(
+            "persisted outbox projection",
+        ))
+    }
+}
+
 impl StateStore {
     /// Stage an outbox message only when persisted records and exact payload bytes agree.
     ///
@@ -160,7 +199,8 @@ impl StateStore {
                 "payload byte size",
             ));
         }
-        if hash_payload(&new.payload) != proposal.arguments_hash() {
+        let payload_hash = hash_payload(&new.payload);
+        if payload_hash != proposal.arguments_hash() {
             return Err(AuthorizedDispatchError::BindingMismatch("payload hash"));
         }
         if proposal.target_resource().is_some() {
@@ -203,8 +243,23 @@ impl StateStore {
             attempt_identity: new.attempt_identity,
             created_at: new.created_at,
         };
-        self.stage_outbox(new, expected_operation_revision)
+        let expected_destination = new.destination.clone();
+        let expected_message_kind = new.message_kind.clone();
+        let stored = self
+            .stage_outbox(new, expected_operation_revision)
             .map_err(AuthorizedDispatchError::from)?;
+        verify_stored_outbox_projection(
+            &stored,
+            ExpectedStoredOutbox {
+                outbox_id: staged.outbox_id,
+                operation_id: staged.operation_id,
+                attempt_identity: staged.attempt_identity,
+                destination: &expected_destination,
+                message_kind: &expected_message_kind,
+                payload_hash,
+                staged_at: staged.created_at,
+            },
+        )?;
         Ok(staged)
     }
 }
