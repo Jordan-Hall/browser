@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T03 and CORE-02.T03 incremental record binding; not task acceptance",
+  "pr": 820,
+  "source_commit": "24cca47273cca5b7e6480ff281a56af2bbc142e6",
+  "source_tree": "e1f42fb3bddcd00363a912ef9203d0cf17adda5f",
+  "base_commit": "06c8b5694e01105afc2b800476c98a9b5084dae1",
+  "tested_merge_commit": "9568b3d9e0a9ac2563b5e1777a4372bee224d43b",
+  "source_sha256": {
+    "crates/intent-state/src/authorized_dispatch.rs": "427457d67c7c7a5639b53e470840b1a9396116543fb882c7c0370332614a4d93",
+    "crates/intent-state/src/authorized_dispatch/tests/rejection_regressions.rs": "c61da8603566b6c8cf16be942208aef2cc54bae184f7d9a4746892af53ca0353",
+    "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "local": {
+    "toolchain": "1.98.1",
+    "offline_inputs_artifact": 10519784480,
+    "locked": true,
+    "workspace_test_results": 340,
+    "doctests": 12,
+    "new_regression_tests": 7,
+    "record_binding_tests": 12,
+    "python_tests": 25,
+    "checks": [
+      "workspace and fuzz formatting",
+      "strict workspace Clippy",
+      "workspace targets",
+      "workspace doctests",
+      "fuzz compilation only",
+      "architecture checker",
+      "contract conformance",
+      "coverage inventory"
+    ],
+    "before_fix": "On the previous exact source, both new staging-time rejection tests failed; the oversized-input regression also failed because the payload was rejected with a later binding error instead of the upfront size-budget error.",
+    "after_fix": "All 12 record-binding tests passed. The full workspace and helper checks completed successfully.",
+    "ignored_helper": "The owned-process observation child entry point is ignored by default and invoked by its passing parent test; it is not counted as an independent passing test.",
+    "require_accepted": {
+      "exit_code": 1,
+      "unaccepted_tasks": 37
+    }
+  },
+  "ci": {
+    "run_id": 35439127274,
+    "conclusion": "success",
+    "jobs": {
+      "rust_checks": 105886783412,
+      "ubuntu_24_04": 105886783489,
+      "windows_2025": 105886783936,
+      "macos_15": 105886783485
+    },
+    "artifact_id": 10582404617,
+    "archive_sha256": "b590a6dd35cbe783f40a9bda042f335d8621652e46448058f9a9c3220e87541b",
+    "source_archive_tree_verified": true
+  },
+  "fuzz": {
+    "run_id": 35439127267,
+    "conclusion": "success",
+    "scope": "bounded parser smoke, not authorization qualification",
+    "toolchain": "nightly-2026-09-17",
+    "cargo_fuzz": "0.13.2",
+    "sanitizer": "address",
+    "seconds_per_target": 60,
+    "seed": 183726,
+    "max_input_bytes": 65536,
+    "rss_limit_mb": 1024,
+    "targets": [
+      {
+        "target": "frame_decoder",
+        "job_id": 105886783341,
+        "artifact_id": 10583172301,
+        "archive_sha256": "b09fb689941ae44e2f2c2e0242473b6d766a2281cc691af1d8da834089aa5c1a",
+        "execution": {
+          "returncode": 0,
+          "instrumentation_observed": true,
+          "executed_units": 2461521,
+          "max_reported_coverage": 120,
+          "result": "success"
+        }
+      },
+      {
+        "target": "control_envelope",
+        "job_id": 105886783421,
+        "artifact_id": 10583063854,
+        "archive_sha256": "429cc8713231de4f09ab8a6eb4f30c0aa15331753ee33e3edb0692f2229d912d",
+        "execution": {
+          "returncode": 0,
+          "instrumentation_observed": true,
+          "executed_units": 4028353,
+          "max_reported_coverage": 1728,
+          "result": "success"
+        }
+      },
+      {
+        "target": "record_codec",
+        "job_id": 105886783420,
+        "artifact_id": 10583233576,
+        "archive_sha256": "2ec84000a40ffc63b4445ca1c168aa53f89008c9a7eb4d1dc914cd98d166ee30",
+        "execution": {
+          "returncode": 0,
+          "instrumentation_observed": true,
+          "executed_units": 2238312,
+          "max_reported_coverage": 6775,
+          "result": "success"
+        }
+      }
+    ]
+  },
+  "review": {
+    "requested_comment": 5741303583,
+    "response_comment": 5741304480,
+    "result": "Codex review unavailable because usage quota was exhausted. No independent approval or task sign-off is claimed.",
+    "source_findings_addressed": [
+      5741203117,
+      5741277435
+    ]
+  },
+  "remaining": [
+    "Record equality and imported Approved DTOs do not grant runtime-owner authority or user consent.",
+    "The raw legacy stage_outbox primitive remains public; canonical transport destination, durable target, source preconditions and canonicalization-version binding remain open.",
+    "The file-backed denial regression exercises the legacy dispatch gate, not end-to-end provider or trusted-runtime qualification.",
+    "Native portable tests do not establish non-Linux supervisor ownership, hostile same-user isolation or power-loss durability.",
+    "Every existing CORE acceptance requirement and independent sign-off remains in force."
+  ],
+  "accepted": false,
+  "production_ready": false
+}

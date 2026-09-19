@@ -2,6 +2,7 @@
 #![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
 
 mod artifacts;
+mod authorized_dispatch;
 mod directory_sync;
 mod recovery_error;
 pub use recovery_error::RecoveryError;
@@ -32,6 +33,7 @@ mod outbox;
 mod provider_recovery;
 mod retention;
 mod runtime_gate;
+pub use authorized_dispatch::AuthorizedDispatchError;
 pub use provider_recovery::*;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 mod snapshot_fs;
