@@ -30,11 +30,26 @@ const FORBIDDEN_DEPENDENCY_PREFIXES: &[&str] = &[
 #[derive(Debug, Deserialize)]
 struct Metadata {
     packages: Vec<Package>,
+    workspace_members: Vec<String>,
+    resolve: Option<Resolve>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Resolve {
+    nodes: Vec<ResolveNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolveNode {
+    id: String,
+    dependencies: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Package {
+    id: String,
     name: String,
+    source: Option<String>,
     dependencies: Vec<Dependency>,
 }
 
@@ -72,7 +87,12 @@ fn run() -> Result<(), Box<dyn Error>> {
 
 fn architecture_check() -> Result<(), Box<dyn Error>> {
     let output = Command::new("cargo")
-        .args(["metadata", "--locked", "--format-version=1", "--no-deps"])
+        .args([
+            "metadata",
+            "--locked",
+            "--format-version=1",
+            "--all-features",
+        ])
         .output()?;
 
     if !output.status.success() {
@@ -88,17 +108,15 @@ fn architecture_check() -> Result<(), Box<dyn Error>> {
 }
 
 fn validate_contract_dependencies(metadata: &Metadata) -> Result<(), Vec<String>> {
-    let Some(contracts) = metadata
-        .packages
-        .iter()
-        .find(|package| package.name == CONTRACTS_PACKAGE)
-    else {
+    let Some(contracts) = metadata.packages.iter().find(|package| {
+        package.name == CONTRACTS_PACKAGE && metadata.workspace_members.contains(&package.id)
+    }) else {
         return Err(vec![format!(
-            "required package `{CONTRACTS_PACKAGE}` is missing from cargo metadata"
+            "required package `{CONTRACTS_PACKAGE}` is missing from cargo workspace members"
         )]);
     };
 
-    let violations: Vec<String> = contracts
+    let mut violations: Vec<String> = contracts
         .dependencies
         .iter()
         .filter(|dependency| is_forbidden_contract_dependency(dependency))
@@ -110,6 +128,37 @@ fn validate_contract_dependencies(metadata: &Metadata) -> Result<(), Vec<String>
         })
         .collect();
 
+    let resolved = metadata
+        .resolve
+        .as_ref()
+        .and_then(|resolve| resolve.nodes.iter().find(|node| node.id == contracts.id));
+    match resolved {
+        Some(node) => {
+            for dependency_id in &node.dependencies {
+                match metadata
+                    .packages
+                    .iter()
+                    .find(|package| package.id == *dependency_id)
+                {
+                    Some(package) => {
+                        if is_forbidden_contract_package(&package.name, package.source.as_deref()) {
+                            violations.push(format!(
+                                "`{CONTRACTS_PACKAGE}` resolved dependency `{}` has an unreviewed package or source: `{}`",
+                                package.name, package.id
+                            ));
+                        }
+                    }
+                    None => violations.push(format!(
+                        "resolved dependency `{dependency_id}` is missing from cargo metadata"
+                    )),
+                }
+            }
+        }
+        None => violations.push(format!(
+            "resolved dependency graph for `{CONTRACTS_PACKAGE}` is missing from cargo metadata"
+        )),
+    }
+
     if violations.is_empty() {
         Ok(())
     } else {
@@ -118,17 +167,16 @@ fn validate_contract_dependencies(metadata: &Metadata) -> Result<(), Vec<String>
 }
 
 fn is_forbidden_contract_dependency(dependency: &Dependency) -> bool {
-    if dependency.path.is_some()
-        || dependency.source.as_deref()
-            != Some("registry+https://github.com/rust-lang/crates.io-index")
-    {
-        return true;
-    }
+    dependency.path.is_some()
+        || is_forbidden_contract_package(&dependency.name, dependency.source.as_deref())
+}
 
-    FORBIDDEN_DEPENDENCY_PREFIXES
-        .iter()
-        .any(|prefix| dependency.name.starts_with(prefix))
-        || !matches!(dependency.name.as_str(), "serde" | "serde_json" | "uuid")
+fn is_forbidden_contract_package(name: &str, source: Option<&str>) -> bool {
+    source != Some("registry+https://github.com/rust-lang/crates.io-index")
+        || FORBIDDEN_DEPENDENCY_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+        || !matches!(name, "serde" | "serde_json" | "uuid")
 }
 
 #[cfg(test)]
@@ -197,3 +245,6 @@ mod hardening_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod resolution_tests;
