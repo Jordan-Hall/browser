@@ -86,11 +86,13 @@ class CoverageTests(unittest.TestCase):
             temp = Path(directory)
             root = temp / "repo"
             root.mkdir()
-            outside = temp / "outside.rs"
+            target = temp / "outside-target"
+            target.mkdir()
+            outside = target / "outside.rs"
             outside.write_text("not repository source")
             if os.name == "nt":
                 link = root / "outside"
-                command = f'mklink /J "{link}" "{temp}" >NUL'
+                command = f'mklink /J "{link}" "{target}" >NUL'
                 subprocess.run(
                     ["cmd.exe", "/d", "/s", "/c", command],
                     check=True, capture_output=True, timeout=10,
