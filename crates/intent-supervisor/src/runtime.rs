@@ -1,11 +1,11 @@
 use crate::{
     AdmissionBook, AdmissionLimits, BootstrapPacket, ChannelHello, ChannelKind, ControlMessage,
-    ExecutableImage, ProcessObservation, ProgressMessage, RequestPermit, RestartBudget,
-    RestartDecision, RevocationReceipt, ScheduledMessage, SchedulerLimits, SupervisorError,
-    WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
+    ExecutableImage, HealthPolicy, ProcessObservation, ProgressMessage, RequestPermit,
+    RestartBudget, RestartDecision, RevocationReceipt, ScheduledMessage, SchedulerLimits,
+    SupervisorError, WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
     observation::observe_unreaped,
     platform::ManagedChild,
-    wire::{FramedSocket, ReadOutcome, decode, encode_envelope, encode_event, offer},
+    wire::{FramedSocket, ReadBudget, ReadOutcome, decode, encode_envelope, encode_event, offer},
 };
 use intent_contracts::{
     BoundedText, CancellationId, ContentHash, RequestId, SchemaVersion, TaskId, TraceId,
@@ -39,6 +39,23 @@ use std::{
 use uuid::Uuid;
 
 const MAX_PENDING_REQUESTS: usize = 32;
+const MAX_READ_BYTES_PER_POLL: usize = 32 * 1024;
+
+fn next_read_cursor(
+    read_start: usize,
+    worker_count: usize,
+    last_serviced_offset: Option<usize>,
+    first_blocked_offset: Option<usize>,
+) -> usize {
+    if worker_count == 0 {
+        return 0;
+    }
+    // A partially serviced entry must get a full window next time. Otherwise
+    // the same boundary entry can be budget-blocked on every poll indefinitely.
+    let advance = first_blocked_offset
+        .unwrap_or_else(|| last_serviced_offset.map_or(1, |offset| offset.saturating_add(1)));
+    read_start.wrapping_add(advance) % worker_count
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkerState {
@@ -59,6 +76,51 @@ pub enum WorkerFailure {
     OsExit,
     OsFailure,
 }
+#[derive(Clone, Copy, Debug)]
+struct HealthAges {
+    starting: Duration,
+    heartbeat: Duration,
+    progress: Duration,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct HealthReadBlocks {
+    control: bool,
+    progress: bool,
+}
+
+fn health_failure_after_reads(
+    state: WorkerState,
+    ages: HealthAges,
+    has_sent_pending: bool,
+    policy: HealthPolicy,
+    blocked: HealthReadBlocks,
+) -> Option<WorkerFailure> {
+    match state {
+        WorkerState::Starting
+            if !blocked.control
+                && !blocked.progress
+                && ages.starting >= policy.handshake_timeout =>
+        {
+            Some(WorkerFailure::HandshakeTimeout)
+        }
+        WorkerState::Ready if !blocked.control && ages.heartbeat >= policy.heartbeat_timeout => {
+            Some(WorkerFailure::HeartbeatTimeout)
+        }
+        // Work progress can arrive as either an Observed control response or
+        // a WorkProgress message. Heartbeats, however, use only the control lane.
+        WorkerState::Ready
+            if !blocked.control
+                && !blocked.progress
+                && has_sent_pending
+                && ages.progress >= policy.work_progress_timeout =>
+        {
+            Some(WorkerFailure::ProgressTimeout)
+        }
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WorkerSnapshot {
     pub generation: WorkerInstanceId,
@@ -210,6 +272,7 @@ impl Lane {
         channel: ChannelKind,
         generation: WorkerInstanceId,
         rejected: &mut u64,
+        read_budget: &mut ReadBudget,
     ) -> Result<(), SupervisorError> {
         if self.socket.is_none() {
             for _ in 0..4 {
@@ -240,8 +303,7 @@ impl Lane {
         let Some(socket) = self.socket.as_mut() else {
             return Ok(());
         };
-        let mut budget = 4096;
-        match socket.read_one(&mut budget)? {
+        match read_budget.read_one(socket, 4096)? {
             ReadOutcome::Pending => Ok(()),
             ReadOutcome::Closed => Err(SupervisorError::Protocol),
             ReadOutcome::Frame(frame) => {
@@ -364,7 +426,11 @@ impl Entry {
             Some(failure),
         );
     }
-    fn poll(&mut self, now: Instant) -> Result<bool, SupervisorError> {
+    fn poll(
+        &mut self,
+        now: Instant,
+        read_budget: &mut ReadBudget,
+    ) -> Result<bool, SupervisorError> {
         if self.reaped {
             return Ok(false);
         }
@@ -392,45 +458,49 @@ impl Entry {
         if self.lease.is_revoked() && self.stop_at.is_none() {
             self.stop(now, CancellationId::from_uuid(Uuid::new_v4()), None);
         }
-        match self.state {
-            WorkerState::Starting
-                if now.duration_since(self.started) >= self.config.health.handshake_timeout =>
-            {
-                self.fail(now, WorkerFailure::HandshakeTimeout)
-            }
-            WorkerState::Ready
-                if now.duration_since(self.heartbeat) >= self.config.health.heartbeat_timeout =>
-            {
-                self.fail(now, WorkerFailure::HeartbeatTimeout)
-            }
-            WorkerState::Ready
-                if self.pending.values().any(|r| r.sent)
-                    && now.duration_since(self.progress_at)
-                        >= self.config.health.work_progress_timeout =>
-            {
-                self.fail(now, WorkerFailure::ProgressTimeout)
-            }
-            _ => {}
-        }
+        let mut blocked = HealthReadBlocks::default();
         if self.state == WorkerState::Starting {
+            let before = read_budget.blocked_reads();
             self.control.poll_authentication(
                 self.child.id(),
                 ChannelKind::Control,
                 self.generation,
                 &mut self.rejected_peers,
+                read_budget,
             )?;
+            blocked.control |= read_budget.blocked_reads() != before;
+            let before = read_budget.blocked_reads();
             self.progress.poll_authentication(
                 self.child.id(),
                 ChannelKind::Progress,
                 self.generation,
                 &mut self.rejected_peers,
+                read_budget,
             )?;
+            blocked.progress |= read_budget.blocked_reads() != before;
         }
         if self.control.identity.is_some() {
-            self.read_control(now)?;
+            let before = read_budget.blocked_reads();
+            self.read_control(now, read_budget)?;
+            blocked.control |= read_budget.blocked_reads() != before;
         }
         if self.progress.identity.is_some() {
-            self.read_progress(now)?;
+            let before = read_budget.blocked_reads();
+            self.read_progress(now, read_budget)?;
+            blocked.progress |= read_budget.blocked_reads() != before;
+        }
+        if let Some(failure) = health_failure_after_reads(
+            self.state,
+            HealthAges {
+                starting: now.duration_since(self.started),
+                heartbeat: now.duration_since(self.heartbeat),
+                progress: now.duration_since(self.progress_at),
+            },
+            self.pending.values().any(|request| request.sent),
+            self.config.health,
+            blocked,
+        ) {
+            self.fail(now, failure);
         }
         if let Some(stop) = self.stop_at {
             if let Some(socket) = self.control.socket.as_mut()
@@ -489,13 +559,20 @@ impl Entry {
         }
         Ok(false)
     }
-    fn read_control(&mut self, now: Instant) -> Result<(), SupervisorError> {
+    fn read_control(
+        &mut self,
+        now: Instant,
+        read_budget: &mut ReadBudget,
+    ) -> Result<(), SupervisorError> {
         let Some(socket) = self.control.socket.as_mut() else {
             return Ok(());
         };
-        let mut budget = 8192;
+        let mut lane_budget = 8192;
         for _ in 0..8 {
-            let frame = match socket.read_one(&mut budget)? {
+            let before = read_budget.consumed();
+            let outcome = read_budget.read_one(socket, lane_budget)?;
+            lane_budget = lane_budget.saturating_sub(read_budget.consumed().saturating_sub(before));
+            let frame = match outcome {
                 ReadOutcome::Pending => break,
                 ReadOutcome::Closed => {
                     if self.stop_at.is_none() {
@@ -580,13 +657,20 @@ impl Entry {
         }
         Ok(())
     }
-    fn read_progress(&mut self, now: Instant) -> Result<(), SupervisorError> {
+    fn read_progress(
+        &mut self,
+        now: Instant,
+        read_budget: &mut ReadBudget,
+    ) -> Result<(), SupervisorError> {
         let Some(socket) = self.progress.socket.as_mut() else {
             return Ok(());
         };
-        let mut budget = 4096;
+        let mut lane_budget = 4096;
         for _ in 0..4 {
-            let frame = match socket.read_one(&mut budget)? {
+            let before = read_budget.consumed();
+            let outcome = read_budget.read_one(socket, lane_budget)?;
+            lane_budget = lane_budget.saturating_sub(read_budget.consumed().saturating_sub(before));
+            let frame = match outcome {
                 ReadOutcome::Pending | ReadOutcome::Closed => break,
                 ReadOutcome::Frame(frame) => frame,
             };
@@ -620,6 +704,7 @@ pub struct Supervisor {
     queues: WorkQueues,
     namespace: Namespace,
     max_entries: usize,
+    read_cursor: usize,
     metrics_cursor: usize,
 }
 impl Supervisor {
@@ -634,6 +719,7 @@ impl Supervisor {
             queues: WorkQueues::new(scheduler),
             namespace: Namespace::new(runtime_parent)?,
             max_entries: limits.workers() * 2,
+            read_cursor: 0,
             metrics_cursor: 0,
         })
     }
@@ -1008,11 +1094,26 @@ impl Supervisor {
     pub fn poll(&mut self) -> PollReport {
         let started = Instant::now();
         let now = started;
-        for (id, entry) in &mut self.entries {
-            match entry.poll(now) {
+        let mut read_budget = ReadBudget::new(MAX_READ_BYTES_PER_POLL);
+        let generations: Vec<_> = self.entries.keys().copied().collect();
+        let read_start = if generations.is_empty() {
+            0
+        } else {
+            self.read_cursor % generations.len()
+        };
+        let mut last_serviced_offset = None;
+        let mut first_blocked_offset = None;
+        for offset in 0..generations.len() {
+            let id = generations[(read_start + offset) % generations.len()];
+            let Some(entry) = self.entries.get_mut(&id) else {
+                continue;
+            };
+            let read_before = read_budget.consumed();
+            let blocked_before = read_budget.blocked_reads();
+            match entry.poll(now, &mut read_budget) {
                 Ok(true) => {
-                    self.admission.release(*id);
-                    self.queues.remove_generation(*id);
+                    self.admission.release(id);
+                    self.queues.remove_generation(id);
                 }
                 Ok(false) => {}
                 Err(error) => {
@@ -1032,10 +1133,22 @@ impl Supervisor {
                         let _ = entry.child.signal_group(Signal::SIGKILL);
                         entry.kill_sent = true;
                     }
-                    self.queues.remove_generation(*id);
+                    self.queues.remove_generation(id);
                 }
             }
+            if read_budget.consumed() > read_before {
+                last_serviced_offset = Some(offset);
+            }
+            if first_blocked_offset.is_none() && read_budget.blocked_reads() != blocked_before {
+                first_blocked_offset = Some(offset);
+            }
         }
+        self.read_cursor = next_read_cursor(
+            read_start,
+            generations.len(),
+            last_serviced_offset,
+            first_blocked_offset,
+        );
         for _ in 0..8 {
             let entries = &self.entries;
             let message = self.queues.pop_ready(now, |id| {
@@ -1170,3 +1283,98 @@ impl Drop for Supervisor {
         self.entries.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        HealthAges, HealthPolicy, HealthReadBlocks, WorkerFailure, WorkerState,
+        health_failure_after_reads, next_read_cursor,
+    };
+    use std::time::Duration;
+
+    #[test]
+    fn read_cursor_resumes_after_the_last_worker_that_consumed_bytes() {
+        assert_eq!(next_read_cursor(0, 64, Some(7), None), 8);
+        assert_eq!(next_read_cursor(60, 64, Some(7), None), 4);
+        assert_eq!(next_read_cursor(9, 64, None, None), 10);
+        assert_eq!(next_read_cursor(0, 0, None, None), 0);
+        assert_eq!(next_read_cursor(0, 64, Some(7), Some(7)), 7);
+        assert_eq!(next_read_cursor(60, 64, Some(7), Some(7)), 3);
+        assert_eq!(next_read_cursor(9, 64, None, Some(2)), 11);
+    }
+
+    #[test]
+    fn exhausted_shared_read_budget_defers_health_expiry_until_worker_can_read() {
+        let old = Duration::from_secs(10);
+        let timeout = Duration::from_secs(1);
+        let policy = HealthPolicy {
+            handshake_timeout: timeout,
+            heartbeat_timeout: timeout,
+            work_progress_timeout: timeout,
+            ..HealthPolicy::default()
+        };
+        let ages = HealthAges {
+            starting: old,
+            heartbeat: old,
+            progress: old,
+        };
+        for (state, pending) in [
+            (WorkerState::Starting, false),
+            (WorkerState::Ready, false),
+            (WorkerState::Ready, true),
+        ] {
+            assert_eq!(
+                health_failure_after_reads(
+                    state,
+                    ages,
+                    pending,
+                    policy,
+                    HealthReadBlocks {
+                        control: true,
+                        progress: true
+                    }
+                ),
+                None
+            );
+        }
+        assert_eq!(
+            health_failure_after_reads(
+                WorkerState::Starting,
+                ages,
+                false,
+                policy,
+                HealthReadBlocks::default()
+            ),
+            Some(WorkerFailure::HandshakeTimeout)
+        );
+        assert_eq!(
+            health_failure_after_reads(
+                WorkerState::Ready,
+                HealthAges {
+                    progress: Duration::ZERO,
+                    ..ages
+                },
+                false,
+                policy,
+                HealthReadBlocks::default()
+            ),
+            Some(WorkerFailure::HeartbeatTimeout)
+        );
+        assert_eq!(
+            health_failure_after_reads(
+                WorkerState::Ready,
+                HealthAges {
+                    heartbeat: Duration::ZERO,
+                    ..ages
+                },
+                true,
+                policy,
+                HealthReadBlocks::default()
+            ),
+            Some(WorkerFailure::ProgressTimeout)
+        );
+    }
+}
+
+#[cfg(test)]
+mod health_tests;

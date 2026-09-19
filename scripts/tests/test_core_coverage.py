@@ -86,19 +86,31 @@ class CoverageTests(unittest.TestCase):
             temp = Path(directory)
             root = temp / "repo"
             root.mkdir()
-            outside = temp / "outside.rs"
+            target = temp / "outside-target"
+            target.mkdir()
+            outside = target / "outside.rs"
             outside.write_text("not repository source")
             if os.name == "nt":
                 link = root / "outside"
-                environment = os.environ | {
-                    "INTENT_TEST_LINK": str(link),
-                    "INTENT_TEST_TARGET": str(temp),
-                }
-                subprocess.run(
-                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                     "New-Item -ItemType Junction -Path $env:INTENT_TEST_LINK "
-                     "-Value $env:INTENT_TEST_TARGET -ErrorAction Stop | Out-Null"],
-                    env=environment, check=True, capture_output=True, timeout=10,
+                result = subprocess.run(
+                    [
+                        os.environ.get("COMSPEC", "cmd.exe"),
+                        "/d",
+                        "/c",
+                        "mklink",
+                        "/J",
+                        str(link),
+                        str(target),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    f"mklink failed: stdout={result.stdout!r} stderr={result.stderr!r}",
                 )
                 try:
                     self.assertTrue(link.is_junction())

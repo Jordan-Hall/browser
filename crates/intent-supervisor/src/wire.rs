@@ -149,6 +149,47 @@ pub(crate) fn read_blocking<T: DeserializeOwned>(
     decode(&Frame::new(intent_ipc::FrameLane::Control, payload), codec)
 }
 
+#[derive(Debug)]
+pub(crate) struct ReadBudget {
+    limit: usize,
+    remaining: usize,
+    blocked_reads: usize,
+}
+impl ReadBudget {
+    pub(crate) fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            remaining: limit,
+            blocked_reads: 0,
+        }
+    }
+    pub(crate) fn consumed(&self) -> usize {
+        self.limit.saturating_sub(self.remaining)
+    }
+    pub(crate) fn blocked_reads(&self) -> usize {
+        self.blocked_reads
+    }
+    pub(crate) fn read_one(
+        &mut self,
+        socket: &mut FramedSocket,
+        socket_budget: usize,
+    ) -> Result<ReadOutcome, SupervisorError> {
+        let allowance = self.remaining.min(socket_budget);
+        let mut local = allowance;
+        let result = socket.read_one(&mut local);
+        self.remaining = self
+            .remaining
+            .saturating_sub(allowance.saturating_sub(local));
+        // A reduced allowance is not a scheduling block until it is exhausted
+        // without producing a frame. Buffered frames and WouldBlock with unused
+        // bytes must not extend a worker's health deadline.
+        if allowance < socket_budget && local == 0 && matches!(&result, Ok(ReadOutcome::Pending)) {
+            self.blocked_reads = self.blocked_reads.saturating_add(1);
+        }
+        result
+    }
+}
+
 pub(crate) enum ReadOutcome {
     Pending,
     Closed,
@@ -310,6 +351,31 @@ impl std::fmt::Debug for FramedSocket {
 mod tests {
     use super::*;
     #[test]
+    fn shared_read_budget_caps_many_ready_sockets() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes =
+            Frame::new(intent_ipc::FrameLane::Control, vec![0_u8; 3000]).encode(wire_limits())?;
+        let mut senders = Vec::new();
+        let mut receivers = Vec::new();
+        for _ in 0..16 {
+            let (receiver, mut sender) = UnixStream::pair()?;
+            sender.write_all(&bytes)?;
+            senders.push(sender);
+            receivers.push(FramedSocket::new(receiver)?);
+        }
+        let mut budget = ReadBudget::new(8192);
+        let mut complete = 0;
+        for receiver in &mut receivers {
+            if matches!(budget.read_one(receiver, 4096)?, ReadOutcome::Frame(_)) {
+                complete += 1;
+            }
+        }
+        assert_eq!(budget.consumed(), 8192);
+        assert_eq!(complete, 2);
+        drop(senders);
+        Ok(())
+    }
+
+    #[test]
     fn transport_waits_for_complete_frames_and_never_debugs_buffer_contents()
     -> Result<(), Box<dyn std::error::Error>> {
         let (receiver, mut sender) = UnixStream::pair()?;
@@ -410,3 +476,6 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod budget_tests;
