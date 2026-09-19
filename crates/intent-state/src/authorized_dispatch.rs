@@ -1,8 +1,7 @@
-use crate::{
-    DurableOperationState, NewOutboxMessage, OutboxError, OutboxMessage, StateError, StateStore,
-};
+use crate::{DurableOperationState, NewOutboxMessage, OutboxError, StateError, StateStore};
 use intent_contracts::{
-    ActionProposal, Approval, ApprovalState, ContentHash, OperationId, UnixTimestampMicros,
+    ActionProposal, Approval, ApprovalState, ContentHash, OperationAttemptId, OperationId,
+    OutboxMessageId, UnixTimestampMicros,
 };
 use sha2::{Digest, Sha256};
 use std::error::Error;
@@ -70,6 +69,36 @@ impl From<OutboxError> for AuthorizedDispatchError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StagedOutbox {
+    outbox_id: OutboxMessageId,
+    operation_id: OperationId,
+    attempt_identity: OperationAttemptId,
+    created_at: UnixTimestampMicros,
+}
+
+impl StagedOutbox {
+    #[must_use]
+    pub const fn outbox_id(self) -> OutboxMessageId {
+        self.outbox_id
+    }
+
+    #[must_use]
+    pub const fn operation_id(self) -> OperationId {
+        self.operation_id
+    }
+
+    #[must_use]
+    pub const fn attempt_identity(self) -> OperationAttemptId {
+        self.attempt_identity
+    }
+
+    #[must_use]
+    pub const fn created_at(self) -> UnixTimestampMicros {
+        self.created_at
+    }
+}
+
 #[must_use]
 fn hash_payload(payload: &[u8]) -> ContentHash {
     ContentHash::from_bytes(Sha256::digest(payload).into())
@@ -81,7 +110,8 @@ impl StateStore {
     /// This is a record-binding check, not a grant of executable authority or user consent.
     /// Callers must separately enforce the runtime-owner, authority, policy, and provider gates
     /// before any external effect is attempted. The validation time must also be the
-    /// persisted staging time and cannot precede the operation's latest transition.
+    /// persisted staging time and cannot precede the operation's latest transition. The return
+    /// value intentionally contains no executable destination, message kind, payload, or hash.
     pub fn stage_record_bound_outbox(
         &mut self,
         proposal: &ActionProposal,
@@ -89,7 +119,7 @@ impl StateStore {
         new: NewOutboxMessage,
         expected_operation_revision: u64,
         now: UnixTimestampMicros,
-    ) -> Result<OutboxMessage, AuthorizedDispatchError> {
+    ) -> Result<StagedOutbox, AuthorizedDispatchError> {
         if new.payload.len() > crate::MAX_OUTBOX_PAYLOAD_BYTES {
             return Err(OutboxError::PayloadTooLarge(new.payload.len()).into());
         }
@@ -167,8 +197,15 @@ impl StateStore {
             _ => return Err(AuthorizedDispatchError::ApprovalNotActive),
         }
 
+        let staged = StagedOutbox {
+            outbox_id: new.outbox_id,
+            operation_id: new.operation_id,
+            attempt_identity: new.attempt_identity,
+            created_at: new.created_at,
+        };
         self.stage_outbox(new, expected_operation_revision)
-            .map_err(AuthorizedDispatchError::from)
+            .map_err(AuthorizedDispatchError::from)?;
+        Ok(staged)
     }
 }
 
@@ -327,7 +364,17 @@ mod tests {
             1,
             UnixTimestampMicros::try_new(120)?,
         )?;
-        assert_eq!(staged.state(), OutboxState::Pending);
+        assert_eq!(staged.outbox_id(), outbox_id()?);
+        assert_eq!(staged.operation_id(), operation_id()?);
+        assert_eq!(staged.attempt_identity(), attempt_id()?);
+        assert_eq!(staged.created_at(), UnixTimestampMicros::try_new(120)?);
+        assert_eq!(
+            store
+                .load_outbox(outbox_id()?)?
+                .ok_or("staged outbox missing")?
+                .state(),
+            OutboxState::Pending
+        );
         assert_eq!(
             store
                 .load_operation(operation_id()?)?

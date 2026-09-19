@@ -10,6 +10,22 @@ fn bypass(store: &mut StateStore, message: NewOutboxMessage) {
 }
 ```
 
+Record-bound staging returns only opaque identifiers and the staging timestamp, not transport
+material:
+
+```compile_fail
+use intent_state::StagedOutbox;
+fn leak_staged_payload(staged: &StagedOutbox) {
+    let _ = staged.payload();
+}
+```
+
+Payload-bearing stored rows are not part of the public API:
+
+```compile_fail
+use intent_state::OutboxMessage;
+```
+
 Claiming work exposes only opaque identifiers and lease metadata. Executable transport material
 becomes available only after `begin_dispatch` durably starts the attempt:
 
@@ -63,7 +79,7 @@ mod outbox;
 mod provider_recovery;
 mod retention;
 mod runtime_gate;
-pub use authorized_dispatch::AuthorizedDispatchError;
+pub use authorized_dispatch::{AuthorizedDispatchError, StagedOutbox};
 pub use provider_recovery::*;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 mod snapshot_fs;
@@ -88,9 +104,10 @@ pub use operations::{
     DurableOperation, DurableOperationState, NewDurableOperation, OperationJournalEntry,
     OperationTransition,
 };
+pub(crate) use outbox::OutboxMessage;
 pub use outbox::{
     DispatchAttempt, DispatchResult, MAX_OUTBOX_CLAIM_BATCH, MAX_OUTBOX_PAYLOAD_BYTES,
-    NewOutboxMessage, OutboxClaim, OutboxError, OutboxMessage, OutboxState,
+    NewOutboxMessage, OutboxClaim, OutboxError, OutboxState,
 };
 pub use retention::{
     ArtifactRetentionHold, GcReport, MAX_GC_BATCH, RetentionError, SuppressionResult,
