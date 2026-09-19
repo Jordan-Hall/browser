@@ -327,10 +327,7 @@ mod tests {
             return Err("applied cancellation did not report pending acknowledgement".into());
         };
         assert_eq!(pending.kind(), EnqueueErrorKind::ReservedQueueFull);
-        assert_eq!(
-            pending.into_item(),
-            StreamEvent::CancelAck { registration }
-        );
+        assert_eq!(pending.into_item(), StreamEvent::CancelAck { registration });
         assert_eq!(
             endpoint.pop_next(),
             Some((
@@ -482,7 +479,10 @@ mod tests {
         ));
         assert_eq!(
             endpoint.pop_next(),
-            Some((DeliveryClass::ReservedControl, StreamEvent::Cancel { registration: old }))
+            Some((
+                DeliveryClass::ReservedControl,
+                StreamEvent::Cancel { registration: old }
+            ))
         );
         endpoint.accept_cancel(old, now)?;
         assert!(matches!(
@@ -491,7 +491,10 @@ mod tests {
         ));
         assert_eq!(
             endpoint.pop_next(),
-            Some((DeliveryClass::ReservedControl, StreamEvent::CancelAck { registration: old }))
+            Some((
+                DeliveryClass::ReservedControl,
+                StreamEvent::CancelAck { registration: old }
+            ))
         );
         endpoint.retire_cancellation(old)?;
         assert!(!endpoint.is_active(old));
