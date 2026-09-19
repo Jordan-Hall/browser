@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T01 incremental dependency-boundary repair; not task acceptance",
+  "pr": 822,
+  "source_commit": "f24f7f08d8b9b0e1e1cbbd88b7ae640c0418cefd",
+  "source_tree": "ee550e7acc4a9d41eb377d2587257d8de2ef7632",
+  "base_commit": "85acafd92d12dd43e6bfb6b2fd0d5cc8b2496469",
+  "tested_merge_commit": "5ca89429ea9ff4f5fe446234289f216c61833fcf",
+  "source_sha256": {
+    "crates/intent-xtask/src/main.rs": "2323c76c1df9b93c35f319b6a8851ac3660333219f80efcf363151aaaf0cac08",
+    "crates/intent-xtask/src/resolution_tests.rs": "c8e293afccfb6885d29fa79f848258df20994713c61aae1f6d69f9f1fc387e8d",
+    "crates/intent-xtask/tests/architecture_resolution.rs": "89edfd01f50d8e5da50de064afbe0a610cef43e59bdc9c822e937448882a368c",
+    "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "local": {
+    "toolchain": "1.98.1",
+    "offline_inputs_artifact": 10519784480,
+    "locked": true,
+    "workspace_test_results": 353,
+    "doctests": 17,
+    "python_tests": 25,
+    "new_command_regressions": 6,
+    "new_metadata_regressions": 4,
+    "checks": [
+      "workspace and fuzz formatting",
+      "strict workspace Clippy",
+      "workspace targets",
+      "explicit workspace doctests",
+      "fuzz compilation only",
+      "actual architecture checker",
+      "contract conformance",
+      "coverage inventory"
+    ],
+    "baseline": "The initial clean compilation timed out before completion. A complete baseline rerun passed 343 workspace test results.",
+    "before_fix": "All six new real-command regressions failed on the previous implementation because patched/replaced sources were accepted.",
+    "after_fix": "All six command regressions and four new metadata tests passed, as did the existing real target-specific alias test and the real workspace architecture check.",
+    "doctest_mutation": "Changing the TaskId/WorkspaceId compile-fail example into valid code caused cargo test --locked -p intent-contracts --doc to exit 101 with one failure. Restoring the exact original source passed all three contract doctests.",
+    "require_accepted": {
+      "exit_code": 1,
+      "unaccepted_tasks": 37
+    }
+  },
+  "ci": {
+    "run_id": 35450308409,
+    "conclusion": "success",
+    "jobs": {
+      "rust_checks": 105916195028,
+      "ubuntu_24_04": 105916195129,
+      "windows_2025": 105916195164,
+      "macos_15": 105916195161
+    },
+    "artifact_id": 10586204809,
+    "archive_sha256": "0a03499038337887854b46c4587808f000b6d8825f2d53f4398590852388266d",
+    "source_archive_files_matched": 209
+  },
+  "fuzz": {
+    "execution": "not_run_for_this_changeset",
+    "compilation": "passed",
+    "reason": "Only the architecture checker, its tests and documentation changed; none of the parser-fuzz workflow path filters matched. No instrumented execution is claimed."
+  },
+  "review": {
+    "request_comment": 5742857894,
+    "status_at_checkpoint": "completed on the code head with no additional findings; not independent task acceptance",
+    "independent_task_acceptance": false,
+    "response_comment": 5742882218,
+    "summary_comment": 5742856966
+  },
+  "remaining": [
+    "Independent task acceptance and dependency-policy sign-off are not established by this incremental PR or an automated code review.",
+    "The checker verifies declared and resolved direct dependency identities, not transitive supply-chain provenance or vulnerability qualification.",
+    "Portable native tests do not qualify hostile-worker containment, provider writes or power-loss durability.",
+    "All existing CORE acceptance requirements remain in force."
+  ],
+  "accepted": false,
+  "production_ready": false
+}
