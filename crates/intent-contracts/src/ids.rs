@@ -43,6 +43,7 @@ macro_rules! typed_uuid {
 }
 
 typed_uuid!(
+    ProfileId,
     GoalContractId,
     WorkspaceId,
     TaskId,
