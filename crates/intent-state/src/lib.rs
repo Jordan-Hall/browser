@@ -95,8 +95,8 @@ pub use snapshots::{
 
 pub use artifact_catalog::{ArtifactCatalogEntry, MAX_ARTIFACT_METADATA_PAGE};
 pub use artifacts::{
-    ArtifactError, ArtifactMetadata, ArtifactReferenceRegistration, ArtifactScope, MAX_ARTIFACT_BYTES,
-    NewArtifact, VerifiedArtifact,
+    ArtifactError, ArtifactMetadata, ArtifactReferenceRegistration, ArtifactScope,
+    MAX_ARTIFACT_BYTES, NewArtifact, VerifiedArtifact,
 };
 pub use inbox::{
     ConsumerEffect, InboxApplyResult, InboxError, InboxEvent, MAX_CONSUMER_EFFECTS,
