@@ -1,4 +1,4 @@
-use intent_contracts::{ArtifactId, BoundedText, ContentHash, SchemaVersion, UnixTimestampMicros};
+use intent_contracts::{ArtifactId, BoundedText, SchemaVersion, UnixTimestampMicros};
 use intent_ipc::{
     CoreDocumentImport, CoreRecord, CoreRecordKind, ReadOnlyCoreDocument, WireError, WireLimits,
     import_core_document, migrate_legacy_numeric_money_goal_v1,
@@ -6,10 +6,9 @@ use intent_ipc::{
 use intent_state::{
     ArtifactCatalogEntry, ArtifactError, ArtifactMetadata, ArtifactScope, NewArtifact, StateStore,
 };
-use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::path::Path;
 
 const CURRENT_MEDIA_TYPE: &str = "application/vnd.intent.core-record+json";
@@ -245,28 +244,26 @@ pub fn list_persisted_core_document_imports(
     if limit == 0 || limit > MAX_CORE_DOCUMENT_ARCHIVE_PAGE {
         return Err(CoreDocumentPersistenceError::InvalidArchivePage);
     }
-    let mut metadata = store.list_artifact_metadata_by_media_prefix(
-        privacy_scope,
-        &format!("{CURRENT_MEDIA_TYPE};family="),
-        limit,
-    )?;
-    metadata.extend(store.list_artifact_metadata_by_media_prefix(
-        privacy_scope,
-        &format!("{READ_ONLY_MEDIA_TYPE};family="),
-        limit,
-    )?);
-    let mut entries: Vec<_> = metadata
-        .into_iter()
-        .filter_map(|artifact| {
-            parse_archive_media_type(artifact.media_type().as_str()).map(|(kind, read_only)| {
-                CoreDocumentArchiveEntry {
-                    artifact,
-                    kind,
-                    read_only,
-                }
-            })
-        })
-        .collect();
+    let mut entries = Vec::new();
+    for kind in CoreRecordKind::ALL.iter().copied() {
+        for (base, read_only) in [(CURRENT_MEDIA_TYPE, false), (READ_ONLY_MEDIA_TYPE, true)] {
+            let media_type = bounded_media_type(base, kind)?;
+            entries.extend(
+                store
+                    .list_artifact_metadata_by_media_type(
+                        privacy_scope,
+                        media_type.as_str(),
+                        limit,
+                    )?
+                    .into_iter()
+                    .map(|artifact| CoreDocumentArchiveEntry {
+                        artifact,
+                        kind,
+                        read_only,
+                    }),
+            );
+        }
+    }
     entries.sort_by(|left, right| {
         right
             .artifact
@@ -286,6 +283,8 @@ pub fn list_persisted_core_document_imports(
 /// Select and revalidate one durable CORE document import. The artifact handle must belong to
 /// the supplied privacy scope, its blob is integrity-checked, its media metadata must exactly bind
 /// a known record family/read-only mode, and the stored bytes must still satisfy that mode.
+/// Verification and capture occur in one pass bounded by the durable byte size and selected wire
+/// limit, so corrupted/appended blobs cannot force a larger verification read or race a second read.
 /// This function does not activate a workspace or create any execution authority.
 pub fn select_persisted_core_document_import(
     store: &StateStore,
@@ -308,27 +307,13 @@ pub fn select_persisted_core_document_import(
             "stored core document exceeds the selected wire byte budget",
         )));
     }
-    let byte_size = usize::try_from(metadata.byte_size()).map_err(|_| {
-        CoreDocumentPersistenceError::Wire(WireError::new(
-            intent_ipc::WireErrorCode::FrameTooLarge,
-            "stored core document length cannot be represented on this platform",
-        ))
-    })?;
-    let mut bytes = Vec::new();
-    bytes.try_reserve_exact(byte_size).map_err(|_| {
-        CoreDocumentPersistenceError::Wire(WireError::new(
-            intent_ipc::WireErrorCode::AllocationFailed,
-            "failed to reserve archive selection buffer",
-        ))
-    })?;
-    let mut file = store
-        .open_verified_artifact(artifact_root, artifact_id, privacy_scope)?
-        .into_file();
-    file.by_ref()
-        .take(maximum.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(ArtifactError::from)?;
-    if bytes.len() != byte_size || hash_bytes(&bytes) != metadata.content_hash() {
+    let (verified_metadata, bytes) = store.read_verified_artifact_bytes_bounded(
+        artifact_root,
+        artifact_id,
+        privacy_scope,
+        maximum,
+    )?;
+    if verified_metadata != metadata {
         return Err(CoreDocumentPersistenceError::InvalidArchiveMetadata(
             artifact_id,
         ));
@@ -340,12 +325,12 @@ pub fn select_persisted_core_document_import(
     ) {
         (false, CoreDocumentImport::Current(record)) => Ok(CoreDocumentArchiveSelection::Current {
             record,
-            artifact: metadata,
+            artifact: verified_metadata,
         }),
         (true, CoreDocumentImport::ReadOnlyNewerMinor(document)) => {
             Ok(CoreDocumentArchiveSelection::ReadOnlyNewerMinor {
                 document,
-                artifact: metadata,
+                artifact: verified_metadata,
             })
         }
         _ => Err(CoreDocumentPersistenceError::InvalidArchiveMetadata(
@@ -429,13 +414,6 @@ fn parse_archive_media_type(value: &str) -> Option<(CoreRecordKind, bool)> {
         .copied()
         .find(|kind| kind.family_name() == family)
         .map(|kind| (kind, read_only))
-}
-
-fn hash_bytes(bytes: &[u8]) -> ContentHash {
-    let digest = Sha256::digest(bytes);
-    let mut hash = [0_u8; 32];
-    hash.copy_from_slice(&digest);
-    ContentHash::from_bytes(hash)
 }
 
 fn bounded_media_type(
