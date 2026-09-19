@@ -231,7 +231,8 @@ impl<T> StreamEndpoint<T> {
     #[must_use]
     pub fn pop_next(&mut self) -> Option<(DeliveryClass, StreamEvent<T>)> {
         while let Some((class, event)) = self.queue.pop_next() {
-            if event.is_cancellation_control() || self.cancellations.is_active(event.registration()) {
+            if event.is_cancellation_control() || self.cancellations.is_active(event.registration())
+            {
                 return Some((class, event));
             }
         }
@@ -243,10 +244,7 @@ impl<T> StreamEndpoint<T> {
         self.queue.progress_len()
     }
 
-    fn require_active(
-        &self,
-        registration: CancellationRegistration,
-    ) -> Result<(), StreamError<T>> {
+    fn require_active(&self, registration: CancellationRegistration) -> Result<(), StreamError<T>> {
         match self
             .cancellations
             .state(registration)
