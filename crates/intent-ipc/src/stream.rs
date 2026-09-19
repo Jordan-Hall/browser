@@ -219,7 +219,6 @@ mod tests {
     use intent_contracts::{CancellationId, UnixTimestampMicros, WorkerInstanceId};
     use std::error::Error;
     use std::str::FromStr;
-    use uuid::Uuid;
 
     fn cancellation_id() -> Result<CancellationId, Box<dyn Error>> {
         Ok(CancellationId::from_str(
@@ -227,22 +226,30 @@ mod tests {
         )?)
     }
 
-    fn generation(value: u128) -> WorkerInstanceId {
-        WorkerInstanceId::from_uuid(Uuid::from_u128(value))
+    fn generation(value: u128) -> Result<WorkerInstanceId, Box<dyn Error>> {
+        Ok(WorkerInstanceId::from_str(&format!(
+            "00000000-0000-0000-0000-{value:012x}"
+        ))?)
     }
 
-    fn registration(id: CancellationId, generation_value: u128) -> CancellationRegistration {
-        CancellationRegistration::new(id, generation(generation_value))
+    fn registration(
+        id: CancellationId,
+        generation_value: u128,
+    ) -> Result<CancellationRegistration, Box<dyn Error>> {
+        Ok(CancellationRegistration::new(
+            id,
+            generation(generation_value)?,
+        ))
     }
 
     #[test]
     fn duplicate_cancels_preserve_capacity_for_another_request() -> Result<(), Box<dyn Error>> {
         let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(2, 1, 1, 1)?, 2);
-        let first = registration(cancellation_id()?, 0x101);
+        let first = registration(cancellation_id()?, 0x101)?;
         let second = registration(
             CancellationId::from_str("018f47f7-5a86-7c00-8000-000000000712")?,
             0x101,
-        );
+        )?;
         endpoint.register_cancellation(first)?;
         endpoint.register_cancellation(second)?;
         for _ in 0..100 {
@@ -276,11 +283,11 @@ mod tests {
     fn duplicate_acknowledgements_preserve_capacity_for_another_request()
     -> Result<(), Box<dyn Error>> {
         let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(2, 1, 1, 1)?, 2);
-        let first = registration(cancellation_id()?, 0x101);
+        let first = registration(cancellation_id()?, 0x101)?;
         let second = registration(
             CancellationId::from_str("018f47f7-5a86-7c00-8000-000000000712")?,
             0x101,
-        );
+        )?;
         let now = UnixTimestampMicros::try_new(123)?;
         endpoint.register_cancellation(first)?;
         endpoint.register_cancellation(second)?;
@@ -315,7 +322,7 @@ mod tests {
     #[test]
     fn acknowledgement_backpressure_reports_applied_cancellation() -> Result<(), Box<dyn Error>> {
         let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(1, 1, 1, 1)?, 1);
-        let registration = registration(cancellation_id()?, 0x101);
+        let registration = registration(cancellation_id()?, 0x101)?;
         let now = UnixTimestampMicros::try_new(123)?;
         endpoint.register_cancellation(registration)?;
         endpoint.enqueue_cancel(registration)?;
@@ -352,7 +359,7 @@ mod tests {
     #[test]
     fn unknown_cancellation_is_rejected_without_acknowledgement() -> Result<(), Box<dyn Error>> {
         let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(1, 1, 1, 1)?, 1);
-        let registration = registration(cancellation_id()?, 0x101);
+        let registration = registration(cancellation_id()?, 0x101)?;
         assert!(matches!(
             endpoint.accept_cancel(registration, UnixTimestampMicros::try_new(123)?),
             Err(StreamError::Cancellation(CancellationError::UnknownId(id)))
@@ -402,7 +409,7 @@ mod tests {
     #[test]
     fn two_workers_ack_cancel_while_progress_queues_are_saturated() -> Result<(), Box<dyn Error>> {
         let limits = QueueLimits::try_new(4, 1, 2, 4)?;
-        let registration = registration(cancellation_id()?, 0x101);
+        let registration = registration(cancellation_id()?, 0x101)?;
         let now = UnixTimestampMicros::try_new(123)?;
         let mut first = StreamEndpoint::new(limits, 4);
         let mut second = StreamEndpoint::new(limits, 4);
@@ -464,7 +471,7 @@ mod tests {
         let limits = QueueLimits::try_new(1, 1, 1, 1)?;
         let mut endpoint = StreamEndpoint::<u8>::new(limits, 1);
         let id = cancellation_id()?;
-        let old = registration(id, 0x101);
+        let old = registration(id, 0x101)?;
         let now = UnixTimestampMicros::try_new(123)?;
         endpoint.register_cancellation(old)?;
         endpoint.enqueue_cancel(old)?;
@@ -500,7 +507,7 @@ mod tests {
         assert!(!endpoint.is_active(old));
         assert!(!endpoint.is_cancelled(old));
 
-        let replacement = registration(id, 0x102);
+        let replacement = registration(id, 0x102)?;
         endpoint.register_cancellation(replacement)?;
         assert!(endpoint.is_active(replacement));
         assert!(matches!(
@@ -521,8 +528,11 @@ mod tests {
         endpoint.retire_cancellation(replacement)?;
 
         for sequence in 0_u128..8 {
-            let id = CancellationId::from_uuid(Uuid::from_u128(0x1000 + sequence));
-            let registration = registration(id, 0x102);
+            let id = CancellationId::from_str(&format!(
+                "00000000-0000-0000-0000-{:012x}",
+                0x1000 + sequence
+            ))?;
+            let registration = registration(id, 0x102)?;
             endpoint.register_cancellation(registration)?;
             assert!(endpoint.is_active(registration));
             endpoint.accept_cancel(registration, now)?;
