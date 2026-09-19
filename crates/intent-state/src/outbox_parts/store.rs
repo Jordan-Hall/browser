@@ -78,17 +78,38 @@ impl StateStore {
                 new.attempt_identity.to_string(),
                 new.destination.as_str(),
                 new.message_kind.as_str(),
-                new.payload,
+                &new.payload,
                 payload_hash.to_hex(),
                 new.created_at.get(),
             ],
         )?;
-        transaction.commit()?;
-        self.load_outbox(new.outbox_id)?.ok_or_else(|| {
+
+        let stored = load_outbox_from_connection(&transaction, new.outbox_id)?.ok_or_else(|| {
             OutboxError::InvalidStoredRecord(
-                "outbox disappeared after successful staging transaction".to_owned(),
+                "outbox disappeared before staging transaction committed".to_owned(),
             )
-        })
+        })?;
+        let exact_projection = stored.outbox_id == new.outbox_id
+            && stored.operation_id == new.operation_id
+            && stored.attempt_identity == new.attempt_identity
+            && stored.destination == new.destination
+            && stored.message_kind == new.message_kind
+            && stored.payload == new.payload
+            && stored.payload_hash == payload_hash
+            && stored.state == OutboxState::Pending
+            && stored.lease_owner.is_none()
+            && stored.lease_expires_at.is_none()
+            && stored.dispatch_started_at.is_none()
+            && stored.created_at == new.created_at
+            && stored.updated_at == new.created_at;
+        if !exact_projection {
+            return Err(OutboxError::InvalidStoredRecord(
+                "staged outbox projection differs from requested message".to_owned(),
+            ));
+        }
+
+        transaction.commit()?;
+        Ok(stored)
     }
 
     pub fn claim_outbox(
