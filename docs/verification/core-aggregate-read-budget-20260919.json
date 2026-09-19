@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T04 aggregate supervisor read-budget increment; not task acceptance",
+  "pr": 824,
+  "source_commit": "a2bfaa85eb9401db05e9f7051664b0db8c3eda3f",
+  "base_commit": "25644ad45c1e3911289b2947b5feeeaa104913d6",
+  "tested_merge_commit": "6e448c8a6b91c323eef1a6047d72c98b2bd67c6d",
+  "source_sha256": {
+    "crates/intent-supervisor/src/runtime.rs": "8599c6d9f7ac9db629d9153173b5a3781f5677a082384c0ddd88ea03d5219a43",
+    "crates/intent-supervisor/src/wire.rs": "b35437549c8b3e740dc109972bf6f7ea54f9a910dff6ddc7fed6dd1762ebddb6",
+    "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "local": {
+    "rust_toolchain_available": false,
+    "claim": "No local Rust pass is claimed in this execution environment. Exact-head GitHub CI supplies Rust verification."
+  },
+  "regression": {
+    "name": "shared_read_budget_caps_many_ready_sockets",
+    "real_unix_stream_pairs": 16,
+    "frame_payload_bytes": 3000,
+    "aggregate_test_budget_bytes": 8192,
+    "per_socket_cap_bytes": 4096,
+    "complete_frames_before_exhaustion": 2,
+    "result": "passed in exact-head CI"
+  },
+  "ci": {
+    "run_id": 35454743310,
+    "conclusion": "success",
+    "rust_toolchain": "1.98.1",
+    "workspace_test_results": 358,
+    "doctests": 17,
+    "python_tests": 25,
+    "jobs": {
+      "rust_checks": 105927927045,
+      "ubuntu_24_04": 105927927131,
+      "windows_2025": 105927927113,
+      "macos_15": 105927927179
+    },
+    "artifact_id": 10587587878,
+    "artifact_sha256": "3e83f3b4d74ed19ce0a931ed278d98714dff285aa3cff4f2f2ba64066f418f10",
+    "checks": [
+      "workspace and fuzz formatting",
+      "strict workspace Clippy",
+      "workspace unit/integration tests",
+      "workspace doctests",
+      "fuzz-target compilation",
+      "architecture checker",
+      "contract conformance",
+      "coverage inventory",
+      "native Ubuntu 24.04",
+      "native Windows 2025",
+      "native macOS 15"
+    ]
+  },
+  "fuzz": {
+    "execution": "not_run_for_this_changeset",
+    "compilation": "passed",
+    "reason": "Supervisor-only paths did not trigger the existing parser-fuzz workflow; no instrumented execution is claimed."
+  },
+  "review": {
+    "initial_review_commit": "925e3762b28454a2cf3bcc1dba9dee044a907f5c",
+    "finding_comment": 4053783463,
+    "finding": "Adding fields to the public exhaustive PollReport was a source-breaking API change.",
+    "resolved_in_source": "a2bfaa85eb9401db05e9f7051664b0db8c3eda3f",
+    "fresh_review": "requested on corrected source; completion must be inspected before merge",
+    "independent_task_acceptance": false
+  },
+  "remaining": [
+    "Independent whole-task acceptance and compatibility sign-off required by issue #124 are not established by this incremental PR.",
+    "CORE-01.T07/#127 real transport and backpressure separation remains a separate task.",
+    "No instrumented parser-fuzz execution is claimed for this supervisor-only changeset.",
+    "All existing CORE release and --require-accepted gates remain in force."
+  ],
+  "accepted": false,
+  "production_ready": false
+}
