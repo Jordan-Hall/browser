@@ -138,9 +138,11 @@ impl From<ArtifactError> for CoreDocumentPersistenceError {
 /// format, then persist only the admitted representation in the durable artifact store.
 ///
 /// Current and legacy documents are stored in canonical current-codec form. Same-major newer
-/// minor documents are stored byte-for-byte and remain opaque/read-only. Validation completes
-/// before the artifact writer is entered, so malformed input cannot create durable import state.
-/// This function does not register an executable reference, approval, operation or outbox row.
+/// minor documents are stored byte-for-byte and remain opaque/read-only. The artifact media type
+/// binds the selected record family so an opaque artifact ID cannot be retried under another
+/// family. Validation completes before the artifact writer is entered, so malformed input cannot
+/// create durable import state. This function does not register an executable reference, approval,
+/// operation or outbox row.
 pub fn persist_core_document_import(
     store: &mut StateStore,
     artifact_root: &Path,
@@ -162,7 +164,7 @@ pub fn persist_core_document_import(
                         artifact_root,
                         &request,
                         exact,
-                        bounded_media_type(READ_ONLY_MEDIA_TYPE)?,
+                        bounded_media_type(READ_ONLY_MEDIA_TYPE, request.kind)?,
                     )?;
                     return Ok(PersistedCoreDocumentImport::ReadOnlyNewerMinor {
                         document,
@@ -186,7 +188,7 @@ pub fn persist_core_document_import(
         artifact_root,
         &request,
         stored_bytes,
-        bounded_media_type(CURRENT_MEDIA_TYPE)?,
+        bounded_media_type(CURRENT_MEDIA_TYPE, request.kind)?,
     )?;
     Ok(PersistedCoreDocumentImport::Current {
         record,
@@ -195,8 +197,11 @@ pub fn persist_core_document_import(
     })
 }
 
-fn bounded_media_type(value: &str) -> Result<BoundedText<255>, CoreDocumentPersistenceError> {
-    BoundedText::try_new(value.to_owned())
+fn bounded_media_type(
+    base: &str,
+    kind: CoreRecordKind,
+) -> Result<BoundedText<255>, CoreDocumentPersistenceError> {
+    BoundedText::try_new(format!("{base};family={}", kind.family_name()))
         .map_err(|error| CoreDocumentPersistenceError::StaticMediaType(error.to_string()))
 }
 
