@@ -3,8 +3,8 @@ use super::{
     TaskState, Workspace,
 };
 use crate::{
-    AccountId, AccountQualifiedResourceId, ActionProposalId, CapabilityId, ContentHash, SpendAmount,
-    SpendAmountError, TaskId, UnixTimestampMicros,
+    AccountId, AccountQualifiedResourceId, ActionProposalId, CapabilityId, ContentHash,
+    SpendAmount, SpendAmountError, TaskId, UnixTimestampMicros,
 };
 
 impl GoalContract {
