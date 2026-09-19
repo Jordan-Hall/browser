@@ -341,8 +341,8 @@ mod tests {
     use super::*;
     #[test]
     fn shared_read_budget_caps_many_ready_sockets() -> Result<(), Box<dyn std::error::Error>> {
-        let bytes = Frame::new(intent_ipc::FrameLane::Control, vec![0_u8; 3000])
-            .encode(wire_limits())?;
+        let bytes =
+            Frame::new(intent_ipc::FrameLane::Control, vec![0_u8; 3000]).encode(wire_limits())?;
         let mut senders = Vec::new();
         let mut receivers = Vec::new();
         for _ in 0..16 {
@@ -354,10 +354,7 @@ mod tests {
         let mut budget = ReadBudget::new(8192);
         let mut complete = 0;
         for receiver in &mut receivers {
-            if matches!(
-                budget.read_one(receiver, 4096)?,
-                ReadOutcome::Frame(_)
-            ) {
+            if matches!(budget.read_one(receiver, 4096)?, ReadOutcome::Frame(_)) {
                 complete += 1;
             }
         }
