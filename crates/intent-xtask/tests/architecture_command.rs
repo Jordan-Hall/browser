@@ -13,7 +13,7 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn actual_checker_rejects_a_dependency_renamed_to_an_allowed_name() -> Result<(), Box<dyn Error>> {
+fn actual_checker_rejects_target_specific_alias() -> Result<(), Box<dyn Error>> {
     let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let root =
         Fixture(std::env::temp_dir().join(format!("intent-arch-{}-{unique}", std::process::id())));
@@ -25,7 +25,7 @@ fn actual_checker_rejects_a_dependency_renamed_to_an_allowed_name() -> Result<()
     )?;
     fs::write(
         root.0.join("contracts/Cargo.toml"),
-        "[package]\nname=\"intent-contracts\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[dependencies]\nserde={package=\"provider-fixture\",path=\"../provider\"}\n",
+        "[package]\nname=\"intent-contracts\"\nversion=\"0.1.0\"\nedition=\"2024\"\n[target.'cfg(all())'.dependencies]\nserde={package=\"provider-fixture\",path=\"../provider\"}\n",
     )?;
     fs::write(
         root.0.join("provider/Cargo.toml"),
