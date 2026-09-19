@@ -1,5 +1,35 @@
 #![forbid(unsafe_code)]
-#![doc = "Single-owner durable local state for the Intent Browser trusted runtime."]
+#![doc = r#"Single-owner durable local state for the Intent Browser trusted runtime.
+
+Low-level outbox storage cannot be called from another crate to bypass record binding:
+
+```compile_fail
+use intent_state::{NewOutboxMessage, StateStore};
+fn bypass(store: &mut StateStore, message: NewOutboxMessage) {
+    let _ = store.stage_outbox(message, 0);
+}
+```
+
+Claiming work exposes only opaque identifiers and lease metadata. Executable transport material
+becomes available only after `begin_dispatch` durably starts the attempt:
+
+```compile_fail
+use intent_state::OutboxClaim;
+fn leak_before_start(claim: &OutboxClaim) {
+    let _ = claim.payload();
+}
+```
+
+Stored outbox payloads are likewise not a public read API:
+
+```compile_fail
+use intent_contracts::OutboxMessageId;
+use intent_state::StateStore;
+fn load_payload(store: &StateStore, id: OutboxMessageId) {
+    let _ = store.load_outbox(id);
+}
+```
+"#]
 
 mod artifacts;
 mod authorized_dispatch;
@@ -60,7 +90,7 @@ pub use operations::{
 };
 pub use outbox::{
     DispatchAttempt, DispatchResult, MAX_OUTBOX_CLAIM_BATCH, MAX_OUTBOX_PAYLOAD_BYTES,
-    NewOutboxMessage, OutboxError, OutboxMessage, OutboxState,
+    NewOutboxMessage, OutboxClaim, OutboxError, OutboxMessage, OutboxState,
 };
 pub use retention::{
     ArtifactRetentionHold, GcReport, MAX_GC_BATCH, RetentionError, SuppressionResult,
