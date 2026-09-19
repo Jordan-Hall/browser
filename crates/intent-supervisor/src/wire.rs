@@ -149,6 +149,36 @@ pub(crate) fn read_blocking<T: DeserializeOwned>(
     decode(&Frame::new(intent_ipc::FrameLane::Control, payload), codec)
 }
 
+#[derive(Debug)]
+pub(crate) struct ReadBudget {
+    limit: usize,
+    remaining: usize,
+}
+impl ReadBudget {
+    pub(crate) fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            remaining: limit,
+        }
+    }
+    pub(crate) fn consumed(&self) -> usize {
+        self.limit.saturating_sub(self.remaining)
+    }
+    pub(crate) fn read_one(
+        &mut self,
+        socket: &mut FramedSocket,
+        socket_budget: usize,
+    ) -> Result<ReadOutcome, SupervisorError> {
+        let allowance = self.remaining.min(socket_budget);
+        let mut local = allowance;
+        let result = socket.read_one(&mut local);
+        self.remaining = self
+            .remaining
+            .saturating_sub(allowance.saturating_sub(local));
+        result
+    }
+}
+
 pub(crate) enum ReadOutcome {
     Pending,
     Closed,
@@ -309,6 +339,34 @@ impl std::fmt::Debug for FramedSocket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_read_budget_caps_many_ready_sockets() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = Frame::new(intent_ipc::FrameLane::Control, vec![0_u8; 3000])
+            .encode(wire_limits())?;
+        let mut senders = Vec::new();
+        let mut receivers = Vec::new();
+        for _ in 0..16 {
+            let (receiver, mut sender) = UnixStream::pair()?;
+            sender.write_all(&bytes)?;
+            senders.push(sender);
+            receivers.push(FramedSocket::new(receiver)?);
+        }
+        let mut budget = ReadBudget::new(8192);
+        let mut complete = 0;
+        for receiver in &mut receivers {
+            if matches!(
+                budget.read_one(receiver, 4096)?,
+                ReadOutcome::Frame(_)
+            ) {
+                complete += 1;
+            }
+        }
+        assert_eq!(budget.consumed(), 8192);
+        assert_eq!(complete, 2);
+        drop(senders);
+        Ok(())
+    }
+
     #[test]
     fn transport_waits_for_complete_frames_and_never_debugs_buffer_contents()
     -> Result<(), Box<dyn std::error::Error>> {
