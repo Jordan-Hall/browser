@@ -3,20 +3,20 @@
   "scope": "CORE-02.T03 incremental pre-start opacity and atomic staging verification; not task acceptance",
   "pr": 821,
   "base_commit": "26aa620f698e29069fa8d17ce9e43320e982eae7",
-  "verified_code_commit": "d4ad8b22f335a96b29433ba7ed73e0bae7cbea57",
-  "verified_code_tree": "c68c935dbac26d4e90468f5e088f19a6519805dd",
+  "verified_code_commit": "1f8bd43390c1a47d942ca4d66171fe8e1d6e66b4",
+  "verified_code_tree": "84f4d040c93786d75a94f35327707a1b6901f83f",
   "ci": {
-    "run_id": 35447999595,
+    "run_id": 35448484395,
     "conclusion": "success",
     "jobs": {
-      "rust_checks": 105910175309,
-      "ubuntu_24_04": 105910175393,
-      "windows_2025": 105910175459,
-      "macos_15": 105910175498
+      "rust_checks": 105911480535,
+      "ubuntu_24_04": 105911480613,
+      "windows_2025": 105911480705,
+      "macos_15": 105911480672
     },
-    "artifact_id": 10586136003,
-    "artifact_sha256": "94855315d6004a84f86dab8e1de70d2ca16a88769dd2d25c7044380005cf1ca1",
-    "synthetic_merge_commit": "2fdd85b4c1b5847cdbcd450861e4414471b1d04a",
+    "artifact_id": 10586332297,
+    "artifact_sha256": "20e705e1b93f154397a8bd77ef42bc758448667f8c8d6d9bd258f6d04c3fdd40",
+    "synthetic_merge_commit": "2456be9185839e71f4f419b1b0c8d9e85d8d28f1",
     "checks": {
       "lockfiles": "success",
       "coverage_inventory": "success",
@@ -30,11 +30,13 @@
     }
   },
   "artifact_source_verification": {
-    "source_file_count": 206,
+    "source_file_count": 207,
     "store_rs_blob_sha": "bf056af3ece3f8ad37c5390ed8156500c9267872",
-    "rejection_regressions_blob_sha": "8590a73ff7da4412ec9a17b2905c0f12bbc6eca6",
+    "helpers_rs_blob_sha": "7525c94094afbf5b4d35b339caf1bdbf2295892b",
+    "rejection_regressions_blob_sha": "b6f841233a32ad4da33d4c0f4663f60b80610b09",
     "store_rs_sha256": "72f5b5ba125686f08de3ca44e54ad6d9d163f8163613c89d59290ff352402c59",
-    "rejection_regressions_sha256": "2369b4fd23620080124731f0f2bbffb47f04c3226c7a3bae861324c05942a6f0",
+    "helpers_rs_sha256": "4f8702455184e5d0aa8722836d187b5c6c0d6964f6ab4439de43de5b3ccb1063",
+    "rejection_regressions_sha256": "730cd462761d52c8475174bddc996aef3b23e2e97f4da84b1c6678efce02750b",
     "cargo_lock_sha256": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
     "fuzz_cargo_lock_sha256": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
   },
@@ -44,12 +46,15 @@
     "Public claims contain only IDs and lease expiry; claim construction does not deserialize or hash payload bytes.",
     "PayloadHashMismatch no longer exposes expected or actual payload hashes.",
     "The just-inserted outbox projection is reloaded and checked inside the same IMMEDIATE SQLite transaction before commit.",
-    "An injected AFTER INSERT projection rewrite is rejected and rolls back the outbox row, operation transition and journal mutation."
+    "Injected AFTER INSERT destination corruption is rejected and rolls back the outbox row, operation transition and journal mutation.",
+    "completed_at_micros and failure_detail are loaded and rejected on Pending, Leased or Attempting rows.",
+    "Independent trigger regressions for completion and failure metadata prove contradictory terminal metadata rolls back before staging commit."
   ],
   "review": {
-    "addressed_threads": [4053247120, 4053277806, 4053285307],
-    "fresh_review_requested_for": "d4ad8b22f335a96b29433ba7ed73e0bae7cbea57",
-    "status_at_evidence_write": "pending; merge remains blocked until the exact-code review is complete and genuine findings are addressed"
+    "addressed_threads": [4053247120, 4053277806, 4053285307, 4053417931],
+    "fresh_review_requested_for": "1f8bd43390c1a47d942ca4d66171fe8e1d6e66b4",
+    "completed_at": "2026-09-19T14:25:17.670378Z",
+    "result": "completed with no additional findings after the terminal-metadata fix; all four review threads resolved"
   },
   "remaining": [
     "Use a non-reusable lease generation or epoch and reject stale holders for start and result recording.",
