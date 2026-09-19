@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T02 incremental value conformance; not task acceptance",
+  "pr": 819,
+  "source_commit": "bdab42d95fd342954059fc2a7ca628cbaafb3bce",
+  "source_tree": "c4fa16b38aba7970ef9a83fafcc47b36ea78da2e",
+  "base_commit": "aedfc1411edde5d5e5fa94ab6a5c1988d15846d4",
+  "tested_merge_commit": "bf109242df0578bb05f75badbc8fa80489b4c150",
+  "source_sha256": {
+    "crates/intent-contracts/src/ids.rs": "dc6fb755be078ed8b2c5b5cabd11c5c28175f02adee4dc4a65b3ed993a83c0f7",
+    "crates/intent-contracts/src/lib.rs": "2783712e7fe316b358203aec8ca1472fad0353d6050763c8b71bd72d64d01479",
+    "crates/intent-contracts/src/byte_size.rs": "efa46f8cc55bc09c6c6a21046a2b974d9c8dda4d6a645cee8dd93eebc2963590",
+    "crates/intent-ipc/tests/generated_values.rs": "5a6f27cda71bbbd6a429f743f76274ce253ea28ccfdb95559495aed14f349d9a",
+    "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "local": {
+    "toolchain": "1.98.1",
+    "dependency_source_artifact": 10519784480,
+    "checks": [
+      "workspace and fuzz formatting",
+      "strict workspace Clippy",
+      "locked workspace targets",
+      "explicit workspace doctests",
+      "locked fuzz target compilation",
+      "architecture checker",
+      "conformance",
+      "25 Python helper tests",
+      "37-task inventory"
+    ],
+    "rust_test_results_including_doctests": 340,
+    "generated_iterations_per_family": 1024,
+    "generated_families": 3,
+    "mutation": "Replacing checked i64 conversion with a truncating cast fails the size regression; restored code passes.",
+    "interruption": "Initial baseline full-suite invocation timed out; a subsequent complete rerun passed.",
+    "require_accepted": "failed as expected: 37 unaccepted tasks"
+  },
+  "ci": {
+    "run_id": 35437459115,
+    "conclusion": "success",
+    "jobs": {
+      "rust_checks": 105882442360,
+      "ubuntu_24_04": 105882442472,
+      "windows_2025": 105882442462,
+      "macos_15": 105882442454
+    },
+    "artifact_id": 10582527000,
+    "artifact_sha256": "3b5290d02f34d2eaa21044a39b3222308bcba58f5591779fa09bfa632882b6d3"
+  },
+  "fuzz": {
+    "run_id": 35437459083,
+    "toolchain": "nightly-2026-09-17",
+    "cargo_fuzz": "0.13.2",
+    "sanitizer": "address",
+    "seconds_per_target": 60,
+    "seed": 183726,
+    "max_input_bytes": 65536,
+    "rss_limit_mb": 1024,
+    "targets": [
+      {
+        "target": "frame_decoder",
+        "job_id": 105882442481,
+        "artifact_id": 10583185595,
+        "artifact_sha256": "24648193b6713896153ffc01843cb532aac96685d4b1846161e07aea45645bf9",
+        "execution": {
+          "returncode": 0,
+          "instrumentation_observed": true,
+          "executed_units": 2534765,
+          "max_reported_coverage": 120,
+          "result": "success"
+        }
+      },
+      {
+        "target": "control_envelope",
+        "job_id": 105882442503,
+        "artifact_id": 10582986584,
+        "artifact_sha256": "e8c21be6c13c5ccc5bfb12ae756e5a1ca2cdd2b839e41d7a46ed3b81851a4d45",
+        "execution": {
+          "returncode": 0,
+          "instrumentation_observed": true,
+          "executed_units": 3873675,
+          "max_reported_coverage": 1833,
+          "result": "success"
+        }
+      },
+      {
+        "target": "record_codec",
+        "job_id": 105882442547,
+        "artifact_id": 10583365475,
+        "artifact_sha256": "5c224ceb028df2f39af60f37ae1e3b6bb373b633ebe001f4c2c3530a2a1dd2f3",
+        "execution": {
+          "returncode": 0,
+          "instrumentation_observed": true,
+          "executed_units": 2153930,
+          "max_reported_coverage": 6852,
+          "result": "success"
+        }
+      }
+    ]
+  },
+  "review": {
+    "requested_comment": 5741042276,
+    "response_comment": 5741043043,
+    "result": "Codex code review unavailable: usage limit exhausted; no independent review claimed."
+  },
+  "remaining": [
+    "Independent task and compatibility sign-off.",
+    "IDs and representable sizes are not authority, provider ownership or allocation permission.",
+    "Native runs do not qualify unsupported supervisor platforms, hostile same-user isolation or power-loss durability.",
+    "All existing CORE acceptance gates remain in force."
+  ],
+  "accepted": false,
+  "production_ready": false
+}
