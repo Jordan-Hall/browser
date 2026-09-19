@@ -45,3 +45,11 @@ Verification during the resumed run:
 Remaining acceptance gates include native supervisor/runtime ownership beyond Linux, full trusted-path coverage, platform power-loss qualification, provider/runtime integration, and independent task acceptance. Passing local tests does not satisfy those gates.
 
 The previous run stopped after its requested deadline of 23:10 UTC on September 18 because Docker approval delayed execution. This resumed run begins from that checkpoint and preserves its acceptance limits.
+
+## 2026-09-19 CORE-01.T01 baseline hardening
+
+PR #817 merged as `252570ece2feb8089582c26518551ca4ae88298c` after exact-head CI run 35435686134 passed at `7baca2b8a7f02bc87453d3f03a7a611835566213` on Ubuntu 24.04, Windows 2025 and macOS 15. The run verified the compiler selected from `rust-toolchain.toml`, committed lockfiles, formatting, strict Clippy, workspace/native tests, doctests, fuzz-target compilation, the real architecture checker and contract conformance.
+
+The architecture negative fixture now invokes the real checker against a target-specific Cargo dependency whose package is aliased to the allowed name `serde`; it fails because the underlying dependency is a path/workspace package. The checker scope is explicitly direct declared dependencies (normal, development, build and target-specific) plus reviewed source/name policy. It does not claim transitive supply-chain qualification; transitive resolution remains represented by the committed lockfile and separate review gates.
+
+The CI checkout and artifact-upload actions are pinned to reviewed commit revisions, and CI/toolchain export derive Rust 1.98.1 from the checked-in toolchain file instead of duplicating the patch version in workflow commands. A drift regression rejects a floating toolchain and mismatched workspace `rust-version` major/minor. The requested `@codex review` could not run because the connector reported exhausted code-review quota, so no independent review or task acceptance is claimed. The existing `--require-accepted` gate and all remaining CORE acceptance criteria stay unchanged.
