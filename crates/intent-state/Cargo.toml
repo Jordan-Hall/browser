@@ -17,7 +17,7 @@ getrandom.workspace = true
 sha2.workspace = true
 uuid.workspace = true
 
-[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+[target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
 [lints]

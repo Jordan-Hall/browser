@@ -47,6 +47,7 @@ fn load_payload(store: &StateStore, id: OutboxMessageId) {
 ```
 "#]
 
+mod artifact_catalog;
 mod artifacts;
 mod authorized_dispatch;
 mod directory_sync;
@@ -92,6 +93,7 @@ pub use snapshots::{
     BackupKey, PlaintextExportConsent, SnapshotError, SnapshotLimits, SnapshotReceipt,
 };
 
+pub use artifact_catalog::{ArtifactCatalogEntry, MAX_ARTIFACT_METADATA_PAGE};
 pub use artifacts::{
     ArtifactError, ArtifactMetadata, ArtifactReferenceRegistration, ArtifactScope,
     MAX_ARTIFACT_BYTES, NewArtifact, VerifiedArtifact,

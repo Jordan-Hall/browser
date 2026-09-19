@@ -1,13 +1,15 @@
 use intent_broker::{
-    CoreDocumentImportMode, CoreDocumentPersistenceError, DurableCoreDocumentRequest,
-    PersistedCoreDocumentImport, persist_core_document_import,
+    CoreDocumentArchiveSelection, CoreDocumentImportMode, CoreDocumentPersistenceError,
+    DurableCoreDocumentRequest, MAX_CORE_DOCUMENT_ARCHIVE_PAGE, PersistedCoreDocumentImport,
+    list_persisted_core_document_imports, persist_core_document_import,
+    select_persisted_core_document_import,
 };
-use intent_contracts::{ArtifactId, UnixTimestampMicros};
+use intent_contracts::{ArtifactId, BoundedText, UnixTimestampMicros};
 use intent_ipc::{CoreRecordKind, WireErrorCode, WireLimits};
-use intent_state::{ArtifactError, ArtifactScope, StateStore};
+use intent_state::{ArtifactError, ArtifactScope, NewArtifact, StateStore};
 use std::error::Error;
 use std::fs;
-use std::io::Read;
+use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -268,5 +270,186 @@ fn reusing_an_import_artifact_id_with_different_bytes_fails_closed() -> Result<(
             .windows(expected.len())
             .any(|window| window == expected)
     );
+    Ok(())
+}
+
+#[test]
+fn archive_listing_and_selection_are_scoped_bounded_and_revalidated() -> Result<(), Box<dyn Error>>
+{
+    let mut fixture = Fixture::new()?;
+    let mut current = fixture.request(CoreDocumentImportMode::Strict)?;
+    current.created_at = UnixTimestampMicros::try_new(10)?;
+    let current_id = current.artifact_id;
+    persist_core_document_import(
+        &mut fixture.store,
+        &fixture.artifacts,
+        current,
+        &current_goal("7"),
+        WireLimits::default(),
+    )?;
+
+    let mut future = fixture.request(CoreDocumentImportMode::Strict)?;
+    future.created_at = UnixTimestampMicros::try_new(20)?;
+    let future_id = future.artifact_id;
+    persist_core_document_import(
+        &mut fixture.store,
+        &fixture.artifacts,
+        future,
+        &future_goal(),
+        WireLimits::default(),
+    )?;
+
+    let other_scope = ArtifactScope::try_new("profile:other")?;
+    let mut other = fixture.request(CoreDocumentImportMode::Strict)?;
+    other.privacy_scope = other_scope.clone();
+    other.created_at = UnixTimestampMicros::try_new(30)?;
+    let other_id = other.artifact_id;
+    persist_core_document_import(
+        &mut fixture.store,
+        &fixture.artifacts,
+        other,
+        &current_goal("9"),
+        WireLimits::default(),
+    )?;
+
+    let ordinary_id = ArtifactId::from_uuid(Uuid::new_v4());
+    fixture.store.store_artifact(
+        &fixture.artifacts,
+        NewArtifact {
+            artifact_id: ordinary_id,
+            privacy_scope: fixture.scope.clone(),
+            media_type: BoundedText::try_new("application/octet-stream")?,
+            created_at: UnixTimestampMicros::try_new(40)?,
+        },
+        &mut Cursor::new(b"not-a-core-document"),
+    )?;
+
+    let listed = list_persisted_core_document_imports(&fixture.store, &fixture.scope, 8)?;
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0].artifact().artifact_id(), future_id);
+    assert!(listed[0].is_read_only());
+    assert_eq!(listed[1].artifact().artifact_id(), current_id);
+    assert!(!listed[1].is_read_only());
+    assert!(
+        listed
+            .iter()
+            .all(|entry| entry.kind() == CoreRecordKind::GoalContract)
+    );
+
+    let selected = select_persisted_core_document_import(
+        &fixture.store,
+        &fixture.artifacts,
+        &fixture.scope,
+        current_id,
+        WireLimits::default(),
+    )?;
+    assert!(matches!(
+        selected,
+        CoreDocumentArchiveSelection::Current { .. }
+    ));
+    assert_eq!(selected.kind(), CoreRecordKind::GoalContract);
+    assert!(selected.record().is_some());
+    assert!(!selected.is_read_only());
+
+    let selected = select_persisted_core_document_import(
+        &fixture.store,
+        &fixture.artifacts,
+        &fixture.scope,
+        future_id,
+        WireLimits::default(),
+    )?;
+    assert!(matches!(
+        selected,
+        CoreDocumentArchiveSelection::ReadOnlyNewerMinor { .. }
+    ));
+    assert!(selected.is_read_only());
+    assert!(selected.record().is_none());
+
+    assert!(matches!(
+        select_persisted_core_document_import(
+            &fixture.store,
+            &fixture.artifacts,
+            &fixture.scope,
+            ordinary_id,
+            WireLimits::default(),
+        ),
+        Err(CoreDocumentPersistenceError::NotCoreDocumentArtifact(id)) if id == ordinary_id
+    ));
+    assert!(matches!(
+        select_persisted_core_document_import(
+            &fixture.store,
+            &fixture.artifacts,
+            &fixture.scope,
+            other_id,
+            WireLimits::default(),
+        ),
+        Err(CoreDocumentPersistenceError::Artifact(ArtifactError::AccessDenied(id))) if id == other_id
+    ));
+    assert!(matches!(
+        list_persisted_core_document_imports(&fixture.store, &fixture.scope, 0),
+        Err(CoreDocumentPersistenceError::InvalidArchivePage)
+    ));
+    assert!(matches!(
+        list_persisted_core_document_imports(
+            &fixture.store,
+            &fixture.scope,
+            MAX_CORE_DOCUMENT_ARCHIVE_PAGE + 1,
+        ),
+        Err(CoreDocumentPersistenceError::InvalidArchivePage)
+    ));
+    Ok(())
+}
+
+#[test]
+fn archive_selection_rejects_family_mode_metadata_that_disagrees_with_bytes()
+-> Result<(), Box<dyn Error>> {
+    let mut fixture = Fixture::new()?;
+    let forged_current = ArtifactId::from_uuid(Uuid::new_v4());
+    fixture.store.store_artifact(
+        &fixture.artifacts,
+        NewArtifact {
+            artifact_id: forged_current,
+            privacy_scope: fixture.scope.clone(),
+            media_type: BoundedText::try_new(
+                "application/vnd.intent.core-record+json;family=intent.goal_contract",
+            )?,
+            created_at: UnixTimestampMicros::try_new(50)?,
+        },
+        &mut Cursor::new(future_goal()),
+    )?;
+    assert!(matches!(
+        select_persisted_core_document_import(
+            &fixture.store,
+            &fixture.artifacts,
+            &fixture.scope,
+            forged_current,
+            WireLimits::default(),
+        ),
+        Err(CoreDocumentPersistenceError::InvalidArchiveMetadata(id)) if id == forged_current
+    ));
+
+    let forged_read_only = ArtifactId::from_uuid(Uuid::new_v4());
+    fixture.store.store_artifact(
+        &fixture.artifacts,
+        NewArtifact {
+            artifact_id: forged_read_only,
+            privacy_scope: fixture.scope.clone(),
+            media_type: BoundedText::try_new(
+                "application/vnd.intent.core-record.readonly+json;family=intent.goal_contract",
+            )?,
+            created_at: UnixTimestampMicros::try_new(51)?,
+        },
+        &mut Cursor::new(current_goal("11")),
+    )?;
+    assert!(matches!(
+        select_persisted_core_document_import(
+            &fixture.store,
+            &fixture.artifacts,
+            &fixture.scope,
+            forged_read_only,
+            WireLimits::default(),
+        ),
+        Err(CoreDocumentPersistenceError::InvalidArchiveMetadata(id)) if id == forged_read_only
+    ));
     Ok(())
 }
