@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T06 durable core-document admission increment; not task acceptance",
+  "pull_request": 826,
+  "base_commit": "5e310354a9d4491f1b58fc8bd5df48ce4da1bbe3",
+  "code_commit": "464c02c373a3676ce4e3d58d27f4be3327f94b10",
+  "code_tree": "489cdd5a63b673bd7074c10d02bcba4423283b57",
+  "tested_merge_commit": "33e2483a4bda1e6355707745624b84c5c0d82c7e",
+  "implementation": {
+    "strict_current": "validate with the current family codec, re-encode canonically, then persist",
+    "newer_minor": "preserve admitted bytes exactly and return only a read-only opaque document",
+    "legacy_numeric_money": "explicit GoalContract-only adapter from PR 825, persisted only after current-codec validation",
+    "authority": "persistence creates no approval, operation, outbox row, executable reference or provider request",
+    "family_binding": "artifact media metadata includes CoreRecordKind::family_name so identical opaque bytes cannot rebind one artifact ID across families"
+  },
+  "regressions": {
+    "new_broker_tests": 7,
+    "coverage": [
+      "canonical current persistence",
+      "exact newer-minor byte preservation and read-only status",
+      "explicit legacy numeric-money persistence across the i128 domain representative",
+      "validation failure leaves no durable artifact handle",
+      "legacy mode rejects non-GoalContract families",
+      "changed admitted bytes conflict with an existing artifact ID",
+      "identical opaque bytes cannot rebind an artifact ID to another record family"
+    ]
+  },
+  "ci": {
+    "run_id": 35468483519,
+    "conclusion": "success",
+    "rust_job": 105965045234,
+    "native_jobs": {
+      "ubuntu_24_04": 105965045314,
+      "windows_2025": 105965045333,
+      "macos_15": 105965045368
+    },
+    "checks": [
+      "workspace and fuzz formatting",
+      "strict workspace Clippy on Linux",
+      "workspace unit and integration tests",
+      "workspace doctests",
+      "fuzz target compilation",
+      "architecture checker",
+      "contract conformance",
+      "25 Python coverage/evidence tests",
+      "intent-broker native tests and doctests on Ubuntu, Windows and macOS"
+    ],
+    "artifact_id": 10591679607,
+    "artifact_sha256": "d858e1d1d05c1a7d739c933ab8eda17e281fd1f98f9d95eec747609af372c168",
+    "lockfile_sha256": {
+      "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
+      "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+    }
+  },
+  "fuzz": {
+    "compilation": "passed",
+    "instrumented_execution": "not_run_for_this_changeset",
+    "reason": "PR 826 changes the broker durable-admission seam, tests, documentation and native CI coverage; parser code and fuzz corpus were unchanged after PR 825. No new instrumented campaign is claimed."
+  },
+  "review": {
+    "code_commit": "464c02c373a3676ce4e3d58d27f4be3327f94b10",
+    "status": "Codex review completed",
+    "initial_finding": 4054652181,
+    "resolution": "family identity is persisted in media metadata and the regression rejects cross-family opaque artifact rebinding",
+    "thread_resolved": true,
+    "independent_task_acceptance": false
+  },
+  "remaining": [
+    "A complete product archive browser/selection and workspace activation or restore transaction is not implemented by this increment.",
+    "Persisted imported records do not grant authority; separate policy, approval and runtime gates remain mandatory.",
+    "Independent compatibility and whole-task acceptance remain open.",
+    "The CORE coverage release gate remains unchanged with 37 unaccepted tasks."
+  ],
+  "accepted": false,
+  "production_ready": false
+}
