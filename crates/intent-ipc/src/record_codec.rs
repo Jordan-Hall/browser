@@ -64,8 +64,16 @@ macro_rules! core_records {
             input: &[u8],
             limits: WireLimits,
         ) -> Result<CoreRecord, WireError> {
+            let value = decode_record_document(input, limits)?;
+            decode_core_record_value(kind, value)
+        }
+
+        pub(crate) fn decode_core_record_value(
+            kind: CoreRecordKind,
+            value: serde_json::Value,
+        ) -> Result<CoreRecord, WireError> {
             match kind {
-                $(CoreRecordKind::$record => decode_typed::<$record>(input, limits)
+                $(CoreRecordKind::$record => decode_value::<$record>(value)
                     .map(Box::new).map(CoreRecord::$record)),+
             }
         }
@@ -88,33 +96,31 @@ core_records! {
     ArtifactReference => "intent.artifact_reference",
 }
 
-fn decode_typed<T: DeserializeOwned>(input: &[u8], limits: WireLimits) -> Result<T, WireError> {
-    if input.len() > limits.max_control_frame_bytes {
-        return Err(WireError::new(
-            WireErrorCode::FrameTooLarge,
-            "record exceeds the control-document byte limit",
-        ));
-    }
-    crate::envelope::preflight_json_structure(input, limits.max_json_depth)?;
-    let value = crate::strict_json::decode(input, limits)?;
-    let header = value.get("schema_version").ok_or_else(|| {
-        WireError::new(
-            WireErrorCode::InvalidRecord,
-            "record schema_version is required",
-        )
-    })?;
-    let version: SchemaVersion = serde_json::from_value(header.clone()).map_err(|_| {
-        WireError::new(
-            WireErrorCode::InvalidRecord,
-            "invalid record schema_version",
-        )
-    })?;
+fn decode_record_document(
+    input: &[u8],
+    limits: WireLimits,
+) -> Result<serde_json::Value, WireError> {
+    let version = crate::document_syntax::schema_version(input, limits)?;
+    require_v1(version)?;
+    crate::strict_json::decode(input, limits)
+}
+
+fn require_v1(version: SchemaVersion) -> Result<(), WireError> {
     if version != SchemaVersion::V1 {
         return Err(WireError::new(
             WireErrorCode::UnsupportedSchema,
             "record codec implements schema 1.0 only",
         ));
     }
+    Ok(())
+}
+
+fn decode_typed<T: DeserializeOwned>(input: &[u8], limits: WireLimits) -> Result<T, WireError> {
+    let value = decode_record_document(input, limits)?;
+    decode_value(value)
+}
+
+fn decode_value<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, WireError> {
     serde_json::from_value(value).map_err(|_| {
         WireError::new(
             WireErrorCode::InvalidRecord,
