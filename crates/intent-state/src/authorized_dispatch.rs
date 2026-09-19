@@ -1,8 +1,10 @@
 use crate::{
-    DurableOperationState, NewOutboxMessage, OutboxError, OutboxMessage, StateError, StateStore,
+    DurableOperationState, NewOutboxMessage, OutboxError, OutboxMessage, OutboxState, StateError,
+    StateStore,
 };
 use intent_contracts::{
-    ActionProposal, Approval, ApprovalState, ContentHash, OperationId, UnixTimestampMicros,
+    ActionProposal, Approval, ApprovalState, BoundedText, ContentHash, OperationAttemptId,
+    OperationId, OutboxMessageId, UnixTimestampMicros,
 };
 use sha2::{Digest, Sha256};
 use std::error::Error;
@@ -70,9 +72,75 @@ impl From<OutboxError> for AuthorizedDispatchError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StagedOutbox {
+    outbox_id: OutboxMessageId,
+    operation_id: OperationId,
+    attempt_identity: OperationAttemptId,
+    created_at: UnixTimestampMicros,
+}
+
+impl StagedOutbox {
+    #[must_use]
+    pub const fn outbox_id(self) -> OutboxMessageId {
+        self.outbox_id
+    }
+
+    #[must_use]
+    pub const fn operation_id(self) -> OperationId {
+        self.operation_id
+    }
+
+    #[must_use]
+    pub const fn attempt_identity(self) -> OperationAttemptId {
+        self.attempt_identity
+    }
+
+    #[must_use]
+    pub const fn created_at(self) -> UnixTimestampMicros {
+        self.created_at
+    }
+}
+
 #[must_use]
 fn hash_payload(payload: &[u8]) -> ContentHash {
     ContentHash::from_bytes(Sha256::digest(payload).into())
+}
+
+struct ExpectedStoredOutbox<'a> {
+    outbox_id: OutboxMessageId,
+    operation_id: OperationId,
+    attempt_identity: OperationAttemptId,
+    destination: &'a BoundedText<512>,
+    message_kind: &'a BoundedText<128>,
+    payload_hash: ContentHash,
+    staged_at: UnixTimestampMicros,
+}
+
+fn verify_stored_outbox_projection(
+    stored: &OutboxMessage,
+    expected: ExpectedStoredOutbox<'_>,
+) -> Result<(), AuthorizedDispatchError> {
+    let exact_projection = stored.outbox_id() == expected.outbox_id
+        && stored.operation_id() == expected.operation_id
+        && stored.attempt_identity() == expected.attempt_identity
+        && stored.destination() == expected.destination
+        && stored.message_kind() == expected.message_kind
+        && stored.payload_hash() == expected.payload_hash
+        && hash_payload(stored.payload()) == expected.payload_hash
+        && stored.state() == OutboxState::Pending
+        && stored.lease_owner().is_none()
+        && stored.lease_expires_at().is_none()
+        && stored.dispatch_started_at().is_none()
+        && stored.created_at() == expected.staged_at
+        && stored.updated_at() == expected.staged_at;
+    if exact_projection {
+        Ok(())
+    } else {
+        Err(AuthorizedDispatchError::BindingMismatch(
+            "persisted outbox projection",
+        ))
+    }
 }
 
 impl StateStore {
@@ -81,7 +149,8 @@ impl StateStore {
     /// This is a record-binding check, not a grant of executable authority or user consent.
     /// Callers must separately enforce the runtime-owner, authority, policy, and provider gates
     /// before any external effect is attempted. The validation time must also be the
-    /// persisted staging time and cannot precede the operation's latest transition.
+    /// persisted staging time and cannot precede the operation's latest transition. The return
+    /// value intentionally contains no executable destination, message kind, payload, or hash.
     pub fn stage_record_bound_outbox(
         &mut self,
         proposal: &ActionProposal,
@@ -89,7 +158,7 @@ impl StateStore {
         new: NewOutboxMessage,
         expected_operation_revision: u64,
         now: UnixTimestampMicros,
-    ) -> Result<OutboxMessage, AuthorizedDispatchError> {
+    ) -> Result<StagedOutbox, AuthorizedDispatchError> {
         if new.payload.len() > crate::MAX_OUTBOX_PAYLOAD_BYTES {
             return Err(OutboxError::PayloadTooLarge(new.payload.len()).into());
         }
@@ -130,7 +199,8 @@ impl StateStore {
                 "payload byte size",
             ));
         }
-        if hash_payload(&new.payload) != proposal.arguments_hash() {
+        let payload_hash = hash_payload(&new.payload);
+        if payload_hash != proposal.arguments_hash() {
             return Err(AuthorizedDispatchError::BindingMismatch("payload hash"));
         }
         if proposal.target_resource().is_some() {
@@ -167,8 +237,30 @@ impl StateStore {
             _ => return Err(AuthorizedDispatchError::ApprovalNotActive),
         }
 
-        self.stage_outbox(new, expected_operation_revision)
-            .map_err(AuthorizedDispatchError::from)
+        let staged = StagedOutbox {
+            outbox_id: new.outbox_id,
+            operation_id: new.operation_id,
+            attempt_identity: new.attempt_identity,
+            created_at: new.created_at,
+        };
+        let expected_destination = new.destination.clone();
+        let expected_message_kind = new.message_kind.clone();
+        let stored = self
+            .stage_outbox(new, expected_operation_revision)
+            .map_err(AuthorizedDispatchError::from)?;
+        verify_stored_outbox_projection(
+            &stored,
+            ExpectedStoredOutbox {
+                outbox_id: staged.outbox_id,
+                operation_id: staged.operation_id,
+                attempt_identity: staged.attempt_identity,
+                destination: &expected_destination,
+                message_kind: &expected_message_kind,
+                payload_hash,
+                staged_at: staged.created_at,
+            },
+        )?;
+        Ok(staged)
     }
 }
 
@@ -327,7 +419,17 @@ mod tests {
             1,
             UnixTimestampMicros::try_new(120)?,
         )?;
-        assert_eq!(staged.state(), OutboxState::Pending);
+        assert_eq!(staged.outbox_id(), outbox_id()?);
+        assert_eq!(staged.operation_id(), operation_id()?);
+        assert_eq!(staged.attempt_identity(), attempt_id()?);
+        assert_eq!(staged.created_at(), UnixTimestampMicros::try_new(120)?);
+        assert_eq!(
+            store
+                .load_outbox(outbox_id()?)?
+                .ok_or("staged outbox missing")?
+                .state(),
+            OutboxState::Pending
+        );
         assert_eq!(
             store
                 .load_operation(operation_id()?)?
