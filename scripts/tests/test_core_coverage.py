@@ -92,10 +92,25 @@ class CoverageTests(unittest.TestCase):
             outside.write_text("not repository source")
             if os.name == "nt":
                 link = root / "outside"
-                command = f'mklink /J "{link}" "{target}"'
-                subprocess.run(
-                    [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", command],
-                    check=True, capture_output=True, timeout=10,
+                result = subprocess.run(
+                    [
+                        os.environ.get("COMSPEC", "cmd.exe"),
+                        "/d",
+                        "/c",
+                        "mklink",
+                        "/J",
+                        str(link),
+                        str(target),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    f"mklink failed: stdout={result.stdout!r} stderr={result.stderr!r}",
                 )
                 try:
                     self.assertTrue(link.is_junction())
