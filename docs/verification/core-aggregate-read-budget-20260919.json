@@ -2,43 +2,54 @@
   "schema_version": 1,
   "scope": "CORE-01.T04 aggregate supervisor read-budget increment; not task acceptance",
   "pr": 824,
-  "source_commit": "a2bfaa85eb9401db05e9f7051664b0db8c3eda3f",
+  "source_commit": "fdaa56296d5c3cc2d90c0951160761ee69f82279",
+  "source_tree": "76f5165c60a46a3767f161aaa7bff5faf6cc1933",
   "base_commit": "25644ad45c1e3911289b2947b5feeeaa104913d6",
-  "tested_merge_commit": "6e448c8a6b91c323eef1a6047d72c98b2bd67c6d",
+  "tested_merge_commit": "359210f4c512fd890f731bd8054ba4326c786a62",
   "source_sha256": {
-    "crates/intent-supervisor/src/runtime.rs": "8599c6d9f7ac9db629d9153173b5a3781f5677a082384c0ddd88ea03d5219a43",
-    "crates/intent-supervisor/src/wire.rs": "b35437549c8b3e740dc109972bf6f7ea54f9a910dff6ddc7fed6dd1762ebddb6",
+    "crates/intent-supervisor/src/runtime.rs": "69e07789d7e9b33d0724638722b25a7a026eb4e7d46e8779434ec98ca6d43f6b",
+    "crates/intent-supervisor/src/runtime/health_tests.rs": "bdc1bdb5123dda8b40991b08a3b42196c7f54a97770e1a0c3d8ce4cc53fb6e4d",
+    "crates/intent-supervisor/src/wire.rs": "7b10ab8b8b7b27391543c4ca36556e754f8b5cdb3867137b93053959b8077ad5",
+    "crates/intent-supervisor/src/wire/budget_tests.rs": "6e35665fe811bcba7b7277ca229d4ecc19ccc5d30908f61c37307e9f7b592fc1",
     "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
     "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
   },
   "local": {
-    "rust_toolchain_available": false,
-    "claim": "No local Rust pass is claimed in this execution environment. Exact-head GitHub CI supplies Rust verification."
-  },
-  "regression": {
-    "name": "shared_read_budget_caps_many_ready_sockets",
-    "real_unix_stream_pairs": 16,
-    "frame_payload_bytes": 3000,
-    "aggregate_test_budget_bytes": 8192,
-    "per_socket_cap_bytes": 4096,
-    "complete_frames_before_exhaustion": 2,
-    "result": "passed in exact-head CI"
-  },
-  "ci": {
-    "run_id": 35454743310,
-    "conclusion": "success",
     "rust_toolchain": "1.98.1",
-    "workspace_test_results": 358,
+    "locked": true,
+    "workspace_test_results": 369,
     "doctests": 17,
     "python_tests": 25,
+    "new_regression_functions": 9,
+    "before_fix": "A real eight-socket regression failed at worker 8 on e6742222907065aee06965d9351b9c252c135d19 because merely consuming the final aggregate byte deferred an expired heartbeat; strict Clippy also rejected the nine-argument helper.",
+    "after_fix": "The corrected source passes the pinned locked workspace tests, strict Clippy, formatting, doctests, architecture/conformance and Python evidence checks. Fuzz target compilation completed on a separate local rerun after an earlier combined invocation timed out during compilation; the interrupted run is not counted as a pass."
+  },
+  "regressions": {
+    "aggregate_many_connections": "16 real UnixStream pairs share one 8 KiB test budget rather than independent per-socket budgets.",
+    "fair_cursor": "64 continuously ready real socket pairs are each serviced exactly once across eight 32 KiB budget windows.",
+    "fully_serviced_last_worker": "Eight workers each consume a complete 4 KiB control opportunity; the eighth exactly empties the 32 KiB aggregate budget and remains eligible for expired-heartbeat failure.",
+    "actual_block_only": "A health deferral is recorded only when aggregate allowance is smaller than the lane request, that allowance is exhausted, and the read remains Pending; WouldBlock with unused bytes, completed frames, closure and malformed input do not gain health-time extensions.",
+    "lane_specific_health": "Control blocking alone can defer heartbeat; either control or progress blocking can defer progress because Observed control responses and WorkProgress events both advance work progress."
+  },
+  "ci": {
+    "run_id": 35461593525,
+    "conclusion": "success",
+    "rust_toolchain": "1.98.1",
     "jobs": {
-      "rust_checks": 105927927045,
-      "ubuntu_24_04": 105927927131,
-      "windows_2025": 105927927113,
-      "macos_15": 105927927179
+      "rust_checks": 105946325149,
+      "ubuntu_24_04": 105946325354,
+      "windows_2025": 105946325263,
+      "macos_15": 105946325297
     },
-    "artifact_id": 10587587878,
-    "artifact_sha256": "3e83f3b4d74ed19ce0a931ed278d98714dff285aa3cff4f2f2ba64066f418f10",
+    "artifact_id": 10590130373,
+    "artifact_sha256": "dc1165e834abe473225d67e0743a8d5b9ae11fc09061b607598eb118998525f5",
+    "source_archive_files": 214,
+    "source_archive_blob_matches": {
+      "crates/intent-supervisor/src/runtime.rs": "cae663785c10f17e7cf479d969b9b8e0efe427e3",
+      "crates/intent-supervisor/src/runtime/health_tests.rs": "fe96d99303bd48b9d4c7707b1642a713bf8878f4",
+      "crates/intent-supervisor/src/wire.rs": "37328260e098d79733c64a0ba18682b10b965105",
+      "crates/intent-supervisor/src/wire/budget_tests.rs": "a9ae980ac97e646704bbc860acdea61583222f77"
+    },
     "checks": [
       "workspace and fuzz formatting",
       "strict workspace Clippy",
@@ -56,17 +67,21 @@
   "fuzz": {
     "execution": "not_run_for_this_changeset",
     "compilation": "passed",
-    "reason": "Supervisor-only paths did not trigger the existing parser-fuzz workflow; no instrumented execution is claimed."
+    "reason": "Supervisor-only paths did not trigger the existing parser-fuzz workflow; no new instrumented execution is claimed."
   },
   "review": {
-    "initial_review_commit": "925e3762b28454a2cf3bcc1dba9dee044a907f5c",
-    "finding_comment": 4053783463,
-    "finding": "Adding fields to the public exhaustive PollReport was a source-breaking API change.",
-    "resolved_in_source": "a2bfaa85eb9401db05e9f7051664b0db8c3eda3f",
-    "fresh_review": "requested on corrected source; completion must be inspected before merge",
+    "previous_findings": [4053783463, 4053805384, 4053827323, 4053827326, 4053881048],
+    "source_findings_addressed": true,
+    "fresh_review_commit": "fdaa56296d5c3cc2d90c0951160761ee69f82279",
+    "fresh_review_status": "running at evidence checkpoint; completion and all threads must be re-read before merge",
     "independent_task_acceptance": false
   },
+  "acceptance_gate": {
+    "require_accepted": "unchanged; this increment does not mark any task accepted",
+    "known_unaccepted_core_tasks": 37
+  },
   "remaining": [
+    "Fresh final-head Codex code review must complete and all genuine findings must be resolved before merge.",
     "Independent whole-task acceptance and compatibility sign-off required by issue #124 are not established by this incremental PR.",
     "CORE-01.T07/#127 real transport and backpressure separation remains a separate task.",
     "No instrumented parser-fuzz execution is claimed for this supervisor-only changeset.",
