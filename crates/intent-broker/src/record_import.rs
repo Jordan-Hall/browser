@@ -105,9 +105,8 @@ impl fmt::Display for CoreDocumentPersistenceError {
         match self {
             Self::Wire(error) => write!(formatter, "core document validation failed: {error}"),
             Self::Artifact(error) => write!(formatter, "core document persistence failed: {error}"),
-            Self::LegacyModeRequiresGoalContract => formatter.write_str(
-                "legacy numeric-money import is valid only for GoalContract documents",
-            ),
+            Self::LegacyModeRequiresGoalContract => formatter
+                .write_str("legacy numeric-money import is valid only for GoalContract documents"),
             Self::StaticMediaType(error) => write!(formatter, "invalid import media type: {error}"),
         }
     }
@@ -150,26 +149,28 @@ pub fn persist_core_document_import(
     limits: WireLimits,
 ) -> Result<PersistedCoreDocumentImport, CoreDocumentPersistenceError> {
     let (record, stored_bytes, legacy_numeric_money) = match request.mode {
-        CoreDocumentImportMode::Strict => match import_core_document(request.kind, input, limits)? {
-            CoreDocumentImport::Current(record) => {
-                let encoded = record.encode(limits)?;
-                (record, encoded, false)
+        CoreDocumentImportMode::Strict => {
+            match import_core_document(request.kind, input, limits)? {
+                CoreDocumentImport::Current(record) => {
+                    let encoded = record.encode(limits)?;
+                    (record, encoded, false)
+                }
+                CoreDocumentImport::ReadOnlyNewerMinor(document) => {
+                    let exact = document.original_bytes().to_vec();
+                    let artifact = store_bytes(
+                        store,
+                        artifact_root,
+                        &request,
+                        exact,
+                        bounded_media_type(READ_ONLY_MEDIA_TYPE)?,
+                    )?;
+                    return Ok(PersistedCoreDocumentImport::ReadOnlyNewerMinor {
+                        document,
+                        artifact,
+                    });
+                }
             }
-            CoreDocumentImport::ReadOnlyNewerMinor(document) => {
-                let exact = document.original_bytes().to_vec();
-                let artifact = store_bytes(
-                    store,
-                    artifact_root,
-                    &request,
-                    exact,
-                    bounded_media_type(READ_ONLY_MEDIA_TYPE)?,
-                )?;
-                return Ok(PersistedCoreDocumentImport::ReadOnlyNewerMinor {
-                    document,
-                    artifact,
-                });
-            }
-        },
+        }
         CoreDocumentImportMode::LegacyNumericMoneyGoalV1 => {
             if request.kind != CoreRecordKind::GoalContract {
                 return Err(CoreDocumentPersistenceError::LegacyModeRequiresGoalContract);
@@ -194,9 +195,7 @@ pub fn persist_core_document_import(
     })
 }
 
-fn bounded_media_type(
-    value: &str,
-) -> Result<BoundedText<255>, CoreDocumentPersistenceError> {
+fn bounded_media_type(value: &str) -> Result<BoundedText<255>, CoreDocumentPersistenceError> {
     BoundedText::try_new(value.to_owned())
         .map_err(|error| CoreDocumentPersistenceError::StaticMediaType(error.to_string()))
 }
