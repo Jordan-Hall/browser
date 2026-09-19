@@ -163,6 +163,15 @@ impl<T> PriorityQueue<T> {
         self.reserved.iter().any(predicate)
     }
 
+    pub(crate) fn has_any(&self, mut predicate: impl FnMut(&T) -> bool) -> bool {
+        self.reserved.iter().any(&mut predicate)
+            || self.reliable.iter().any(&mut predicate)
+            || self
+                .best_effort
+                .iter()
+                .any(|(_, item)| predicate(item))
+    }
+
     #[must_use]
     pub fn reliable_len(&self) -> usize {
         self.reliable.len()
