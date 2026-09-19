@@ -8,7 +8,7 @@ use intent_state::{ArtifactError, ArtifactScope, StateStore};
 use std::error::Error;
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 const GOAL_ID: &str = "018f47f7-5a86-7c00-8000-000000000001";
@@ -38,7 +38,10 @@ impl Fixture {
         })
     }
 
-    fn request(&self, mode: CoreDocumentImportMode) -> Result<DurableCoreDocumentRequest, Box<dyn Error>> {
+    fn request(
+        &self,
+        mode: CoreDocumentImportMode,
+    ) -> Result<DurableCoreDocumentRequest, Box<dyn Error>> {
         Ok(DurableCoreDocumentRequest {
             artifact_id: ArtifactId::from_uuid(Uuid::new_v4()),
             privacy_scope: self.scope.clone(),
@@ -104,7 +107,12 @@ fn current_import_is_canonicalized_before_durable_storage() -> Result<(), Box<dy
     assert!(imported.record().is_some());
     assert_eq!(imported.artifact().artifact_id(), artifact_id);
     let stored = fixture.stored_bytes(artifact_id)?;
-    assert!(stored.windows(b"\"minor_units\":\"123\"".len()).any(|window| window == b"\"minor_units\":\"123\""));
+    let expected = b"\"minor_units\":\"123\"";
+    assert!(
+        stored
+            .windows(expected.len())
+            .any(|window| window == expected)
+    );
     Ok(())
 }
 
@@ -122,7 +130,10 @@ fn newer_minor_import_persists_exact_bytes_and_stays_read_only() -> Result<(), B
         WireLimits::default(),
     )?;
 
-    assert!(matches!(imported, PersistedCoreDocumentImport::ReadOnlyNewerMinor { .. }));
+    assert!(matches!(
+        imported,
+        PersistedCoreDocumentImport::ReadOnlyNewerMinor { .. }
+    ));
     assert!(imported.is_read_only());
     assert!(imported.record().is_none());
     assert_eq!(fixture.stored_bytes(artifact_id)?, source);
@@ -165,7 +176,11 @@ fn legacy_numeric_money_requires_explicit_mode_and_persists_current_bytes()
     assert!(!imported.is_read_only());
     let stored = fixture.stored_bytes(legacy_id)?;
     let expected = format!("\"minor_units\":\"{}\"", i128::MIN);
-    assert!(stored.windows(expected.len()).any(|window| window == expected.as_bytes()));
+    assert!(
+        stored
+            .windows(expected.len())
+            .any(|window| window == expected.as_bytes())
+    );
     Ok(())
 }
 
@@ -175,14 +190,16 @@ fn failed_validation_creates_no_durable_artifact_handle() -> Result<(), Box<dyn 
     let request = fixture.request(CoreDocumentImportMode::Strict)?;
     let artifact_id = request.artifact_id;
     let malformed = b"{\"schema_version\":{\"major\":1,\"minor\":0},\"budget\":";
-    assert!(persist_core_document_import(
-        &mut fixture.store,
-        &fixture.artifacts,
-        request,
-        malformed,
-        WireLimits::default(),
-    )
-    .is_err());
+    assert!(
+        persist_core_document_import(
+            &mut fixture.store,
+            &fixture.artifacts,
+            request,
+            malformed,
+            WireLimits::default(),
+        )
+        .is_err()
+    );
     assert!(matches!(
         fixture.store.artifact_metadata(artifact_id, &fixture.scope),
         Err(ArtifactError::ArtifactNotFound(id)) if id == artifact_id
@@ -245,9 +262,11 @@ fn reusing_an_import_artifact_id_with_different_bytes_fails_closed() -> Result<(
         Err(CoreDocumentPersistenceError::Artifact(ArtifactError::HandleConflict(id))) if id == artifact_id
     ));
     let stored = fixture.stored_bytes(artifact_id)?;
-    assert!(stored.windows(b"\"minor_units\":\"1\"".len()).any(|window| window == b"\"minor_units\":\"1\""));
+    let expected = b"\"minor_units\":\"1\"";
+    assert!(
+        stored
+            .windows(expected.len())
+            .any(|window| window == expected)
+    );
     Ok(())
 }
-
-#[allow(dead_code)]
-fn _path_is_used(_: &Path) {}
