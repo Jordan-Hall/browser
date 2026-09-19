@@ -90,15 +90,10 @@ class CoverageTests(unittest.TestCase):
             outside.write_text("not repository source")
             if os.name == "nt":
                 link = root / "outside"
-                environment = os.environ | {
-                    "INTENT_TEST_LINK": str(link),
-                    "INTENT_TEST_TARGET": str(temp),
-                }
+                command = f'mklink /J "{link}" "{temp}" >NUL'
                 subprocess.run(
-                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                     "New-Item -ItemType Junction -Path $env:INTENT_TEST_LINK "
-                     "-Value $env:INTENT_TEST_TARGET -ErrorAction Stop | Out-Null"],
-                    env=environment, check=True, capture_output=True, timeout=10,
+                    ["cmd.exe", "/d", "/s", "/c", command],
+                    check=True, capture_output=True, timeout=10,
                 )
                 try:
                     self.assertTrue(link.is_junction())

@@ -3,7 +3,10 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture(PathBuf);
 
@@ -19,8 +22,9 @@ fn rejects_registry_replacement(
     replacement: &str,
 ) -> Result<(), Box<dyn Error>> {
     let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "intent-arch-resolution-{}-{unique}",
+        "intent-arch-resolution-{}-{unique}-{sequence}",
         std::process::id()
     ));
     fs::create_dir(&path)?;
