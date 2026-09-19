@@ -1,8 +1,8 @@
 use crate::{
     AdmissionBook, AdmissionLimits, BootstrapPacket, ChannelHello, ChannelKind, ControlMessage,
-    ExecutableImage, ProcessObservation, ProgressMessage, RequestPermit, RestartBudget,
-    RestartDecision, RevocationReceipt, ScheduledMessage, SchedulerLimits, SupervisorError,
-    WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
+    ExecutableImage, HealthPolicy, ProcessObservation, ProgressMessage, RequestPermit,
+    RestartBudget, RestartDecision, RevocationReceipt, ScheduledMessage, SchedulerLimits,
+    SupervisorError, WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
     observation::observe_unreaped,
     platform::ManagedChild,
     wire::{FramedSocket, ReadBudget, ReadOutcome, decode, encode_envelope, encode_event, offer},
@@ -72,28 +72,45 @@ pub enum WorkerFailure {
     OsExit,
     OsFailure,
 }
+#[derive(Clone, Copy, Debug)]
+struct HealthAges {
+    starting: Duration,
+    heartbeat: Duration,
+    progress: Duration,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct HealthReadBlocks {
+    control: bool,
+    progress: bool,
+}
+
 fn health_failure_after_reads(
     state: WorkerState,
-    starting_age: Duration,
-    heartbeat_age: Duration,
-    progress_age: Duration,
+    ages: HealthAges,
     has_sent_pending: bool,
-    handshake_timeout: Duration,
-    heartbeat_timeout: Duration,
-    progress_timeout: Duration,
-    read_budget_exhausted: bool,
+    policy: HealthPolicy,
+    blocked: HealthReadBlocks,
 ) -> Option<WorkerFailure> {
-    if read_budget_exhausted {
-        return None;
-    }
     match state {
-        WorkerState::Starting if starting_age >= handshake_timeout => {
+        WorkerState::Starting
+            if !blocked.control
+                && !blocked.progress
+                && ages.starting >= policy.handshake_timeout =>
+        {
             Some(WorkerFailure::HandshakeTimeout)
         }
-        WorkerState::Ready if heartbeat_age >= heartbeat_timeout => {
+        WorkerState::Ready if !blocked.control && ages.heartbeat >= policy.heartbeat_timeout => {
             Some(WorkerFailure::HeartbeatTimeout)
         }
-        WorkerState::Ready if has_sent_pending && progress_age >= progress_timeout => {
+        // Work progress can arrive as either an Observed control response or
+        // a WorkProgress message. Heartbeats, however, use only the control lane.
+        WorkerState::Ready
+            if !blocked.control
+                && !blocked.progress
+                && has_sent_pending
+                && ages.progress >= policy.work_progress_timeout =>
+        {
             Some(WorkerFailure::ProgressTimeout)
         }
         _ => None,
@@ -437,7 +454,9 @@ impl Entry {
         if self.lease.is_revoked() && self.stop_at.is_none() {
             self.stop(now, CancellationId::from_uuid(Uuid::new_v4()), None);
         }
+        let mut blocked = HealthReadBlocks::default();
         if self.state == WorkerState::Starting {
+            let before = read_budget.blocked_reads();
             self.control.poll_authentication(
                 self.child.id(),
                 ChannelKind::Control,
@@ -445,6 +464,8 @@ impl Entry {
                 &mut self.rejected_peers,
                 read_budget,
             )?;
+            blocked.control |= read_budget.blocked_reads() != before;
+            let before = read_budget.blocked_reads();
             self.progress.poll_authentication(
                 self.child.id(),
                 ChannelKind::Progress,
@@ -452,23 +473,28 @@ impl Entry {
                 &mut self.rejected_peers,
                 read_budget,
             )?;
+            blocked.progress |= read_budget.blocked_reads() != before;
         }
         if self.control.identity.is_some() {
+            let before = read_budget.blocked_reads();
             self.read_control(now, read_budget)?;
+            blocked.control |= read_budget.blocked_reads() != before;
         }
         if self.progress.identity.is_some() {
+            let before = read_budget.blocked_reads();
             self.read_progress(now, read_budget)?;
+            blocked.progress |= read_budget.blocked_reads() != before;
         }
         if let Some(failure) = health_failure_after_reads(
             self.state,
-            now.duration_since(self.started),
-            now.duration_since(self.heartbeat),
-            now.duration_since(self.progress_at),
+            HealthAges {
+                starting: now.duration_since(self.started),
+                heartbeat: now.duration_since(self.heartbeat),
+                progress: now.duration_since(self.progress_at),
+            },
             self.pending.values().any(|request| request.sent),
-            self.config.health.handshake_timeout,
-            self.config.health.heartbeat_timeout,
-            self.config.health.work_progress_timeout,
-            read_budget.consumed() >= MAX_READ_BYTES_PER_POLL,
+            self.config.health,
+            blocked,
         ) {
             self.fail(now, failure);
         }
@@ -1246,7 +1272,10 @@ impl Drop for Supervisor {
 
 #[cfg(test)]
 mod tests {
-    use super::{WorkerFailure, WorkerState, health_failure_after_reads, next_read_cursor};
+    use super::{
+        HealthAges, HealthPolicy, HealthReadBlocks, WorkerFailure, WorkerState,
+        health_failure_after_reads, next_read_cursor,
+    };
     use std::time::Duration;
 
     #[test]
@@ -1261,6 +1290,17 @@ mod tests {
     fn exhausted_shared_read_budget_defers_health_expiry_until_worker_can_read() {
         let old = Duration::from_secs(10);
         let timeout = Duration::from_secs(1);
+        let policy = HealthPolicy {
+            handshake_timeout: timeout,
+            heartbeat_timeout: timeout,
+            work_progress_timeout: timeout,
+            ..HealthPolicy::default()
+        };
+        let ages = HealthAges {
+            starting: old,
+            heartbeat: old,
+            progress: old,
+        };
         for (state, pending) in [
             (WorkerState::Starting, false),
             (WorkerState::Ready, false),
@@ -1268,7 +1308,14 @@ mod tests {
         ] {
             assert_eq!(
                 health_failure_after_reads(
-                    state, old, old, old, pending, timeout, timeout, timeout, true,
+                    state,
+                    ages,
+                    pending,
+                    policy,
+                    HealthReadBlocks {
+                        control: true,
+                        progress: true
+                    }
                 ),
                 None
             );
@@ -1276,44 +1323,41 @@ mod tests {
         assert_eq!(
             health_failure_after_reads(
                 WorkerState::Starting,
-                old,
-                old,
-                old,
+                ages,
                 false,
-                timeout,
-                timeout,
-                timeout,
-                false,
+                policy,
+                HealthReadBlocks::default()
             ),
             Some(WorkerFailure::HandshakeTimeout)
         );
         assert_eq!(
             health_failure_after_reads(
                 WorkerState::Ready,
-                old,
-                old,
-                Duration::ZERO,
+                HealthAges {
+                    progress: Duration::ZERO,
+                    ..ages
+                },
                 false,
-                timeout,
-                timeout,
-                timeout,
-                false,
+                policy,
+                HealthReadBlocks::default()
             ),
             Some(WorkerFailure::HeartbeatTimeout)
         );
         assert_eq!(
             health_failure_after_reads(
                 WorkerState::Ready,
-                old,
-                Duration::ZERO,
-                old,
+                HealthAges {
+                    heartbeat: Duration::ZERO,
+                    ..ages
+                },
                 true,
-                timeout,
-                timeout,
-                timeout,
-                false,
+                policy,
+                HealthReadBlocks::default()
             ),
             Some(WorkerFailure::ProgressTimeout)
         );
     }
 }
+
+#[cfg(test)]
+mod health_tests;

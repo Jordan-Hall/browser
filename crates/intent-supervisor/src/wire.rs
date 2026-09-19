@@ -153,16 +153,21 @@ pub(crate) fn read_blocking<T: DeserializeOwned>(
 pub(crate) struct ReadBudget {
     limit: usize,
     remaining: usize,
+    blocked_reads: usize,
 }
 impl ReadBudget {
     pub(crate) fn new(limit: usize) -> Self {
         Self {
             limit,
             remaining: limit,
+            blocked_reads: 0,
         }
     }
     pub(crate) fn consumed(&self) -> usize {
         self.limit.saturating_sub(self.remaining)
+    }
+    pub(crate) fn blocked_reads(&self) -> usize {
+        self.blocked_reads
     }
     pub(crate) fn read_one(
         &mut self,
@@ -175,6 +180,12 @@ impl ReadBudget {
         self.remaining = self
             .remaining
             .saturating_sub(allowance.saturating_sub(local));
+        // A reduced allowance is not a scheduling block until it is exhausted
+        // without producing a frame. Buffered frames and WouldBlock with unused
+        // bytes must not extend a worker's health deadline.
+        if allowance < socket_budget && local == 0 && matches!(&result, Ok(ReadOutcome::Pending)) {
+            self.blocked_reads = self.blocked_reads.saturating_add(1);
+        }
         result
     }
 }
@@ -465,3 +476,6 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod budget_tests;
