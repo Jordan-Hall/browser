@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - '.github/workflows/core-toolchain-export.yml'
+      - 'rust-toolchain.toml'
+      - 'Cargo.toml'
+      - 'scripts/rust_toolchain.py'
 
 permissions:
   contents: read
@@ -14,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -23,8 +26,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
-          rustup default 1.98.1
+          TOOLCHAIN="$(python3 scripts/rust_toolchain.py --channel)"
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+          rustup default "$TOOLCHAIN"
+          python3 scripts/rust_toolchain.py --verify-active
           mkdir -p /tmp/core-offline /tmp/core-review-deps/src
           printf '[package]\nname = "core-review-deps"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nhmac = "0.12"\nproptest = "1.9"\n' > /tmp/core-review-deps/Cargo.toml
           printf 'fn main() {}\n' > /tmp/core-review-deps/src/main.rs
@@ -35,13 +40,13 @@ jobs:
           cp fuzz/Cargo.lock /tmp/core-offline/fuzz-Cargo.lock
           cp /tmp/core-review-deps/Cargo.lock /tmp/core-offline/review-Cargo.lock
           rustc -vV > /tmp/core-offline/compiler.txt
-          toolchain="$(rustup run 1.98.1 rustc --print sysroot)"
+          toolchain="$(rustup run "$TOOLCHAIN" rustc --print sysroot)"
           tar --exclude='./share/doc' -C "$toolchain" -cJf /tmp/core-offline/toolchain.tar.xz .
           tar -C /tmp/core-offline -cJf /tmp/core-offline/dependencies.tar.xz vendor
           rm -rf /tmp/core-offline/vendor
           cd /tmp/core-offline
           sha256sum *.tar.xz repository.bundle > SHA256SUMS
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: core-offline-review-inputs-${{ github.run_id }}
           path: /tmp/core-offline/
