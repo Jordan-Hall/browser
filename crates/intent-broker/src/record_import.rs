@@ -149,21 +149,20 @@ pub fn persist_core_document_import(
     input: &[u8],
     limits: WireLimits,
 ) -> Result<PersistedCoreDocumentImport, CoreDocumentPersistenceError> {
-    let (outcome, stored_bytes, media_type, legacy_numeric_money) = match request.mode {
+    let (record, stored_bytes, legacy_numeric_money) = match request.mode {
         CoreDocumentImportMode::Strict => match import_core_document(request.kind, input, limits)? {
             CoreDocumentImport::Current(record) => {
                 let encoded = record.encode(limits)?;
-                (Some(record), encoded, CURRENT_MEDIA_TYPE, false)
+                (record, encoded, false)
             }
             CoreDocumentImport::ReadOnlyNewerMinor(document) => {
                 let exact = document.original_bytes().to_vec();
-                let media_type = bounded_media_type(READ_ONLY_MEDIA_TYPE)?;
                 let artifact = store_bytes(
                     store,
                     artifact_root,
                     &request,
                     exact,
-                    media_type,
+                    bounded_media_type(READ_ONLY_MEDIA_TYPE)?,
                 )?;
                 return Ok(PersistedCoreDocumentImport::ReadOnlyNewerMinor {
                     document,
@@ -177,19 +176,17 @@ pub fn persist_core_document_import(
             }
             let imported = migrate_legacy_numeric_money_goal_v1(input, limits)?;
             let (record, canonical_bytes) = imported.into_parts();
-            (Some(record), canonical_bytes, CURRENT_MEDIA_TYPE, true)
+            (record, canonical_bytes, true)
         }
     };
 
-    let media_type = bounded_media_type(media_type)?;
     let artifact = store_bytes(
         store,
         artifact_root,
         &request,
         stored_bytes,
-        media_type,
+        bounded_media_type(CURRENT_MEDIA_TYPE)?,
     )?;
-    let record = outcome.expect("current import always carries a validated record");
     Ok(PersistedCoreDocumentImport::Current {
         record,
         artifact,
