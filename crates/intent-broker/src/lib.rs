@@ -22,28 +22,49 @@ pub fn activate_persisted_core_workspace(
     use intent_contracts::TaskState;
     use intent_ipc::CoreRecord;
     use record_import::{CoreDocumentArchiveSelection, CoreDocumentPersistenceError};
+    use std::collections::BTreeSet;
 
-    if request.task_artifacts.len() <= intent_state::MAX_GRAPH_TASKS {
-        for artifact_id in request.task_artifacts.iter().copied() {
-            if let CoreDocumentArchiveSelection::Current {
-                record: CoreRecord::Task(task),
-                ..
-            } = record_import::select_persisted_core_document_import(
-                owner.state(),
-                artifact_root,
-                &request.privacy_scope,
+    if request.goal_artifacts.len() > record_import::MAX_WORKSPACE_ACTIVATION_GOALS
+        || request.task_artifacts.is_empty()
+        || request.task_artifacts.len() > intent_state::MAX_GRAPH_TASKS
+        || request.dependencies.len() > intent_state::MAX_GRAPH_DEPENDENCIES
+    {
+        return Err(CoreDocumentPersistenceError::InvalidWorkspaceActivation(
+            "workspace archive collection budget exceeded",
+        ));
+    }
+
+    let mut unique = BTreeSet::new();
+    for artifact_id in std::iter::once(request.workspace_artifact)
+        .chain(request.goal_artifacts.iter().copied())
+        .chain(request.task_artifacts.iter().copied())
+    {
+        if !unique.insert(artifact_id.to_string()) {
+            return Err(CoreDocumentPersistenceError::DuplicateActivationArtifact(
                 artifact_id,
-                limits,
-            )? && matches!(
-                task.state(),
-                TaskState::Completed | TaskState::Cancelled | TaskState::Failed
-            ) {
-                return Err(CoreDocumentPersistenceError::WorkspaceGraph(
-                    intent_state::WorkspaceCheckpointError::Invalid(
-                        "archive activation cannot activate a terminal task",
-                    ),
-                ));
-            }
+            ));
+        }
+    }
+
+    for artifact_id in request.task_artifacts.iter().copied() {
+        if let CoreDocumentArchiveSelection::Current {
+            record: CoreRecord::Task(task),
+            ..
+        } = record_import::select_persisted_core_document_import(
+            owner.state(),
+            artifact_root,
+            &request.privacy_scope,
+            artifact_id,
+            limits,
+        )? && matches!(
+            task.state(),
+            TaskState::Completed | TaskState::Cancelled | TaskState::Failed
+        ) {
+            return Err(CoreDocumentPersistenceError::WorkspaceGraph(
+                intent_state::WorkspaceCheckpointError::Invalid(
+                    "archive activation cannot activate a terminal task",
+                ),
+            ));
         }
     }
 
