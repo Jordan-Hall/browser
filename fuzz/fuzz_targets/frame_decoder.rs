@@ -19,7 +19,8 @@ fuzz_target!(|data: &[u8]| {
                 assert!(batch.frames().len() <= limits.max_frames_per_feed);
                 cursor += batch.consumed();
             }
-            Err(_) => break,
+            Err(_) => return,
         }
     }
+    let _ = decoder.finish();
 });
