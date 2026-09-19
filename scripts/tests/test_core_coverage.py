@@ -92,9 +92,9 @@ class CoverageTests(unittest.TestCase):
             outside.write_text("not repository source")
             if os.name == "nt":
                 link = root / "outside"
-                command = f'mklink /J "{link}" "{target}" >NUL'
+                command = f'mklink /J "{link}" "{target}"'
                 subprocess.run(
-                    ["cmd.exe", "/d", "/s", "/c", command],
+                    [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", command],
                     check=True, capture_output=True, timeout=10,
                 )
                 try:
