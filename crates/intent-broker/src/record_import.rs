@@ -1,3 +1,5 @@
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+use intent_contracts::WorkspaceState;
 use intent_contracts::{ArtifactId, BoundedText, SchemaVersion, UnixTimestampMicros};
 use intent_ipc::{
     CoreDocumentImport, CoreRecord, CoreRecordKind, ReadOnlyCoreDocument, WireError, WireLimits,
@@ -6,6 +8,13 @@ use intent_ipc::{
 use intent_state::{
     ArtifactCatalogEntry, ArtifactError, ArtifactMetadata, ArtifactScope, NewArtifact, StateStore,
 };
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+use intent_state::{
+    GraphRevision, MAX_GRAPH_DEPENDENCIES, MAX_GRAPH_TASKS, RecoveryError, RuntimeOwner,
+    TaskDependency, WorkspaceCheckpointError, WorkspaceGraph,
+};
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt;
 use std::io::Cursor;
@@ -14,6 +23,8 @@ use std::path::Path;
 const CURRENT_MEDIA_TYPE: &str = "application/vnd.intent.core-record+json";
 const READ_ONLY_MEDIA_TYPE: &str = "application/vnd.intent.core-record.readonly+json";
 pub const MAX_CORE_DOCUMENT_ARCHIVE_PAGE: usize = 128;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub const MAX_WORKSPACE_ACTIVATION_GOALS: usize = 64;
 
 /// Selects an explicit import path. Historical compatibility is never auto-detected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,6 +40,19 @@ pub struct DurableCoreDocumentRequest {
     pub created_at: UnixTimestampMicros,
     pub kind: CoreRecordKind,
     pub mode: CoreDocumentImportMode,
+}
+
+/// Explicit durable archive inputs for installing a new workspace graph while the runtime remains
+/// startup-fenced. Runtime/provider/worker state is intentionally absent from this request.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CoreWorkspaceActivationRequest {
+    pub privacy_scope: ArtifactScope,
+    pub workspace_artifact: ArtifactId,
+    pub goal_artifacts: Vec<ArtifactId>,
+    pub task_artifacts: Vec<ArtifactId>,
+    pub dependencies: Vec<TaskDependency>,
+    pub activated_at: UnixTimestampMicros,
 }
 
 /// A validated current record or an opaque newer-minor document whose admitted bytes have
@@ -180,6 +204,22 @@ pub enum CoreDocumentPersistenceError {
     InvalidArchivePage,
     NotCoreDocumentArtifact(ArtifactId),
     InvalidArchiveMetadata(ArtifactId),
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    Recovery(RecoveryError),
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    WorkspaceGraph(WorkspaceCheckpointError),
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    InvalidWorkspaceActivation(&'static str),
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    DuplicateActivationArtifact(ArtifactId),
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    ReadOnlyActivationArtifact(ArtifactId),
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    UnexpectedActivationRecord {
+        artifact_id: ArtifactId,
+        expected: CoreRecordKind,
+        actual: CoreRecordKind,
+    },
 }
 
 impl fmt::Display for CoreDocumentPersistenceError {
@@ -202,6 +242,39 @@ impl fmt::Display for CoreDocumentPersistenceError {
                 formatter,
                 "artifact {artifact_id} has core-document metadata inconsistent with its bytes"
             ),
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::Recovery(error) => {
+                write!(formatter, "workspace activation fence failed: {error}")
+            }
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::WorkspaceGraph(error) => {
+                write!(formatter, "workspace activation failed: {error}")
+            }
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::InvalidWorkspaceActivation(reason) => {
+                write!(formatter, "invalid workspace activation: {reason}")
+            }
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::DuplicateActivationArtifact(artifact_id) => write!(
+                formatter,
+                "workspace activation artifact {artifact_id} was supplied more than once"
+            ),
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::ReadOnlyActivationArtifact(artifact_id) => write!(
+                formatter,
+                "read-only newer-minor artifact {artifact_id} cannot activate writable workspace state"
+            ),
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::UnexpectedActivationRecord {
+                artifact_id,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "workspace activation artifact {artifact_id} is {}, expected {}",
+                actual.family_name(),
+                expected.family_name()
+            ),
         }
     }
 }
@@ -211,11 +284,20 @@ impl Error for CoreDocumentPersistenceError {
         match self {
             Self::Wire(error) => Some(error),
             Self::Artifact(error) => Some(error),
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::Recovery(error) => Some(error),
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::WorkspaceGraph(error) => Some(error),
             Self::LegacyModeRequiresGoalContract
             | Self::StaticMediaType(_)
             | Self::InvalidArchivePage
             | Self::NotCoreDocumentArtifact(_)
             | Self::InvalidArchiveMetadata(_) => None,
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            Self::InvalidWorkspaceActivation(_)
+            | Self::DuplicateActivationArtifact(_)
+            | Self::ReadOnlyActivationArtifact(_)
+            | Self::UnexpectedActivationRecord { .. } => None,
         }
     }
 }
@@ -229,6 +311,20 @@ impl From<WireError> for CoreDocumentPersistenceError {
 impl From<ArtifactError> for CoreDocumentPersistenceError {
     fn from(error: ArtifactError) -> Self {
         Self::Artifact(error)
+    }
+}
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+impl From<RecoveryError> for CoreDocumentPersistenceError {
+    fn from(error: RecoveryError) -> Self {
+        Self::Recovery(error)
+    }
+}
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+impl From<WorkspaceCheckpointError> for CoreDocumentPersistenceError {
+    fn from(error: WorkspaceCheckpointError) -> Self {
+        Self::WorkspaceGraph(error)
     }
 }
 
@@ -336,6 +432,140 @@ pub fn select_persisted_core_document_import(
         _ => Err(CoreDocumentPersistenceError::InvalidArchiveMetadata(
             artifact_id,
         )),
+    }
+}
+
+/// Install a new writable workspace graph from already persisted CORE archive documents.
+///
+/// Every artifact is selected and revalidated at activation time. Same-major newer-minor documents
+/// are rejected rather than reinterpreted as writable current data. Runtime-owned cursors, provider
+/// references, worker instances and retained-artifact pins are never restored by this path. The
+/// runtime must still be startup-fenced and remains fenced afterwards; normal startup planning and
+/// explicit action authorization remain separate gates.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+pub fn activate_persisted_core_workspace(
+    owner: &mut RuntimeOwner,
+    artifact_root: &Path,
+    request: CoreWorkspaceActivationRequest,
+    limits: WireLimits,
+) -> Result<GraphRevision, CoreDocumentPersistenceError> {
+    if request.goal_artifacts.len() > MAX_WORKSPACE_ACTIVATION_GOALS
+        || request.task_artifacts.is_empty()
+        || request.task_artifacts.len() > MAX_GRAPH_TASKS
+        || request.dependencies.len() > MAX_GRAPH_DEPENDENCIES
+    {
+        return Err(CoreDocumentPersistenceError::InvalidWorkspaceActivation(
+            "workspace archive collection budget exceeded",
+        ));
+    }
+
+    let mut unique = BTreeSet::new();
+    for artifact_id in std::iter::once(request.workspace_artifact)
+        .chain(request.goal_artifacts.iter().copied())
+        .chain(request.task_artifacts.iter().copied())
+    {
+        if !unique.insert(artifact_id.to_string()) {
+            return Err(CoreDocumentPersistenceError::DuplicateActivationArtifact(
+                artifact_id,
+            ));
+        }
+    }
+
+    let workspace = match select_current_activation_record(
+        owner.state(),
+        artifact_root,
+        &request.privacy_scope,
+        request.workspace_artifact,
+        CoreRecordKind::Workspace,
+        limits,
+    )? {
+        CoreRecord::Workspace(workspace) => *workspace,
+        _ => unreachable!("record kind checked before return"),
+    };
+    if workspace.state() != WorkspaceState::Active {
+        return Err(CoreDocumentPersistenceError::InvalidWorkspaceActivation(
+            "archived workspace cannot be activated",
+        ));
+    }
+
+    let mut goals = Vec::with_capacity(request.goal_artifacts.len());
+    for artifact_id in request.goal_artifacts {
+        match select_current_activation_record(
+            owner.state(),
+            artifact_root,
+            &request.privacy_scope,
+            artifact_id,
+            CoreRecordKind::GoalContract,
+            limits,
+        )? {
+            CoreRecord::GoalContract(goal) => goals.push(*goal),
+            _ => unreachable!("record kind checked before return"),
+        }
+    }
+
+    let mut tasks = Vec::with_capacity(request.task_artifacts.len());
+    for artifact_id in request.task_artifacts {
+        match select_current_activation_record(
+            owner.state(),
+            artifact_root,
+            &request.privacy_scope,
+            artifact_id,
+            CoreRecordKind::Task,
+            limits,
+        )? {
+            CoreRecord::Task(task) => tasks.push(*task),
+            _ => unreachable!("record kind checked before return"),
+        }
+    }
+
+    let graph = WorkspaceGraph {
+        schema_version: SchemaVersion::V1,
+        workspace,
+        goals,
+        tasks,
+        dependencies: request.dependencies,
+        retained_artifacts: Vec::new(),
+        cursors: Vec::new(),
+        provider_references: Vec::new(),
+        worker_instances: Vec::new(),
+    };
+
+    owner.require_workspace_activation_fence()?;
+    owner
+        .state_mut()
+        .activate_new_workspace_graph(&request.privacy_scope, &graph, request.activated_at)
+        .map_err(CoreDocumentPersistenceError::from)
+}
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn select_current_activation_record(
+    store: &StateStore,
+    artifact_root: &Path,
+    privacy_scope: &ArtifactScope,
+    artifact_id: ArtifactId,
+    expected: CoreRecordKind,
+    limits: WireLimits,
+) -> Result<CoreRecord, CoreDocumentPersistenceError> {
+    match select_persisted_core_document_import(
+        store,
+        artifact_root,
+        privacy_scope,
+        artifact_id,
+        limits,
+    )? {
+        CoreDocumentArchiveSelection::ReadOnlyNewerMinor { .. } => Err(
+            CoreDocumentPersistenceError::ReadOnlyActivationArtifact(artifact_id),
+        ),
+        CoreDocumentArchiveSelection::Current { record, .. } if record.kind() == expected => {
+            Ok(record)
+        }
+        CoreDocumentArchiveSelection::Current { record, .. } => {
+            Err(CoreDocumentPersistenceError::UnexpectedActivationRecord {
+                artifact_id,
+                expected,
+                actual: record.kind(),
+            })
+        }
     }
 }
 
