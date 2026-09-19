@@ -3,7 +3,9 @@ use intent_ipc::{
     CoreDocumentImport, CoreRecord, CoreRecordKind, ReadOnlyCoreDocument, WireError, WireLimits,
     import_core_document, migrate_legacy_numeric_money_goal_v1,
 };
-use intent_state::{ArtifactError, ArtifactMetadata, ArtifactScope, NewArtifact, StateStore};
+use intent_state::{
+    ArtifactCatalogEntry, ArtifactError, ArtifactMetadata, ArtifactScope, NewArtifact, StateStore,
+};
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
@@ -47,14 +49,14 @@ pub enum PersistedCoreDocumentImport {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoreDocumentArchiveEntry {
-    artifact: ArtifactMetadata,
+    artifact: ArtifactCatalogEntry,
     kind: CoreRecordKind,
     read_only: bool,
 }
 
 impl CoreDocumentArchiveEntry {
     #[must_use]
-    pub const fn artifact(&self) -> &ArtifactMetadata {
+    pub const fn artifact(&self) -> &ArtifactCatalogEntry {
         &self.artifact
     }
 
