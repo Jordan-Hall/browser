@@ -18,7 +18,12 @@ provider action, or qualify the entire migration task for acceptance.
 
 Both paths enforce the configured document-byte, depth, collection and node
 budgets, duplicate-key rejection, valid UTF-8, the strict schema header and a
-single complete JSON value. Failure does not mutate the caller's bytes.
+single complete JSON value. The syntax-only scanner borrows `RawValue` subtrees;
+unknown numeric leaves are never coerced into `f64`. Valid future values such as
+`1e400` and `1e-4000` retain their exact spellings. Invalid numeric grammar remains
+an error, and the schema header still requires exact bounded integers. A hard
+128-level syntax bound applies even when a caller supplies a larger depth budget.
+Failure does not mutate the caller's bytes.
 Unsupported major versions and versions requiring an unavailable migration fail
 closed. A malformed current record never falls back to the opaque path.
 
@@ -41,16 +46,18 @@ from unknown fields.
 `crates/intent-ipc/tests/document_import.rs` exercises all 13 record families,
 full and minimal current fixtures, future minors 1, 2 and 65535, original-byte
 ownership and exact preservation, write refusal, strict major/header handling,
-duplicate and malformed JSON, inclusive byte/shape budgets and redacted
-opaque diagnostics. Two compile-fail doctests prevent generic serialization
-and conversion of an opaque document into a current record.
+duplicate and malformed JSON, out-of-range future numbers, the hard depth bound,
+inclusive byte/shape budgets and redacted opaque diagnostics. Two compile-fail
+doctests prevent generic serialization and conversion of an opaque document into
+a current record.
 
 The conformance executable now checks exact future-byte preservation and both
 write/typed-decoding refusals for every family. The `record_codec` fuzz target
 exercises the importer and checks the same invariants. Its seeded corpus has 26
-current records, 26 future-minor records, 13 unsupported-major documents and 13
-duplicate-key documents. Python tests verify seed selectors and ensure seed
-construction does not mutate the golden fixtures. Fuzz compilation alone is not
+current records, 26 future-minor records, 13 unsupported-major documents, 13
+duplicate-key documents and 13 out-of-range future-number documents. Python tests
+verify seed selectors and ensure seed construction does not mutate the golden
+fixtures. Fuzz compilation alone is not
 an instrumented campaign; actual execution evidence must identify its run and
 exact commit.
 

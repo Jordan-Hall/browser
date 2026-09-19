@@ -6,6 +6,7 @@ mod bounded_sequence;
 mod cancellation;
 mod codec;
 mod document_import;
+mod document_syntax;
 mod envelope;
 mod error;
 mod flow;

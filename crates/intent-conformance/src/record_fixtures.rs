@@ -63,7 +63,11 @@ pub(crate) fn check() -> ConformanceResult<Vec<ConformanceCheck>> {
             return Err("unsupported record restriction was silently discarded".into());
         }
         unsupported["schema_version"] = serde_json::json!({"major": 1, "minor": 1});
-        let source = format!(" \n{}\t\n", serde_json::to_string(&unsupported)?).into_bytes();
+        let encoded = serde_json::to_string(&unsupported)?;
+        let fields = encoded
+            .strip_prefix('{')
+            .ok_or("record fixture is not an object")?;
+        let source = format!(" \n{{\"future_numeric\":1e400,{fields}\t\n").into_bytes();
         let imported = import_core_document(kind, &source, WireLimits::default())?;
         let CoreDocumentImport::ReadOnlyNewerMinor(preserved) = &imported else {
             return Err("newer document must remain opaque, not become a current record".into());

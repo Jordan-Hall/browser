@@ -237,3 +237,88 @@ fn opaque_diagnostics_do_not_reveal_unknown_fields_or_document_contents() -> Tes
     }
     Ok(())
 }
+
+#[test]
+fn opaque_future_numbers_are_syntax_not_current_numeric_values() -> TestResult {
+    for token in [
+        "1e400",
+        "-1E+400",
+        "1e-4000",
+        "0e999999999999999999999999999999999999999999999999999",
+        "123456789012345678901234567890123456789012345678901234567890",
+        "-123456789012345678901234567890.12345678901234567890123456789",
+    ] {
+        let bytes = format!(
+            " \n{{\"future\":[{token},{{\"nested\":{token}}}],\"schema_version\":{{\"major\":1,\"minor\":1}}}}\t\n"
+        ).into_bytes();
+        let imported = import_core_document(CoreRecordKind::Task, &bytes, WireLimits::default())?;
+        let CoreDocumentImport::ReadOnlyNewerMinor(document) = &imported else {
+            return Err("future number became writable".into());
+        };
+        assert_eq!(document.original_bytes(), bytes);
+        assert!(imported.encode_for_write(WireLimits::default()).is_err());
+        assert_eq!(
+            decode_core_record(CoreRecordKind::Task, &bytes, WireLimits::default())
+                .err()
+                .ok_or("future record was writable")?
+                .code(),
+            WireErrorCode::UnsupportedSchema,
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn preserving_unbounded_numeric_values_does_not_relax_json_or_schema_syntax() {
+    for token in [
+        "+1", "01", "1.", ".1", "1e", "1e+", "--1", "Infinity", "NaN",
+    ] {
+        let bytes =
+            format!("{{\"schema_version\":{{\"major\":1,\"minor\":1}},\"future\":{token}}}");
+        assert!(
+            import_core_document(
+                CoreRecordKind::Task,
+                bytes.as_bytes(),
+                WireLimits::default()
+            )
+            .is_err()
+        );
+    }
+    for token in ["1e400", "1e0", "1.0", "65536", "\"1\"", "true"] {
+        let bytes = format!("{{\"schema_version\":{{\"major\":1,\"minor\":{token}}}}}");
+        assert!(
+            import_core_document(
+                CoreRecordKind::Task,
+                bytes.as_bytes(),
+                WireLimits::default()
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn caller_limits_cannot_remove_the_hard_syntax_depth_bound() -> TestResult {
+    let limits = WireLimits {
+        max_json_depth: usize::MAX,
+        max_json_nodes: 1024,
+        ..WireLimits::default()
+    };
+    for arrays in [126, 127, 1000] {
+        let bytes = format!(
+            "{{\"schema_version\":{{\"major\":1,\"minor\":1}},\"nested\":{}1e400{}}}",
+            "[".repeat(arrays),
+            "]".repeat(arrays),
+        );
+        let result = import_core_document(CoreRecordKind::Task, bytes.as_bytes(), limits);
+        if arrays == 126 {
+            assert!(matches!(result?, CoreDocumentImport::ReadOnlyNewerMinor(_)));
+        } else {
+            assert_eq!(
+                result.err().ok_or("missing hard depth bound")?.code(),
+                WireErrorCode::JsonTooDeep
+            );
+        }
+    }
+    Ok(())
+}

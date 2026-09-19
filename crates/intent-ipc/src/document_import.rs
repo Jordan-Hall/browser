@@ -110,12 +110,14 @@ pub fn import_core_document(
     input: &[u8],
     limits: WireLimits,
 ) -> Result<CoreDocumentImport, WireError> {
-    let (version, value) = crate::record_codec::decode_record_document(input, limits)?;
+    let version = crate::document_syntax::schema_version(input, limits)?;
     match assess_document_access(SchemaVersion::V1, version) {
-        DocumentAccess::ReadWrite => crate::record_codec::decode_core_record_value(kind, value)
-            .map(CoreDocumentImport::Current),
+        DocumentAccess::ReadWrite => crate::record_codec::decode_core_record_value(
+            kind,
+            crate::strict_json::decode(input, limits)?,
+        )
+        .map(CoreDocumentImport::Current),
         DocumentAccess::ReadOnlyNewerMinor => {
-            drop(value);
             let mut original = Vec::new();
             original.try_reserve_exact(input.len()).map_err(|_| {
                 WireError::new(

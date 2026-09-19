@@ -15,7 +15,7 @@ class FuzzSmokeTests(unittest.TestCase):
 
     def test_record_seeds_have_every_selector_and_both_shapes(self):
         seeds = FUZZ.seeds("record_codec", self.fixtures)
-        self.assertEqual(len(seeds), 78)
+        self.assertEqual(len(seeds), 91)
         for index in range(13):
             for shape, data in zip(("full", "minimal"), seeds[2 * index:2 * index + 2]):
                 self.assertEqual(data[0], index)
@@ -35,6 +35,9 @@ class FuzzSmokeTests(unittest.TestCase):
             self.assertEqual(json.loads(seeds[52 + index][1:])["schema_version"], {"major": 2, "minor": 0})
             self.assertEqual(seeds[65 + index][0], index)
             self.assertIn(b'"x":0,"x":1', seeds[65 + index])
+            self.assertEqual(seeds[78 + index][0], index)
+            self.assertIn(b'1e400', seeds[78 + index])
+            self.assertIn(b'1e-4000', seeds[78 + index])
         self.assertEqual(json.dumps(self.fixtures, sort_keys=True), original)
 
     def test_duplicate_and_missing_seed_families_are_rejected(self):

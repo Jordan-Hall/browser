@@ -64,8 +64,7 @@ macro_rules! core_records {
             input: &[u8],
             limits: WireLimits,
         ) -> Result<CoreRecord, WireError> {
-            let (version, value) = decode_record_document(input, limits)?;
-            require_v1(version)?;
+            let value = decode_record_document(input, limits)?;
             decode_core_record_value(kind, value)
         }
 
@@ -97,31 +96,13 @@ core_records! {
     ArtifactReference => "intent.artifact_reference",
 }
 
-pub(crate) fn decode_record_document(
+fn decode_record_document(
     input: &[u8],
     limits: WireLimits,
-) -> Result<(SchemaVersion, serde_json::Value), WireError> {
-    if input.len() > limits.max_control_frame_bytes {
-        return Err(WireError::new(
-            WireErrorCode::FrameTooLarge,
-            "record exceeds the control-document byte limit",
-        ));
-    }
-    crate::envelope::preflight_json_structure(input, limits.max_json_depth)?;
-    let value = crate::strict_json::decode(input, limits)?;
-    let header = value.get("schema_version").ok_or_else(|| {
-        WireError::new(
-            WireErrorCode::InvalidRecord,
-            "record schema_version is required",
-        )
-    })?;
-    let version: SchemaVersion = serde_json::from_value(header.clone()).map_err(|_| {
-        WireError::new(
-            WireErrorCode::InvalidRecord,
-            "invalid record schema_version",
-        )
-    })?;
-    Ok((version, value))
+) -> Result<serde_json::Value, WireError> {
+    let version = crate::document_syntax::schema_version(input, limits)?;
+    require_v1(version)?;
+    crate::strict_json::decode(input, limits)
 }
 
 fn require_v1(version: SchemaVersion) -> Result<(), WireError> {
@@ -135,8 +116,7 @@ fn require_v1(version: SchemaVersion) -> Result<(), WireError> {
 }
 
 fn decode_typed<T: DeserializeOwned>(input: &[u8], limits: WireLimits) -> Result<T, WireError> {
-    let (version, value) = decode_record_document(input, limits)?;
-    require_v1(version)?;
+    let value = decode_record_document(input, limits)?;
     decode_value(value)
 }
 

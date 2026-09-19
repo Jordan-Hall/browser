@@ -46,7 +46,10 @@ def seeds(target: str, fixtures: list[dict]) -> list[bytes]:
                        for index in range(len(FAMILIES))]
         duplicate = [bytes([index]) + b'{"schema_version":{"major":1,"minor":1},"x":0,"x":1}'
                      for index in range(len(FAMILIES))]
-        return current + future + unsupported + duplicate
+        wide_number = [bytes([index]) + b'{"future":[1e400,{"negative":-1e400,"tiny":1e-4000}],'
+                       b'"schema_version":{"major":1,"minor":1}}'
+                       for index in range(len(FAMILIES))]
+        return current + future + unsupported + duplicate + wide_number
     envelopes = [encoded({"schema_version": {"major": 1, "minor": 0},
                           "trace_id": "018f47f7-5a86-7c00-8000-000000000099",
                           "message": {"kind": "event"}, "payload": records["intent." + name]["full"]})
