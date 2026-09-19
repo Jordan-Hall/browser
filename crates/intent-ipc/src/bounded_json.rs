@@ -1,4 +1,4 @@
-use crate::{WireError, WireErrorCode};
+use crate::{WireError, WireErrorCode, WireLimits};
 use serde::Serialize;
 use std::io::{self, Write};
 
@@ -36,10 +36,10 @@ impl Write for BoundedWriter {
     }
 }
 
-pub(crate) fn encode<T: Serialize>(value: &T, limit: usize) -> Result<Vec<u8>, WireError> {
+pub(crate) fn encode<T: Serialize>(value: &T, limits: WireLimits) -> Result<Vec<u8>, WireError> {
     let mut writer = BoundedWriter {
         bytes: Vec::new(),
-        limit,
+        limit: limits.max_control_frame_bytes,
         exceeded: false,
     };
     let result = serde_json::to_writer(&mut writer, value);
@@ -55,5 +55,7 @@ pub(crate) fn encode<T: Serialize>(value: &T, limit: usize) -> Result<Vec<u8>, W
             format!("failed to serialize control envelope: {error}"),
         )
     })?;
+    crate::envelope::preflight_json_structure(&writer.bytes, limits.max_json_depth)?;
+    crate::strict_json::decode(&writer.bytes, limits)?;
     Ok(writer.bytes)
 }

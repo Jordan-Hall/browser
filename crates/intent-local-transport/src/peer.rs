@@ -129,9 +129,30 @@ pub fn named_pipe_client_credentials<H: std::os::windows::io::AsRawHandle>(
     // handle without retaining it, and `process_id` points to valid writable storage for the call.
     let result = unsafe { GetNamedPipeClientProcessId(raw_handle, &mut process_id) };
     if result == 0 {
-        let error_code = std::io::Error::last_os_error()
-            .raw_os_error()
-            .map_or(-1, |code| code);
+        let error_code = std::io::Error::last_os_error().raw_os_error().unwrap_or(-1);
+        return Err(PeerCredentialError::Os(error_code));
+    }
+    if process_id == 0 {
+        return Err(PeerCredentialError::InvalidProcessId);
+    }
+
+    Ok(PeerCredentialEvidence::Windows { process_id })
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn named_pipe_server_credentials<H: std::os::windows::io::AsRawHandle>(
+    pipe: &H,
+) -> Result<PeerCredentialEvidence, PeerCredentialError> {
+    use windows_sys::Win32::System::Pipes::GetNamedPipeServerProcessId;
+
+    let mut process_id = 0_u32;
+    let raw_handle = pipe.as_raw_handle();
+    // SAFETY: the borrowed AsRawHandle object remains alive for this call. The handle is not
+    // retained, and process_id points to valid writable storage for the returned process ID.
+    let result = unsafe { GetNamedPipeServerProcessId(raw_handle, &mut process_id) };
+    if result == 0 {
+        let error_code = std::io::Error::last_os_error().raw_os_error().unwrap_or(-1);
         return Err(PeerCredentialError::Os(error_code));
     }
     if process_id == 0 {

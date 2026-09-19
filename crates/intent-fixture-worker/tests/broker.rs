@@ -162,7 +162,13 @@ fn launch(
     cap: CapabilityId,
 ) -> Result<WorkerInstanceId> {
     let path = Path::new(env!("CARGO_BIN_EXE_intent-fixture-worker"));
-    let image = ExecutableImage::load(path, hash(&fs::read(path)?))?;
+    let started = Instant::now();
+    let bytes = fs::read(path)?;
+    eprintln!("broker fixture image: {} bytes read in {:?}", bytes.len(), started.elapsed());
+    let expected = hash(&bytes);
+    eprintln!("broker fixture image: hashed in {:?}", started.elapsed());
+    let image = ExecutableImage::load(path, expected)?;
+    eprintln!("broker fixture image: sealed in {:?}", started.elapsed());
     let config = WorkerConfig::new(
         WorkerScope {
             task_id: id(2)?,
@@ -472,9 +478,13 @@ fn broker_process_child() -> Result {
         ledger: root.with_extension("external-ledger"),
         root,
     };
+    eprintln!("broker crash child: opening broker");
     let mut b = broker(&p)?;
+    eprintln!("broker crash child: launching worker");
     let w = launch(&mut b, &p, "broker-effect-lost-ack", id(12)?, id(13)?)?;
+    eprintln!("broker crash child: waiting for ready");
     ready(&mut b, w)?;
+    eprintln!("broker crash child: staging action");
     let outbox = stage(&mut b, 30)?;
     if phase == "after-effect" {
         b.dispatch(outbox, w, Duration::from_secs(2))?;
@@ -511,7 +521,7 @@ fn actual_broker_process_death_preserves_unsent_and_accepted_unknown_boundaries(
                 .env("INTENT_BROKER_TEST_PHASE", phase)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stderr(Stdio::inherit())
                 .spawn()?,
         );
         let end = Instant::now() + Duration::from_secs(8);

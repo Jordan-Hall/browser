@@ -62,12 +62,15 @@ impl From<serde_json::Error> for RecoveryError {
     }
 }
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub(crate) fn sql_u64(value: u64) -> Result<i64, RecoveryError> {
     i64::try_from(value).map_err(|_| RecoveryError::Limit("signed database counter"))
 }
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub(crate) fn unsigned(value: i64) -> Result<u64, RecoveryError> {
     u64::try_from(value).map_err(|_| RecoveryError::Integrity("negative database counter"))
 }
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub(crate) fn bounded_json<T: serde::Serialize>(
     value: &T,
     limit: usize,
@@ -105,6 +108,7 @@ pub(crate) fn bounded_json<T: serde::Serialize>(
     result?;
     Ok(output.bytes)
 }
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 pub(crate) fn digest(bytes: &[u8]) -> intent_contracts::ContentHash {
     use sha2::{Digest, Sha256};
     intent_contracts::ContentHash::from_bytes(Sha256::digest(bytes).into())

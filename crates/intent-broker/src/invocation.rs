@@ -153,7 +153,7 @@ pub(crate) fn encode(
     BoundedText::try_new(text).map_err(|_| BrokerError::Invalid("encoded invocation budget"))
 }
 
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
+#[cfg(any(test, all(target_os = "linux", target_env = "gnu")))]
 pub(crate) fn check_shape(payload_bytes: u64, routing_json_bytes: u64) -> Result<(), BrokerError> {
     // Fixed v1 identity/header fields fit within 900 bytes, including maximum timestamp spelling.
     if payload_bytes > MAX_INLINE_ACTION_BYTES as u64

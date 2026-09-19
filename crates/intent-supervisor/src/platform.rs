@@ -22,7 +22,6 @@ use std::{
     path::Path,
     process::{Child, Command, ExitStatus},
     sync::Arc,
-    time::Instant,
 };
 
 const MAX_IMAGE_BYTES: u64 = 128 * 1024 * 1024;
@@ -209,41 +208,4 @@ impl Drop for ManagedChild {
             self.reaped = true;
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ProcessObservation {
-    pub sampled_at: Instant,
-    pub user_cpu_ticks: u64,
-    pub system_cpu_ticks: u64,
-    pub resident_pages: u64,
-    pub virtual_bytes: u64,
-}
-pub(crate) fn observe(pid: u32) -> io::Result<ProcessObservation> {
-    let mut bytes = Vec::new();
-    File::open(format!("/proc/{pid}/stat"))?
-        .take(4097)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > 4096 {
-        return Err(io::Error::from_raw_os_error(nix::libc::EOVERFLOW));
-    }
-    let text =
-        std::str::from_utf8(&bytes).map_err(|_| io::Error::from_raw_os_error(nix::libc::EINVAL))?;
-    let (_, fields) = text
-        .rsplit_once(") ")
-        .ok_or_else(|| io::Error::from_raw_os_error(nix::libc::EINVAL))?;
-    let fields: Vec<_> = fields.split_whitespace().take(23).collect();
-    let value = |index: usize| -> io::Result<u64> {
-        fields
-            .get(index)
-            .and_then(|s| s.parse().ok())
-            .ok_or_else(|| io::Error::from_raw_os_error(nix::libc::EINVAL))
-    };
-    Ok(ProcessObservation {
-        sampled_at: Instant::now(),
-        user_cpu_ticks: value(11)?,
-        system_cpu_ticks: value(12)?,
-        resident_pages: value(21)?,
-        virtual_bytes: value(20)?,
-    })
 }

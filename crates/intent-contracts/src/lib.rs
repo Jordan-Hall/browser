@@ -43,7 +43,8 @@ pub use values::{
     AccountQualifiedResourceId, BoundedText, BoundedTextError, ByteSize, ContentHash,
     ContentHashError, CurrencyCode, CurrencyCodeError, CurrencyScale, CurrencyScaleError,
     KnownCurrencyScale, MAX_CURRENCY_SCALE, MAX_UNIX_TIMESTAMP_MICROS, MIN_UNIX_TIMESTAMP_MICROS,
-    Money, ProviderAccountId, ProviderId, ProviderResourceId, TimestampError, UnixTimestampMicros,
+    Money, ProviderAccountId, ProviderId, ProviderIdentifierError, ProviderResourceId, SpendAmount,
+    SpendAmountError, TimestampError, UnixTimestampMicros,
 };
 pub use version::{SchemaVersion, SchemaVersionError};
 

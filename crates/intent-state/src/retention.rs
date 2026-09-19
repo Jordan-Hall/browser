@@ -1,10 +1,11 @@
+use crate::directory_sync::sync_directory;
 use crate::{ArtifactError, ArtifactScope, StateStore};
 use intent_contracts::{ArtifactId, BoundedText, ContentHash, UnixTimestampMicros};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -499,19 +500,6 @@ fn remove_blob_and_sync_with(
     sync(parent)
 }
 
-#[cfg(unix)]
-fn sync_directory(path: &Path) -> io::Result<()> {
-    File::open(path)?.sync_all()
-}
-
-#[cfg(not(unix))]
-fn sync_directory(_path: &Path) -> io::Result<()> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "durable artifact deletion is not implemented for this platform",
-    ))
-}
-
 fn record_gc_failure(
     connection: &rusqlite::Connection,
     scope: &str,
@@ -693,7 +681,65 @@ mod tests {
         let Err(error) = store.open_verified_artifact(root.path(), id, &scope) else {
             return Err("suppressed artifact remained readable".into());
         };
-        assert!(matches!(error, ArtifactError::InvalidStoredRecord(_)));
+        assert!(
+            matches!(error, ArtifactError::ArtifactNotFound(found) if found == id),
+            "expected ArtifactNotFound for a suppressed artifact, got {error:?}"
+        );
+        assert!(matches!(
+            store.artifact_metadata(id, &scope),
+            Err(ArtifactError::ArtifactNotFound(found)) if found == id
+        ));
+        assert!(matches!(
+            store.artifact_reference_count(id, &scope),
+            Err(ArtifactError::ArtifactNotFound(found)) if found == id
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn suppressed_artifacts_cannot_be_republished() -> Result<(), Box<dyn Error>> {
+        let root = TempRoot::new()?;
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        let id = artifact_id()?;
+        let scope = scope()?;
+        store_fixture(&mut store, root.path(), id, &scope)?;
+        let metadata = store.artifact_metadata(id, &scope)?;
+        store.suppress_artifact(id, &scope, UnixTimestampMicros::try_new(20)?)?;
+
+        for bytes in [
+            b"retained-evidence".as_slice(),
+            b"changed-evidence".as_slice(),
+        ] {
+            let result = store.store_artifact(
+                root.path(),
+                NewArtifact {
+                    artifact_id: id,
+                    privacy_scope: scope.clone(),
+                    media_type: BoundedText::try_new("application/octet-stream")?,
+                    created_at: UnixTimestampMicros::try_new(10)?,
+                },
+                &mut Cursor::new(bytes),
+            );
+            assert!(matches!(
+                result,
+                Err(ArtifactError::ArtifactNotFound(found)) if found == id
+            ));
+        }
+
+        let retained: (i64, String, i64) = store.connection.query_row(
+            "SELECT (SELECT count(*) FROM artifact_handles_all), content_hash, suppressed_at_micros
+             FROM artifact_handles_all WHERE artifact_id = ?1",
+            [id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(retained, (1, metadata.content_hash().to_hex(), 20));
+        assert_eq!(fs::read_dir(root.path().join("quarantine"))?.count(), 0);
+        let blob = crate::artifacts::artifact_blob_path(root.path(), &metadata);
+        assert_eq!(fs::read(&blob)?, b"retained-evidence");
+        assert_eq!(
+            fs::read_dir(blob.parent().ok_or("missing blob directory")?)?.count(),
+            1
+        );
         Ok(())
     }
 

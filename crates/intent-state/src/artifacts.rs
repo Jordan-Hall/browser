@@ -352,7 +352,8 @@ pub(crate) fn load_artifact_metadata(
     let raw = connection
         .query_row(
             r#"
-                SELECT privacy_scope, content_hash, byte_size, media_type, created_at_micros
+                SELECT privacy_scope, content_hash, byte_size, media_type, created_at_micros,
+                       suppressed_at_micros
                 FROM artifact_handles
                 WHERE artifact_id = ?1
                 "#,
@@ -364,13 +365,17 @@ pub(crate) fn load_artifact_metadata(
                     row.get::<_, i64>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, i64>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
                 ))
             },
         )
         .optional()?;
-    let Some((scope, hash, byte_size, media_type, created_at)) = raw else {
+    let Some((scope, hash, byte_size, media_type, created_at, suppressed_at)) = raw else {
         return Ok(None);
     };
+    if suppressed_at.is_some() {
+        return Err(ArtifactError::ArtifactNotFound(artifact_id));
+    }
     Ok(Some(ArtifactMetadata {
         artifact_id,
         privacy_scope: ArtifactScope::try_new(scope)?,
@@ -511,19 +516,9 @@ fn finalize_hash(hasher: Sha256) -> ContentHash {
     ContentHash::from_bytes(hash)
 }
 
-#[cfg(unix)]
 fn sync_directory(path: &Path) -> Result<(), ArtifactError> {
-    File::open(path)?.sync_all()?;
+    crate::directory_sync::sync_directory(path)?;
     Ok(())
-}
-
-#[cfg(not(unix))]
-fn sync_directory(_path: &Path) -> Result<(), ArtifactError> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "durable artifact directory synchronization is not implemented for this platform",
-    )
-    .into())
 }
 
 fn nonnegative_u64(value: i64, label: &'static str) -> Result<u64, ArtifactError> {

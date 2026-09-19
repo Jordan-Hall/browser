@@ -269,6 +269,7 @@ dependencies = [
  "intent-contracts",
  "nix",
  "serde",
+ "serde_json",
  "subtle",
  "windows-sys",
 ]
@@ -311,6 +312,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "uuid",
+ "windows-sys",
 ]
 
 [[package]]

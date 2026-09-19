@@ -3,7 +3,8 @@ use crate::{
     ExecutableImage, ProcessObservation, ProgressMessage, RequestPermit, RestartBudget,
     RestartDecision, RevocationReceipt, ScheduledMessage, SchedulerLimits, SupervisorError,
     WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
-    platform::{ManagedChild, observe},
+    observation::observe_unreaped,
+    platform::ManagedChild,
     wire::{FramedSocket, ReadOutcome, decode, encode_envelope, encode_event, offer},
 };
 use intent_contracts::{
@@ -1076,7 +1077,7 @@ impl Supervisor {
                 && !entry.reaped
                 && now.duration_since(entry.sampled_at) >= Duration::from_millis(250)
             {
-                entry.observation = observe(entry.child.id()).ok();
+                entry.observation = observe_unreaped(entry.child.id()).ok();
                 entry.sampled_at = now;
             }
         }

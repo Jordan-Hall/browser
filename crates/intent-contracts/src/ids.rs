@@ -10,6 +10,7 @@ macro_rules! typed_uuid {
                 Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
             )]
             #[serde(transparent)]
+            /// A UUID value, including nil. Identity alone never grants authority.
             pub struct $name(Uuid);
 
             impl $name {
@@ -71,6 +72,18 @@ mod tests {
     use super::{TaskId, WorkspaceId};
     use std::error::Error;
     use std::str::FromStr;
+
+    #[test]
+    fn nil_uuid_remains_a_lossless_identity_value() -> Result<(), Box<dyn Error>> {
+        let nil = "00000000-0000-0000-0000-000000000000";
+        let task = TaskId::from_str(nil)?;
+        assert_eq!(task.to_string(), nil);
+        assert_eq!(
+            serde_json::from_str::<TaskId>(&serde_json::to_string(&task)?)?,
+            task
+        );
+        Ok(())
+    }
 
     #[test]
     fn typed_id_string_round_trip_is_lossless() -> Result<(), Box<dyn Error>> {

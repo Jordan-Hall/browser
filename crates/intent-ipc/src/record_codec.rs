@@ -51,7 +51,7 @@ macro_rules! core_records {
             pub fn encode(&self, limits: WireLimits) -> Result<Vec<u8>, WireError> {
                 match self {
                     $(Self::$record(record) => crate::bounded_json::encode(
-                        record.as_ref(), limits.max_control_frame_bytes,
+                        record.as_ref(), limits,
                     )),+
                 }
             }

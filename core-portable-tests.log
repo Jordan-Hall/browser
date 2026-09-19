@@ -1,0 +1,465 @@
+   Compiling intent-conformance v0.1.0 (C:\Users\Jordan\browser\crates\intent-conformance)
+   Compiling intent-ipc v0.1.0 (C:\Users\Jordan\browser\crates\intent-ipc)
+   Compiling intent-supervisor v0.1.0 (C:\Users\Jordan\browser\crates\intent-supervisor)
+warning: unused import: `File`
+ --> crates\intent-state\src\retention.rs:7:21
+  |
+7 | use std::fs::{self, File};
+  |                     ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `sql_u64` is never used
+  --> crates\intent-state\src\recovery_error.rs:65:15
+   |
+65 | pub(crate) fn sql_u64(value: u64) -> Result<i64, RecoveryError> {
+   |               ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `unsigned` is never used
+  --> crates\intent-state\src\recovery_error.rs:68:15
+   |
+68 | pub(crate) fn unsigned(value: i64) -> Result<u64, RecoveryError> {
+   |               ^^^^^^^^
+
+warning: function `bounded_json` is never used
+  --> crates\intent-state\src\recovery_error.rs:71:15
+   |
+71 | pub(crate) fn bounded_json<T: serde::Serialize>(
+   |               ^^^^^^^^^^^^
+
+warning: function `digest` is never used
+   --> crates\intent-state\src\recovery_error.rs:108:15
+    |
+108 | pub(crate) fn digest(bytes: &[u8]) -> intent_contracts::ContentHash {
+    |               ^^^^^^
+
+warning: `intent-state` (lib) generated 5 warnings (run `cargo fix --lib -p intent-state` to apply 1 suggestion)
+warning: fields `memory`, `cpu_millis`, `reserved_workers`, `reserved_memory`, and `reserved_cpu` are never read
+  --> crates\intent-supervisor\src\admission.rs:11:5
+   |
+ 9 | pub struct AdmissionLimits {
+   |            --------------- fields in this struct
+10 |     workers: usize,
+11 |     memory: u64,
+   |     ^^^^^^
+12 |     cpu_millis: u64,
+   |     ^^^^^^^^^^
+13 |     reserved_workers: [usize; 2],
+   |     ^^^^^^^^^^^^^^^^
+14 |     reserved_memory: [u64; 2],
+   |     ^^^^^^^^^^^^^^^
+15 |     reserved_cpu: [u64; 2],
+   |     ^^^^^^^^^^^^
+   |
+   = note: `AdmissionLimits` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `AdmissionBook` is never constructed
+  --> crates\intent-supervisor\src\admission.rs:57:19
+   |
+57 | pub(crate) struct AdmissionBook {
+   |                   ^^^^^^^^^^^^^
+
+warning: associated items `new`, `acquire`, `release`, and `active_count` are never used
+   --> crates\intent-supervisor\src\admission.rs:62:19
+    |
+ 61 | impl AdmissionBook {
+    | ------------------ associated items in this implementation
+ 62 |     pub(crate) fn new(limits: AdmissionLimits) -> Self {
+    |                   ^^^
+...
+ 68 |     pub(crate) fn acquire(
+    |                   ^^^^^^^
+...
+119 |     pub(crate) fn release(&mut self, id: WorkerInstanceId) {
+    |                   ^^^^^^^
+...
+122 |     pub(crate) fn active_count(&self) -> usize {
+    |                   ^^^^^^^^^^^^
+
+warning: function `index` is never used
+   --> crates\intent-supervisor\src\admission.rs:126:10
+    |
+126 | const fn index(priority: Priority) -> usize {
+    |          ^^^^^
+
+warning: fields `entries`, `bytes`, and `age` are never read
+   --> crates\intent-supervisor\src\admission.rs:136:5
+    |
+135 | pub struct SchedulerLimits {
+    |            --------------- fields in this struct
+136 |     entries: [usize; 3],
+    |     ^^^^^^^
+137 |     bytes: [usize; 3],
+    |     ^^^^^
+138 |     age: Duration,
+    |     ^^^
+    |
+    = note: `SchedulerLimits` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: struct `ScheduledMessage` is never constructed
+   --> crates\intent-supervisor\src\admission.rs:171:19
+    |
+171 | pub(crate) struct ScheduledMessage {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: struct `WorkQueues` is never constructed
+   --> crates\intent-supervisor\src\admission.rs:177:19
+    |
+177 | pub(crate) struct WorkQueues {
+    |                   ^^^^^^^^^^
+
+warning: associated items `new`, `enqueue`, `remove_generation`, `pop_ready`, and `len` are never used
+   --> crates\intent-supervisor\src\admission.rs:185:19
+    |
+184 | impl WorkQueues {
+    | --------------- associated items in this implementation
+185 |     pub(crate) fn new(limits: SchedulerLimits) -> Self {
+    |                   ^^^
+...
+194 |     pub(crate) fn enqueue(
+    |                   ^^^^^^^
+...
+209 |     pub(crate) fn remove_generation(&mut self, generation: WorkerInstanceId) {
+    |                   ^^^^^^^^^^^^^^^^^
+...
+222 |     pub(crate) fn pop_ready(
+    |                   ^^^^^^^^^
+...
+264 |     pub(crate) fn len(&self) -> usize {
+    |                   ^^^
+
+warning: fields `capability`, `family`, and `expires` are never read
+  --> crates\intent-supervisor\src\lease.rs:42:16
+   |
+39 | pub struct RequestPermit {
+   |            ------------- fields in this struct
+...
+42 |     pub(crate) capability: CapabilityId,
+   |                ^^^^^^^^^^
+43 |     pub(crate) family: MessageFamily,
+   |                ^^^^^^
+44 |     pub(crate) expires: Instant,
+   |                ^^^^^^^
+   |
+   = note: `RequestPermit` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: associated items `new`, `same_generation`, and `expired` are never used
+   --> crates\intent-supervisor\src\lease.rs:57:19
+    |
+ 56 | impl WorkerLease {
+    | ---------------- associated items in this implementation
+ 57 |     pub(crate) fn new(
+    |                   ^^^
+...
+136 |     pub(crate) fn same_generation(&self, other: &Self) -> bool {
+    |                   ^^^^^^^^^^^^^^^
+...
+139 |     pub(crate) fn expired(&self, now: Instant) -> bool {
+    |                   ^^^^^^^
+
+warning: method `validate` is never used
+   --> crates\intent-supervisor\src\lease.rs:153:19
+    |
+143 | impl RequestPermit {
+    | ------------------ method in this implementation
+...
+153 |     pub(crate) fn validate(
+    |                   ^^^^^^^^
+
+warning: fields `max_restarts`, `initial_backoff`, and `max_backoff` are never read
+ --> crates\intent-supervisor\src\restart.rs:6:5
+  |
+5 | pub struct RestartPolicy {
+  |            ------------- fields in this struct
+6 |     max_restarts: u8,
+  |     ^^^^^^^^^^^^
+7 |     initial_backoff: Duration,
+  |     ^^^^^^^^^^^^^^^
+8 |     max_backoff: Duration,
+  |     ^^^^^^^^^^^
+  |
+  = note: `RestartPolicy` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: struct `RestartBudget` is never constructed
+  --> crates\intent-supervisor\src\restart.rs:47:19
+   |
+47 | pub(crate) struct RestartBudget {
+   |                   ^^^^^^^^^^^^^
+
+warning: associated items `new`, `failed`, `decision`, `consume`, and `lifetime_end` are never used
+  --> crates\intent-supervisor\src\restart.rs:54:19
+   |
+53 | impl RestartBudget {
+   | ------------------ associated items in this implementation
+54 |     pub(crate) fn new(policy: RestartPolicy, lifetime_end: Instant) -> Self {
+   |                   ^^^
+...
+62 |     pub(crate) fn failed(&mut self, now: Instant) {
+   |                   ^^^^^^
+...
+67 |     pub(crate) fn decision(&self, now: Instant) -> RestartDecision {
+   |                   ^^^^^^^^
+...
+91 |     pub(crate) fn consume(&mut self, now: Instant) -> Result<(), SupervisorError> {
+   |                   ^^^^^^^
+...
+99 |     pub(crate) const fn lifetime_end(&self) -> Instant {
+   |                         ^^^^^^^^^^^^
+
+warning: fields `priority`, `health`, and `restart` are never read
+   --> crates\intent-supervisor\src\spec.rs:117:16
+    |
+113 | pub struct WorkerConfig {
+    |            ------------ fields in this struct
+...
+117 |     pub(crate) priority: Priority,
+    |                ^^^^^^^^
+118 |     pub(crate) limits: ProcessLimits,
+119 |     pub(crate) health: HealthPolicy,
+    |                ^^^^^^
+120 |     pub(crate) lifetime: Duration,
+121 |     pub(crate) restart: RestartPolicy,
+    |                ^^^^^^^
+    |
+    = note: `WorkerConfig` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+   Compiling intent-broker v0.1.0 (C:\Users\Jordan\browser\crates\intent-broker)
+warning: `intent-supervisor` (lib) generated 15 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.72s
+     Running unittests src\lib.rs (C:\Users\Jordan\.cargo-target\debug\deps\intent_broker-3f9fbedfae5005dc.exe)
+
+running 3 tests
+test invocation::tests::encoded_budget_preflight_covers_maximum_payload_and_escaped_routing ... ok
+test invocation::tests::invocation_roundtrip_is_exact_and_debug_is_redacted ... ok
+test invocation::tests::nested_identity_duplicate_unknown_field_and_payload_corruption_fail_closed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (C:\Users\Jordan\.cargo-target\debug\deps\intent_conformance-24a9790b1a495db6.exe)
+
+running 1 test
+test tests::report_is_deterministic_and_all_checks_pass ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src\main.rs (C:\Users\Jordan\.cargo-target\debug\deps\intent_conformance-e5c3c88ee60c7f8c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (C:\Users\Jordan\.cargo-target\debug\deps\intent_contracts-c6567125bed74d67.exe)
+
+running 18 tests
+test ids::tests::different_id_types_preserve_same_uuid_without_becoming_equal_types ... ok
+test migration::tests::newer_major_document_is_not_treated_as_writable ... ok
+test migration::tests::duplicate_outgoing_steps_are_rejected ... ok
+test migration::tests::older_writer_cannot_rewrite_newer_minor_document ... ok
+test migration::tests::migration_preserves_source_version_and_applies_explicit_chain ... ok
+test records::tests::capability_account_scope_remains_distinct ... ok
+test records::tests::unresolved_external_outcome_is_preserved ... ok
+test ids::tests::typed_id_string_round_trip_is_lossless ... ok
+test records::tests::unsupported_record_schema_is_rejected ... ok
+test records::tests::workspace_fixture_accepts_missing_optional_fields_and_round_trips ... ok
+test values::tests::bounded_text_rejects_oversized_deserialized_value ... ok
+test values::tests::byte_size_rejects_negative_serialized_values ... ok
+test values::tests::content_hash_round_trip_is_canonical_lower_hex ... ok
+test values::tests::currency_code_rejects_noncanonical_input ... ok
+test values::tests::currency_scale_rejects_unbounded_precision ... ok
+test values::tests::money_round_trip_preserves_unknown_or_known_scale ... ok
+test values::tests::timestamp_rejects_values_outside_supported_calendar_range ... ok
+test version::tests::rejects_zero_major_version_from_wire_data ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\hardening.rs (C:\Users\Jordan\.cargo-target\debug\deps\hardening-421a591e3e9a01e3.exe)
+
+running 4 tests
+test borrowed_and_escaped_text_obey_utf8_byte_limits ... ok
+test proposal_construction_and_wire_enforce_the_same_hash_binding ... ok
+test money_rejects_ambiguous_spellings_and_numeric_json ... ok
+test every_money_boundary_survives_json_value_roundtrips ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\migration_validation.rs (C:\Users\Jordan\.cargo-target\debug\deps\migration_validation-37b466243290f9ec.exe)
+
+running 9 tests
+test intermediate_output_is_validated_before_the_next_step ... ok
+test complete_path_is_checked_before_any_transformation ... ok
+test invalid_source_is_rejected_before_transforming ... ok
+test missing_and_overshooting_paths_never_run_a_transform ... ok
+test transformed_output_must_satisfy_its_declared_target ... ok
+test same_version_import_requires_a_registered_validator ... ok
+test validators_are_family_specific_and_cannot_be_replaced ... ok
+test input_output_and_same_version_buffers_obey_the_budget ... ok
+test validator_population_and_diagnostics_are_bounded ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\provider_identifiers.rs (C:\Users\Jordan\.cargo-target\debug\deps\provider_identifiers-eb46bb3eff217002.exe)
+
+running 4 tests
+test opaque_identifiers_preserve_case_whitespace_and_unicode ... ok
+test resource_identity_includes_both_provider_and_account ... ok
+test empty_provider_identifiers_are_rejected_at_every_entry_point ... ok
+test provider_identifier_limits_count_utf8_bytes ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\spend_amount.rs (C:\Users\Jordan\.cargo-target\debug\deps\spend_amount-f374da1bc8c78c8e.exe)
+
+running 3 tests
+test narrowing_money_never_truncates_wraps_or_rounds ... ok
+test goal_budget_remains_declarative_until_checked ... ok
+test spend_amount_requires_nonnegative_money_and_an_explicit_scale ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (C:\Users\Jordan\.cargo-target\debug\deps\intent_ipc-669146cf09285069.exe)
+
+running 28 tests
+test cancellation::tests::cancellation_is_idempotent_after_first_transition ... ok
+test cancellation::tests::bounded_registry_fails_closed ... ok
+test cancellation::tests::deadlines_expire_at_or_after_the_boundary ... ok
+test envelope::tests::malformed_json_is_rejected_with_stable_error ... ok
+test envelope::tests::deeply_nested_json_is_rejected_before_typed_deserialization ... ok
+test envelope::tests::artifact_lane_cannot_be_typed_as_control_envelope ... ok
+test envelope::tests::oversized_collection_is_rejected_with_stable_error ... ok
+test envelope::tests::braces_inside_strings_do_not_count_toward_depth ... ok
+test error::tests::error_detail_is_bounded_on_utf8_boundary ... ok
+test envelope::tests::request_round_trip_preserves_correlation_deadline_and_cancellation ... ok
+test flow::tests::artifact_reference_keeps_its_delivery_class ... ok
+test error::tests::stable_error_codes_are_explicit ... ok
+test flow::tests::best_effort_requires_explicit_credit ... ok
+test flow::tests::reliable_control_is_not_displaced_by_progress ... ok
+test flow::tests::full_reliable_queue_returns_item_instead_of_dropping_it ... ok
+test flow::tests::reserved_control_preempts_every_other_class ... ok
+test frame::tests::control_and_artifact_lanes_have_independent_limits ... ok
+test frame::tests::feed_frame_budget_returns_consumed_offset_without_losing_input ... ok
+test frame::tests::fragmented_frame_is_not_emitted_until_complete ... ok
+test frame::tests::invalid_lane_fails_closed ... ok
+test frame::tests::oversized_length_is_rejected_before_payload_allocation ... ok
+test negotiation::tests::authority_change_requires_major_bump ... ok
+test negotiation::tests::negotiated_session_rejects_unselected_message_version ... ok
+test negotiation::tests::negotiation_selects_highest_common_version_and_capability_intersection ... ok
+test negotiation::tests::deserialization_enforces_offer_bounds ... ok
+test negotiation::tests::offer_round_trip_preserves_ranges_and_capabilities ... ok
+test negotiation::tests::unsupported_major_fails_early ... ok
+test stream::tests::two_workers_ack_cancel_while_progress_queues_are_saturated ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\encoding_limits.rs (C:\Users\Jordan\.cargo-target\debug\deps\encoding_limits-9fc5ddf608c7f63b.exe)
+
+running 3 tests
+test serializer_cannot_emit_ambiguous_duplicate_keys ... ok
+test record_encoder_enforces_structural_budgets_too ... ok
+test encoder_and_decoder_agree_on_every_structural_budget ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\generated_money.rs (C:\Users\Jordan\.cargo-target\debug\deps\generated_money-bf3f05a147bf0ebe.exe)
+
+running 1 test
+test generated_money_roundtrips_through_envelopes_goals_and_checked_storage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.71s
+
+     Running tests\hardening.rs (C:\Users\Jordan\.cargo-target\debug\deps\hardening-34cc0abaa30272b4.exe)
+
+running 11 tests
+test lazy_unbounded_serializer_is_stopped_by_the_output_budget ... ok
+test encoder_accepts_exact_budget_and_rejects_one_byte_less ... ok
+test infinite_duplicate_capabilities_are_rejected_after_bounded_consumption ... ok
+test duplicate_keys_are_rejected_before_typed_payload_parsing ... ok
+test negotiated_control_codec_never_advertises_unimplemented_versions ... ok
+test unknown_envelope_authority_fields_are_not_silently_ignored ... ok
+test swallowed_writer_error_cannot_return_a_truncated_success ... ok
+test unrelated_serialization_failure_keeps_its_error_class ... ok
+test wire_offer_sequence_limits_include_duplicate_entries ... ok
+test full_money_domain_roundtrips_through_the_real_envelope_codec ... ok
+test unsupported_schema_is_classified_before_the_typed_payload ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\record_codec.rs (C:\Users\Jordan\.cargo-target\debug\deps\record_codec-ea2cd0c86e981919.exe)
+
+running 8 tests
+test wire_error_spelling_is_pinned_and_ambiguous_encodings_fail ... ok
+test missing_malformed_and_future_schemas_are_distinct_from_typed_payload_errors ... ok
+test duplicate_keys_trailing_values_and_shape_budgets_apply_to_record_imports ... ok
+test mismatched_proposal_hash_and_unknown_state_cannot_be_imported ... ok
+test all_equal_version_imports_use_registered_record_validators ... ok
+test all_record_families_roundtrip_through_envelopes_without_losing_scope_or_unknown_outcomes ... ok
+test unknown_fields_are_rejected_at_every_record_and_nested_object ... ok
+test golden_fixtures_cover_every_implemented_record_family ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src\lib.rs (C:\Users\Jordan\.cargo-target\debug\deps\intent_local_transport-0d866a1ae2a0aeb0.exe)
+
+running 6 tests
+test auth::tests::claimed_role_must_match_supervisor_launch_record ... ok
+test auth::tests::debug_output_never_contains_bootstrap_secret ... ok
+test auth::tests::incorrect_token_fails_as_launch_identity_mismatch ... ok
+test auth::tests::peer_credentials_are_checked_after_primary_secret ... ok
+test auth::tests::successful_authentication_binds_role_and_instance ... ok
+test peer::tests::exact_peer_expectation_rejects_changed_process ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (C:\Users\Jordan\.cargo-target\debug\deps\intent_xtask-5e1ef728a4ab074a.exe)
+
+running 4 tests
+test hardening_tests::rejects_unknown_packages_and_unreviewed_sources ... ok
+test tests::permits_authority_neutral_serialization_dependency ... ok
+test tests::rejects_workspace_dependency_from_contracts ... ok
+test tests::rejects_browser_engine_dependency_from_contracts ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\architecture_command.rs (C:\Users\Jordan\.cargo-target\debug\deps\architecture_command-c041ccc722dc8b68.exe)
+
+running 1 test
+test actual_checker_rejects_a_dependency_renamed_to_an_allowed_name ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+   Doc-tests intent_broker
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests intent_conformance
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests intent_contracts
+
+running 1 test
+test crates\intent-contracts\src\lib.rs - (line 6) - compile fail ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+   Doc-tests intent_ipc
+
+running 2 tests
+test crates\intent-ipc\src\flow.rs - flow::QueueLimits (line 19) - compile fail ... ok
+test crates\intent-ipc\src\flow.rs - flow::QueueLimits (line 24) - compile fail ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+   Doc-tests intent_local_transport
+
+running 1 test
+test crates\intent-local-transport\src\auth.rs - auth::WorkerLaunchRecord (line 151) - compile fail ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+

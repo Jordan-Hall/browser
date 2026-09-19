@@ -98,20 +98,60 @@ impl fmt::Display for BoundedTextError {
 
 impl Error for BoundedTextError {}
 
-macro_rules! bounded_text_newtype {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderIdentifierError {
+    Empty,
+    TooLong(BoundedTextError),
+}
+
+impl fmt::Display for ProviderIdentifierError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("provider identifier must not be empty"),
+            Self::TooLong(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for ProviderIdentifierError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Empty => None,
+            Self::TooLong(error) => Some(error),
+        }
+    }
+}
+
+macro_rules! provider_identifier {
     ($name:ident, $max_bytes:expr) => {
-        #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         #[serde(transparent)]
         pub struct $name(BoundedText<$max_bytes>);
 
         impl $name {
-            pub fn try_new(value: impl Into<String>) -> Result<Self, BoundedTextError> {
-                BoundedText::try_new(value).map(Self)
+            pub fn try_new(value: impl Into<String>) -> Result<Self, ProviderIdentifierError> {
+                let value = value.into();
+                if value.is_empty() {
+                    return Err(ProviderIdentifierError::Empty);
+                }
+                BoundedText::try_new(value)
+                    .map(Self)
+                    .map_err(ProviderIdentifierError::TooLong)
             }
 
             #[must_use]
             pub fn as_str(&self) -> &str {
                 self.0.as_str()
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = BoundedText::<$max_bytes>::deserialize(deserializer)?;
+                Self::try_new(value.into_inner()).map_err(de::Error::custom)
             }
         }
 
@@ -122,7 +162,7 @@ macro_rules! bounded_text_newtype {
         }
 
         impl FromStr for $name {
-            type Err = BoundedTextError;
+            type Err = ProviderIdentifierError;
 
             fn from_str(value: &str) -> Result<Self, Self::Err> {
                 Self::try_new(value)
@@ -131,9 +171,9 @@ macro_rules! bounded_text_newtype {
     };
 }
 
-bounded_text_newtype!(ProviderId, 128);
-bounded_text_newtype!(ProviderAccountId, 256);
-bounded_text_newtype!(ProviderResourceId, 512);
+provider_identifier!(ProviderId, 128);
+provider_identifier!(ProviderAccountId, 256);
+provider_identifier!(ProviderResourceId, 512);
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -319,7 +359,71 @@ impl Money {
     pub const fn scale(self) -> CurrencyScale {
         self.scale
     }
+
+    pub fn try_minor_units_i64(self) -> Result<i64, std::num::TryFromIntError> {
+        i64::try_from(self.minor_units)
+    }
+
+    pub fn try_minor_units_u64(self) -> Result<u64, std::num::TryFromIntError> {
+        u64::try_from(self.minor_units)
+    }
 }
+
+/// A nonnegative amount with a known scale. This value grants no spending authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct SpendAmount(Money);
+
+impl SpendAmount {
+    pub const fn try_new(money: Money) -> Result<Self, SpendAmountError> {
+        if money.minor_units() < 0 {
+            return Err(SpendAmountError::NegativeAmount);
+        }
+        if matches!(money.scale(), CurrencyScale::Unknown) {
+            return Err(SpendAmountError::UnknownScale);
+        }
+        Ok(Self(money))
+    }
+
+    #[must_use]
+    pub const fn money(self) -> Money {
+        self.0
+    }
+}
+
+impl TryFrom<Money> for SpendAmount {
+    type Error = SpendAmountError;
+
+    fn try_from(money: Money) -> Result<Self, Self::Error> {
+        Self::try_new(money)
+    }
+}
+
+impl<'de> Deserialize<'de> for SpendAmount {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::try_new(Money::deserialize(deserializer)?).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpendAmountError {
+    NegativeAmount,
+    UnknownScale,
+}
+
+impl fmt::Display for SpendAmountError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::NegativeAmount => "spending amount must not be negative",
+            Self::UnknownScale => "spending amount requires a known currency scale",
+        })
+    }
+}
+
+impl Error for SpendAmountError {}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]

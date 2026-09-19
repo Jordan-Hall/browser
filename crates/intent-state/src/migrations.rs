@@ -294,6 +294,8 @@ const MIGRATION_008: &str = include_str!("checkpoints/schema.sql");
 const MIGRATION_009: &str = include_str!("workspace_checkpoints/migration.sql");
 const MIGRATION_010: &str = include_str!("durable_recovery/migration.sql");
 
+const MIGRATION_011: &str = include_str!("provider_recovery/migration.sql");
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -344,6 +346,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 10,
         name: "durable_recovery_authority",
         sql: MIGRATION_010,
+    },
+    Migration {
+        version: 11,
+        name: "durable_provider_recovery_attempts",
+        sql: MIGRATION_011,
     },
 ];
 

@@ -4,7 +4,9 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -86,9 +88,29 @@ class CoverageTests(unittest.TestCase):
             root.mkdir()
             outside = temp / "outside.rs"
             outside.write_text("not repository source")
-            (root / "link.rs").symlink_to(outside)
-            with self.assertRaises(ValueError):
-                coverage.source_path("link.rs", root)
+            if os.name == "nt":
+                link = root / "outside"
+                environment = os.environ | {
+                    "INTENT_TEST_LINK": str(link),
+                    "INTENT_TEST_TARGET": str(temp),
+                }
+                subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                     "New-Item -ItemType Junction -Path $env:INTENT_TEST_LINK "
+                     "-Value $env:INTENT_TEST_TARGET -ErrorAction Stop | Out-Null"],
+                    env=environment, check=True, capture_output=True, timeout=10,
+                )
+                try:
+                    self.assertTrue(link.is_junction())
+                    self.assertEqual((link / "outside.rs").resolve(), outside)
+                    with self.assertRaises(ValueError):
+                        coverage.source_path("outside/outside.rs", root)
+                finally:
+                    link.rmdir()
+            else:
+                (root / "link.rs").symlink_to(outside)
+                with self.assertRaises(ValueError):
+                    coverage.source_path("link.rs", root)
 
     def test_unpublished_changes_cannot_be_marked_accepted(self) -> None:
         task = next(t for t in self.data["tasks"] if t["issue"] == 137)

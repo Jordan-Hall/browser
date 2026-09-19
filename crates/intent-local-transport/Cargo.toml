@@ -20,3 +20,7 @@ windows-sys.workspace = true
 
 [lints]
 workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+serde_json.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO"] }

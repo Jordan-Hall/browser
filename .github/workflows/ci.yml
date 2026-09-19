@@ -13,6 +13,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  portable:
+    name: Native contracts and storage (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt
+      - name: Check portable CORE code
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-conformance -p intent-xtask --all-targets --all-features -- -D warnings
+      - name: Run native contract and policy tests
+        run: cargo test --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-supervisor -p intent-conformance -p intent-xtask --all-targets --no-fail-fast
+      - name: Run native documentation tests
+        run: cargo test --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-conformance --doc --no-fail-fast
+      - name: Check acceptance evidence validation
+        run: |
+          python -m unittest discover -s scripts/tests -v
+          python scripts/check_core_coverage.py
+      - name: Check dependency direction and conformance
+        run: |
+          cargo run --locked -p intent-xtask -- arch-check
+          cargo run --locked -p intent-conformance --quiet
+
   rust:
     name: Rust checks
     runs-on: ubuntu-24.04

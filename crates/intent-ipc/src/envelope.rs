@@ -113,7 +113,7 @@ pub fn encode_control<T: Serialize>(
     envelope: &Envelope<T>,
     limits: WireLimits,
 ) -> Result<Frame, WireError> {
-    let payload = crate::bounded_json::encode(envelope, limits.max_control_frame_bytes)?;
+    let payload = crate::bounded_json::encode(envelope, limits)?;
     Ok(Frame::new(FrameLane::Control, payload))
 }
 

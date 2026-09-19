@@ -538,7 +538,8 @@ fn yield_is_coalesced_and_resource_samples_are_content_free() -> TestResult {
     assert!(
         supervisor
             .observation(id)
-            .is_some_and(|sample| sample.resident_pages > 0 && sample.virtual_bytes > 0)
+            .is_some_and(|sample| sample.resident_bytes > 0
+                && sample.virtual_bytes.is_some_and(|bytes| bytes > 0))
     );
     supervisor.cancel(id, cancel_id())?;
     terminal(&mut supervisor, id)?;

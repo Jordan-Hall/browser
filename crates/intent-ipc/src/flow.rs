@@ -159,6 +159,10 @@ impl<T> PriorityQueue<T> {
         self.reserved.len()
     }
 
+    pub(crate) fn has_reserved(&self, predicate: impl FnMut(&T) -> bool) -> bool {
+        self.reserved.iter().any(predicate)
+    }
+
     #[must_use]
     pub fn reliable_len(&self) -> usize {
         self.reliable.len()
@@ -167,6 +171,14 @@ impl<T> PriorityQueue<T> {
     #[must_use]
     pub fn best_effort_len(&self) -> usize {
         self.best_effort.len()
+    }
+
+    #[must_use]
+    pub fn progress_len(&self) -> usize {
+        self.best_effort
+            .iter()
+            .filter(|(class, _)| *class == DeliveryClass::BestEffortProgress)
+            .count()
     }
 }
 
