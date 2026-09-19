@@ -3,7 +3,7 @@ use crate::{ArtifactError, ArtifactMetadata, ArtifactScope, StateStore};
 use intent_contracts::{ArtifactId, BoundedText, ContentHash, UnixTimestampMicros};
 use rusqlite::params;
 use sha2::{Digest, Sha256};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 
@@ -143,13 +143,7 @@ impl StateStore {
         })?;
 
         let path = artifact_blob_path(root, &metadata);
-        let file_type = fs::symlink_metadata(&path)
-            .map_err(|error| map_missing_blob(error, artifact_id))?
-            .file_type();
-        if !file_type.is_file() || file_type.is_symlink() {
-            return Err(ArtifactError::InvalidBlobType(artifact_id));
-        }
-        let mut file = File::open(&path).map_err(|error| map_missing_blob(error, artifact_id))?;
+        let mut file = open_regular_blob_no_follow(&path, artifact_id)?;
         file.by_ref()
             .take(metadata.byte_size().saturating_add(1))
             .read_to_end(&mut bytes)?;
@@ -221,6 +215,67 @@ fn catalog_entry(
     })
 }
 
+#[cfg(unix)]
+fn open_regular_blob_no_follow(
+    path: &Path,
+    artifact_id: ArtifactId,
+) -> Result<File, ArtifactError> {
+    use nix::errno::Errno;
+    use nix::fcntl::{OFlag, open};
+    use nix::sys::stat::Mode;
+
+    let descriptor = open(
+        path,
+        OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK,
+        Mode::empty(),
+    )
+    .map_err(|error| {
+        if error == Errno::ELOOP {
+            ArtifactError::InvalidBlobType(artifact_id)
+        } else {
+            map_missing_blob(io::Error::from(error), artifact_id)
+        }
+    })?;
+    let file = File::from(descriptor);
+    if !file.metadata()?.is_file() {
+        return Err(ArtifactError::InvalidBlobType(artifact_id));
+    }
+    Ok(file)
+}
+
+#[cfg(windows)]
+fn open_regular_blob_no_follow(
+    path: &Path,
+    artifact_id: ArtifactId,
+) -> Result<File, ArtifactError> {
+    use std::fs::OpenOptions;
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|error| map_missing_blob(error, artifact_id))?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(ArtifactError::InvalidBlobType(artifact_id));
+    }
+    Ok(file)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_regular_blob_no_follow(
+    _path: &Path,
+    _artifact_id: ArtifactId,
+) -> Result<File, ArtifactError> {
+    Err(ArtifactError::InvalidInput(
+        "secure artifact selection is unsupported on this platform".to_owned(),
+    ))
+}
+
 fn map_missing_blob(error: io::Error, artifact_id: ArtifactId) -> ArtifactError {
     if error.kind() == io::ErrorKind::NotFound {
         ArtifactError::MissingBlob(artifact_id)
@@ -238,13 +293,56 @@ fn hash_bytes(bytes: &[u8]) -> ContentHash {
 
 #[cfg(test)]
 mod tests {
-    use super::MAX_ARTIFACT_METADATA_PAGE;
+    use super::{MAX_ARTIFACT_METADATA_PAGE, open_regular_blob_no_follow};
     use crate::{ArtifactError, ArtifactScope, NewArtifact, StateStore};
     use intent_contracts::{ArtifactId, BoundedText, UnixTimestampMicros};
     use std::error::Error;
     use std::fs;
     use std::io::Cursor;
     use uuid::Uuid;
+
+    #[cfg(unix)]
+    #[test]
+    fn secure_blob_open_rejects_symlink_and_fifo_without_following_or_blocking()
+    -> Result<(), Box<dyn Error>> {
+        use nix::sys::stat::Mode;
+        use nix::unistd::mkfifo;
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!(
+            "intent-artifact-open-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root)?;
+        let result = (|| -> Result<(), Box<dyn Error>> {
+            let artifact_id = ArtifactId::from_uuid(Uuid::new_v4());
+            let regular = root.join("regular");
+            fs::write(&regular, b"regular")?;
+            assert!(
+                open_regular_blob_no_follow(&regular, artifact_id)?
+                    .metadata()?
+                    .is_file()
+            );
+
+            let link = root.join("link");
+            symlink(&regular, &link)?;
+            assert!(matches!(
+                open_regular_blob_no_follow(&link, artifact_id),
+                Err(ArtifactError::InvalidBlobType(id)) if id == artifact_id
+            ));
+
+            let fifo = root.join("fifo");
+            mkfifo(&fifo, Mode::S_IRUSR | Mode::S_IWUSR)?;
+            assert!(matches!(
+                open_regular_blob_no_follow(&fifo, artifact_id),
+                Err(ArtifactError::InvalidBlobType(id)) if id == artifact_id
+            ));
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&root);
+        result
+    }
 
     #[test]
     fn metadata_listing_is_scoped_ordered_bounded_and_skips_suppressed()
