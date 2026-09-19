@@ -164,7 +164,11 @@ fn launch(
     let path = Path::new(env!("CARGO_BIN_EXE_intent-fixture-worker"));
     let started = Instant::now();
     let bytes = fs::read(path)?;
-    eprintln!("broker fixture image: {} bytes read in {:?}", bytes.len(), started.elapsed());
+    eprintln!(
+        "broker fixture image: {} bytes read in {:?}",
+        bytes.len(),
+        started.elapsed()
+    );
     let expected = hash(&bytes);
     eprintln!("broker fixture image: hashed in {:?}", started.elapsed());
     let image = ExecutableImage::load(path, expected)?;

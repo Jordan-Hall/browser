@@ -102,7 +102,7 @@ class CoverageTests(unittest.TestCase):
                 )
                 try:
                     self.assertTrue(link.is_junction())
-                    self.assertEqual((link / "outside.rs").resolve(), outside)
+                    self.assertTrue((link / "outside.rs").samefile(outside))
                     with self.assertRaises(ValueError):
                         coverage.source_path("outside/outside.rs", root)
                 finally:
