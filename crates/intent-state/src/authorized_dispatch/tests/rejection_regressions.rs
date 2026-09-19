@@ -207,6 +207,39 @@ fn post_insert_projection_mismatch_rolls_back_before_commit() -> Result<(), Box<
 }
 
 #[test]
+fn post_insert_terminal_metadata_rolls_back_before_commit() -> Result<(), Box<dyn Error>> {
+    for mutation in [
+        "completed_at_micros=121",
+        "failure_detail='injected terminal metadata'",
+    ] {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        store.connection.execute_batch(&format!(
+            "CREATE TEMP TRIGGER corrupt_terminal_stage AFTER INSERT ON outbox_messages
+             BEGIN
+               UPDATE outbox_messages SET {mutation} WHERE outbox_id=NEW.outbox_id;
+             END;"
+        ))?;
+        let error = store
+            .stage_record_bound_outbox(
+                &proposal()?,
+                &approved_record()?,
+                message()?,
+                1,
+                UnixTimestampMicros::try_new(120)?,
+            )
+            .err()
+            .ok_or("staged row with terminal metadata unexpectedly committed")?;
+        assert!(matches!(
+            error,
+            AuthorizedDispatchError::Outbox(OutboxError::InvalidStoredRecord(_))
+        ));
+        assert_unstaged(&store)?;
+    }
+    Ok(())
+}
+
+#[test]
 fn imported_approved_record_cannot_authorize_file_backed_dispatch() -> Result<(), Box<dyn Error>> {
     let profile = Profile::new()?;
     let mut store = StateStore::open(profile.database())?;
