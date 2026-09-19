@@ -96,8 +96,6 @@ pub struct PollReport {
     pub active_workers: usize,
     pub queued_requests: usize,
     pub discarded_queued_requests: u64,
-    pub read_bytes: usize,
-    pub read_byte_limit: usize,
     pub elapsed: Duration,
 }
 #[derive(Debug)]
@@ -1122,8 +1120,6 @@ impl Supervisor {
             active_workers: self.admission.active_count(),
             queued_requests: self.queues.len(),
             discarded_queued_requests: self.queues.dropped,
-            read_bytes: read_budget.consumed(),
-            read_byte_limit: MAX_READ_BYTES_PER_POLL,
             elapsed: started.elapsed(),
         }
     }
