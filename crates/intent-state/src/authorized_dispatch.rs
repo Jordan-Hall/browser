@@ -307,15 +307,15 @@ mod tests {
         let mut value = serde_json::to_value(proposal()?)?;
         value["account_id"] = json!("018f47f7-5a86-7c00-8000-000000000aff");
         let rebound: ActionProposal = serde_json::from_value(value)?;
-        let error = store
-            .stage_authorized_outbox(
-                &rebound,
-                &active_approval()?,
-                message()?,
-                1,
-                UnixTimestampMicros::try_new(120)?,
-            )
-            .expect_err("rebound account unexpectedly dispatched");
+        let Err(error) = store.stage_authorized_outbox(
+            &rebound,
+            &active_approval()?,
+            message()?,
+            1,
+            UnixTimestampMicros::try_new(120)?,
+        ) else {
+            return Err("rebound account unexpectedly dispatched".into());
+        };
         assert!(matches!(
             error,
             AuthorizedDispatchError::BindingMismatch("account id")
@@ -335,15 +335,15 @@ mod tests {
             "resource": "cart/17"
         });
         let targeted: ActionProposal = serde_json::from_value(value)?;
-        let error = store
-            .stage_authorized_outbox(
-                &targeted,
-                &active_approval()?,
-                message()?,
-                1,
-                UnixTimestampMicros::try_new(120)?,
-            )
-            .expect_err("targeted proposal unexpectedly dispatched without durable target binding");
+        let Err(error) = store.stage_authorized_outbox(
+            &targeted,
+            &active_approval()?,
+            message()?,
+            1,
+            UnixTimestampMicros::try_new(120)?,
+        ) else {
+            return Err("targeted proposal unexpectedly dispatched without durable target binding".into());
+        };
         assert!(matches!(
             error,
             AuthorizedDispatchError::TargetBindingUnsupported
@@ -360,30 +360,30 @@ mod tests {
             approved_at: UnixTimestampMicros::try_new(111)?,
             expires_at: Some(UnixTimestampMicros::try_new(120)?),
         })?;
-        let error = store
-            .stage_authorized_outbox(
-                &proposal()?,
-                &expired_approval,
-                message()?,
-                1,
-                UnixTimestampMicros::try_new(120)?,
-            )
-            .expect_err("expired approval unexpectedly dispatched");
+        let Err(error) = store.stage_authorized_outbox(
+            &proposal()?,
+            &expired_approval,
+            message()?,
+            1,
+            UnixTimestampMicros::try_new(120)?,
+        ) else {
+            return Err("expired approval unexpectedly dispatched".into());
+        };
         assert!(matches!(error, AuthorizedDispatchError::ApprovalExpired));
         assert_unstaged(&store)?;
 
         let mut value = serde_json::to_value(proposal()?)?;
         value["expires_at"] = json!(119);
         let expired_proposal: ActionProposal = serde_json::from_value(value)?;
-        let error = store
-            .stage_authorized_outbox(
-                &expired_proposal,
-                &active_approval()?,
-                message()?,
-                1,
-                UnixTimestampMicros::try_new(120)?,
-            )
-            .expect_err("expired proposal unexpectedly dispatched");
+        let Err(error) = store.stage_authorized_outbox(
+            &expired_proposal,
+            &active_approval()?,
+            message()?,
+            1,
+            UnixTimestampMicros::try_new(120)?,
+        ) else {
+            return Err("expired proposal unexpectedly dispatched".into());
+        };
         assert!(matches!(error, AuthorizedDispatchError::ProposalExpired));
         assert_unstaged(&store)?;
         Ok(())
