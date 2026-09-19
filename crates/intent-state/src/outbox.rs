@@ -142,6 +142,36 @@ impl OutboxMessage {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OutboxClaim {
+    outbox_id: OutboxMessageId,
+    operation_id: OperationId,
+    attempt_identity: OperationAttemptId,
+    lease_expires_at: UnixTimestampMicros,
+}
+
+impl OutboxClaim {
+    #[must_use]
+    pub const fn outbox_id(&self) -> OutboxMessageId {
+        self.outbox_id
+    }
+
+    #[must_use]
+    pub const fn operation_id(&self) -> OperationId {
+        self.operation_id
+    }
+
+    #[must_use]
+    pub const fn attempt_identity(&self) -> OperationAttemptId {
+        self.attempt_identity
+    }
+
+    #[must_use]
+    pub const fn lease_expires_at(&self) -> UnixTimestampMicros {
+        self.lease_expires_at
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DispatchAttempt {
     outbox_id: OutboxMessageId,
     operation_id: OperationId,
@@ -197,7 +227,7 @@ pub enum DispatchResult {
 }
 
 impl StateStore {
-    pub fn stage_outbox(
+    pub(crate) fn stage_outbox(
         &mut self,
         new: NewOutboxMessage,
         expected_operation_revision: u64,
@@ -295,7 +325,7 @@ impl StateStore {
         now: UnixTimestampMicros,
         lease_expires_at: UnixTimestampMicros,
         limit: usize,
-    ) -> Result<Vec<OutboxMessage>, OutboxError> {
+    ) -> Result<Vec<OutboxClaim>, OutboxError> {
         if lease_expires_at.get() <= now.get() {
             return Err(OutboxError::InvalidLeaseWindow);
         }
@@ -348,7 +378,17 @@ impl StateStore {
             let message = self.load_outbox(id)?.ok_or_else(|| {
                 OutboxError::InvalidStoredRecord("claimed outbox row disappeared".to_owned())
             })?;
-            claimed.push(message);
+            let lease_expires_at = message.lease_expires_at.ok_or_else(|| {
+                OutboxError::InvalidStoredRecord(
+                    "claimed outbox row is missing its lease expiry".to_owned(),
+                )
+            })?;
+            claimed.push(OutboxClaim {
+                outbox_id: message.outbox_id,
+                operation_id: message.operation_id,
+                attempt_identity: message.attempt_identity,
+                lease_expires_at,
+            });
         }
         Ok(claimed)
     }
@@ -539,7 +579,7 @@ impl StateStore {
         Ok(())
     }
 
-    pub fn load_outbox(
+    pub(crate) fn load_outbox(
         &self,
         outbox_id: OutboxMessageId,
     ) -> Result<Option<OutboxMessage>, OutboxError> {
@@ -912,6 +952,13 @@ mod tests {
             1,
         )?;
         assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].outbox_id(), outbox_id()?);
+        assert_eq!(claimed[0].operation_id(), operation_id()?);
+        assert_eq!(claimed[0].attempt_identity(), attempt_id()?);
+        assert_eq!(
+            claimed[0].lease_expires_at(),
+            UnixTimestampMicros::try_new(230)?
+        );
         let wrong_owner = BoundedText::try_new("dispatcher-b")?;
         let Err(error) = store.begin_dispatch(
             outbox_id()?,
