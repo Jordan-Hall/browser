@@ -5,7 +5,7 @@ use crate::{
     WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
     observation::observe_unreaped,
     platform::ManagedChild,
-    wire::{FramedSocket, ReadOutcome, decode, encode_envelope, encode_event, offer},
+    wire::{FramedSocket, ReadBudget, ReadOutcome, decode, encode_envelope, encode_event, offer},
 };
 use intent_contracts::{
     BoundedText, CancellationId, ContentHash, RequestId, SchemaVersion, TaskId, TraceId,
@@ -39,6 +39,7 @@ use std::{
 use uuid::Uuid;
 
 const MAX_PENDING_REQUESTS: usize = 32;
+const MAX_READ_BYTES_PER_POLL: usize = 32 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkerState {
@@ -95,6 +96,8 @@ pub struct PollReport {
     pub active_workers: usize,
     pub queued_requests: usize,
     pub discarded_queued_requests: u64,
+    pub read_bytes: usize,
+    pub read_byte_limit: usize,
     pub elapsed: Duration,
 }
 #[derive(Debug)]
@@ -210,6 +213,7 @@ impl Lane {
         channel: ChannelKind,
         generation: WorkerInstanceId,
         rejected: &mut u64,
+        read_budget: &mut ReadBudget,
     ) -> Result<(), SupervisorError> {
         if self.socket.is_none() {
             for _ in 0..4 {
@@ -240,8 +244,7 @@ impl Lane {
         let Some(socket) = self.socket.as_mut() else {
             return Ok(());
         };
-        let mut budget = 4096;
-        match socket.read_one(&mut budget)? {
+        match read_budget.read_one(socket, 4096)? {
             ReadOutcome::Pending => Ok(()),
             ReadOutcome::Closed => Err(SupervisorError::Protocol),
             ReadOutcome::Frame(frame) => {
@@ -364,7 +367,11 @@ impl Entry {
             Some(failure),
         );
     }
-    fn poll(&mut self, now: Instant) -> Result<bool, SupervisorError> {
+    fn poll(
+        &mut self,
+        now: Instant,
+        read_budget: &mut ReadBudget,
+    ) -> Result<bool, SupervisorError> {
         if self.reaped {
             return Ok(false);
         }
@@ -418,19 +425,21 @@ impl Entry {
                 ChannelKind::Control,
                 self.generation,
                 &mut self.rejected_peers,
+                read_budget,
             )?;
             self.progress.poll_authentication(
                 self.child.id(),
                 ChannelKind::Progress,
                 self.generation,
                 &mut self.rejected_peers,
+                read_budget,
             )?;
         }
         if self.control.identity.is_some() {
-            self.read_control(now)?;
+            self.read_control(now, read_budget)?;
         }
         if self.progress.identity.is_some() {
-            self.read_progress(now)?;
+            self.read_progress(now, read_budget)?;
         }
         if let Some(stop) = self.stop_at {
             if let Some(socket) = self.control.socket.as_mut()
@@ -489,13 +498,21 @@ impl Entry {
         }
         Ok(false)
     }
-    fn read_control(&mut self, now: Instant) -> Result<(), SupervisorError> {
+    fn read_control(
+        &mut self,
+        now: Instant,
+        read_budget: &mut ReadBudget,
+    ) -> Result<(), SupervisorError> {
         let Some(socket) = self.control.socket.as_mut() else {
             return Ok(());
         };
-        let mut budget = 8192;
+        let mut lane_budget = 8192;
         for _ in 0..8 {
-            let frame = match socket.read_one(&mut budget)? {
+            let before = read_budget.consumed();
+            let outcome = read_budget.read_one(socket, lane_budget)?;
+            lane_budget = lane_budget
+                .saturating_sub(read_budget.consumed().saturating_sub(before));
+            let frame = match outcome {
                 ReadOutcome::Pending => break,
                 ReadOutcome::Closed => {
                     if self.stop_at.is_none() {
@@ -580,13 +597,21 @@ impl Entry {
         }
         Ok(())
     }
-    fn read_progress(&mut self, now: Instant) -> Result<(), SupervisorError> {
+    fn read_progress(
+        &mut self,
+        now: Instant,
+        read_budget: &mut ReadBudget,
+    ) -> Result<(), SupervisorError> {
         let Some(socket) = self.progress.socket.as_mut() else {
             return Ok(());
         };
-        let mut budget = 4096;
+        let mut lane_budget = 4096;
         for _ in 0..4 {
-            let frame = match socket.read_one(&mut budget)? {
+            let before = read_budget.consumed();
+            let outcome = read_budget.read_one(socket, lane_budget)?;
+            lane_budget = lane_budget
+                .saturating_sub(read_budget.consumed().saturating_sub(before));
+            let frame = match outcome {
                 ReadOutcome::Pending | ReadOutcome::Closed => break,
                 ReadOutcome::Frame(frame) => frame,
             };
@@ -620,6 +645,7 @@ pub struct Supervisor {
     queues: WorkQueues,
     namespace: Namespace,
     max_entries: usize,
+    read_cursor: usize,
     metrics_cursor: usize,
 }
 impl Supervisor {
@@ -634,6 +660,7 @@ impl Supervisor {
             queues: WorkQueues::new(scheduler),
             namespace: Namespace::new(runtime_parent)?,
             max_entries: limits.workers() * 2,
+            read_cursor: 0,
             metrics_cursor: 0,
         })
     }
@@ -1008,11 +1035,23 @@ impl Supervisor {
     pub fn poll(&mut self) -> PollReport {
         let started = Instant::now();
         let now = started;
-        for (id, entry) in &mut self.entries {
-            match entry.poll(now) {
+        let mut read_budget = ReadBudget::new(MAX_READ_BYTES_PER_POLL);
+        let generations: Vec<_> = self.entries.keys().copied().collect();
+        let read_start = if generations.is_empty() {
+            0
+        } else {
+            self.read_cursor % generations.len()
+        };
+        self.read_cursor = self.read_cursor.wrapping_add(1);
+        for offset in 0..generations.len() {
+            let id = generations[(read_start + offset) % generations.len()];
+            let Some(entry) = self.entries.get_mut(&id) else {
+                continue;
+            };
+            match entry.poll(now, &mut read_budget) {
                 Ok(true) => {
-                    self.admission.release(*id);
-                    self.queues.remove_generation(*id);
+                    self.admission.release(id);
+                    self.queues.remove_generation(id);
                 }
                 Ok(false) => {}
                 Err(error) => {
@@ -1032,7 +1071,7 @@ impl Supervisor {
                         let _ = entry.child.signal_group(Signal::SIGKILL);
                         entry.kill_sent = true;
                     }
-                    self.queues.remove_generation(*id);
+                    self.queues.remove_generation(id);
                 }
             }
         }
@@ -1085,6 +1124,8 @@ impl Supervisor {
             active_workers: self.admission.active_count(),
             queued_requests: self.queues.len(),
             discarded_queued_requests: self.queues.dropped,
+            read_bytes: read_budget.consumed(),
+            read_byte_limit: MAX_READ_BYTES_PER_POLL,
             elapsed: started.elapsed(),
         }
     }
