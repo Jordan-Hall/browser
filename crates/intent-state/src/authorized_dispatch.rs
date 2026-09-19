@@ -80,7 +80,8 @@ impl StateStore {
     ///
     /// This is a record-binding check, not a grant of executable authority or user consent.
     /// Callers must separately enforce the runtime-owner, authority, policy, and provider gates
-    /// before any external effect is attempted.
+    /// before any external effect is attempted. The validation time must also be the
+    /// persisted staging time and cannot precede the operation's latest transition.
     pub fn stage_record_bound_outbox(
         &mut self,
         proposal: &ActionProposal,
@@ -89,10 +90,16 @@ impl StateStore {
         expected_operation_revision: u64,
         now: UnixTimestampMicros,
     ) -> Result<OutboxMessage, AuthorizedDispatchError> {
+        if new.payload.len() > crate::MAX_OUTBOX_PAYLOAD_BYTES {
+            return Err(OutboxError::PayloadTooLarge(new.payload.len()).into());
+        }
         let operation = self
             .load_operation(new.operation_id)?
             .ok_or(AuthorizedDispatchError::OperationNotFound(new.operation_id))?;
 
+        if new.created_at != now || now < operation.updated_at() {
+            return Err(AuthorizedDispatchError::BindingMismatch("staging time"));
+        }
         if operation.state() != DurableOperationState::Approved {
             return Err(AuthorizedDispatchError::BindingMismatch("operation state"));
         }
@@ -167,6 +174,7 @@ impl StateStore {
 
 #[cfg(test)]
 mod tests {
+    mod rejection_regressions;
     use super::{AuthorizedDispatchError, hash_payload};
     use crate::{
         DurableOperationState, NewDurableOperation, NewOutboxMessage, OperationTransition,
