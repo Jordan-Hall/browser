@@ -510,8 +510,7 @@ impl Entry {
         for _ in 0..8 {
             let before = read_budget.consumed();
             let outcome = read_budget.read_one(socket, lane_budget)?;
-            lane_budget = lane_budget
-                .saturating_sub(read_budget.consumed().saturating_sub(before));
+            lane_budget = lane_budget.saturating_sub(read_budget.consumed().saturating_sub(before));
             let frame = match outcome {
                 ReadOutcome::Pending => break,
                 ReadOutcome::Closed => {
@@ -609,8 +608,7 @@ impl Entry {
         for _ in 0..4 {
             let before = read_budget.consumed();
             let outcome = read_budget.read_one(socket, lane_budget)?;
-            lane_budget = lane_budget
-                .saturating_sub(read_budget.consumed().saturating_sub(before));
+            lane_budget = lane_budget.saturating_sub(read_budget.consumed().saturating_sub(before));
             let frame = match outcome {
                 ReadOutcome::Pending | ReadOutcome::Closed => break,
                 ReadOutcome::Frame(frame) => frame,
