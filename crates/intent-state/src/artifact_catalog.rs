@@ -293,7 +293,9 @@ fn hash_bytes(bytes: &[u8]) -> ContentHash {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_ARTIFACT_METADATA_PAGE, open_regular_blob_no_follow};
+    use super::MAX_ARTIFACT_METADATA_PAGE;
+    #[cfg(unix)]
+    use super::open_regular_blob_no_follow;
     use crate::{ArtifactError, ArtifactScope, NewArtifact, StateStore};
     use intent_contracts::{ArtifactId, BoundedText, UnixTimestampMicros};
     use std::error::Error;
