@@ -365,5 +365,22 @@ fn activation_cannot_attach_existing_operation_history_to_imported_task() -> Res
             )
         ))
     ));
+
+    let clean_task = profile.persist(CoreRecordKind::Task, &current_task(workspace_id, 46)?, 4)?;
+    let revision = activate_persisted_core_workspace(
+        &mut profile.owner,
+        &profile.artifacts,
+        request(
+            profile.scope.clone(),
+            workspace,
+            vec![clean_task],
+            Vec::new(),
+        )?,
+        WireLimits::default(),
+    )?;
+    assert_eq!(
+        revision.revision, 1,
+        "operation-history rejection left no durable partial graph"
+    );
     Ok(())
 }
