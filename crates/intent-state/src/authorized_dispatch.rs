@@ -1,0 +1,387 @@
+use crate::{
+    DurableOperationState, NewOutboxMessage, OutboxError, OutboxMessage, StateError, StateStore,
+};
+use intent_contracts::{ActionProposal, Approval, ApprovalState, OperationId, UnixTimestampMicros};
+use std::error::Error;
+use std::fmt;
+
+#[derive(Debug)]
+pub enum AuthorizedDispatchError {
+    State(StateError),
+    Outbox(OutboxError),
+    OperationNotFound(OperationId),
+    BindingMismatch(&'static str),
+    ApprovalNotActive,
+    ApprovalNotYetEffective,
+    ApprovalExpired,
+    ProposalExpired,
+    TargetBindingUnsupported,
+}
+
+impl fmt::Display for AuthorizedDispatchError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::State(error) => write!(formatter, "state error while authorizing dispatch: {error}"),
+            Self::Outbox(error) => write!(formatter, "outbox error after authorization: {error}"),
+            Self::OperationNotFound(operation_id) => {
+                write!(formatter, "durable operation {operation_id} does not exist")
+            }
+            Self::BindingMismatch(field) => {
+                write!(formatter, "approved action does not match durable {field}")
+            }
+            Self::ApprovalNotActive => formatter.write_str("approval is not in the approved state"),
+            Self::ApprovalNotYetEffective => {
+                formatter.write_str("approval timestamp is later than the dispatch time")
+            }
+            Self::ApprovalExpired => formatter.write_str("approval has expired"),
+            Self::ProposalExpired => formatter.write_str("action proposal has expired"),
+            Self::TargetBindingUnsupported => formatter.write_str(
+                "targeted action dispatch is blocked until the target binding is durable",
+            ),
+        }
+    }
+}
+
+impl Error for AuthorizedDispatchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::State(error) => Some(error),
+            Self::Outbox(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<StateError> for AuthorizedDispatchError {
+    fn from(value: StateError) -> Self {
+        Self::State(value)
+    }
+}
+
+impl From<OutboxError> for AuthorizedDispatchError {
+    fn from(value: OutboxError) -> Self {
+        Self::Outbox(value)
+    }
+}
+
+impl StateStore {
+    pub fn stage_authorized_outbox(
+        &mut self,
+        proposal: &ActionProposal,
+        approval: &Approval,
+        new: NewOutboxMessage,
+        expected_operation_revision: u64,
+        now: UnixTimestampMicros,
+    ) -> Result<OutboxMessage, AuthorizedDispatchError> {
+        let operation = self
+            .load_operation(new.operation_id)?
+            .ok_or(AuthorizedDispatchError::OperationNotFound(new.operation_id))?;
+
+        if operation.state() != DurableOperationState::Approved {
+            return Err(AuthorizedDispatchError::BindingMismatch("operation state"));
+        }
+        if operation.action_proposal_id() != proposal.action_proposal_id() {
+            return Err(AuthorizedDispatchError::BindingMismatch("proposal id"));
+        }
+        if operation.task_id() != proposal.task_id() {
+            return Err(AuthorizedDispatchError::BindingMismatch("task id"));
+        }
+        if operation.account_id() != proposal.account_id() {
+            return Err(AuthorizedDispatchError::BindingMismatch("account id"));
+        }
+        if operation.capability_id() != proposal.capability_id() {
+            return Err(AuthorizedDispatchError::BindingMismatch("capability id"));
+        }
+        if operation.arguments_hash() != proposal.arguments_hash() {
+            return Err(AuthorizedDispatchError::BindingMismatch("argument hash"));
+        }
+        if proposal.target_resource().is_some() {
+            return Err(AuthorizedDispatchError::TargetBindingUnsupported);
+        }
+        if approval.action_proposal_id() != proposal.action_proposal_id() {
+            return Err(AuthorizedDispatchError::BindingMismatch("approval proposal id"));
+        }
+        if approval.exact_arguments_hash() != proposal.arguments_hash() {
+            return Err(AuthorizedDispatchError::BindingMismatch("approval argument hash"));
+        }
+        if proposal
+            .expires_at()
+            .is_some_and(|expires_at| expires_at.get() <= now.get())
+        {
+            return Err(AuthorizedDispatchError::ProposalExpired);
+        }
+        match approval.state() {
+            ApprovalState::Approved {
+                approved_at,
+                expires_at,
+            } => {
+                if approved_at.get() > now.get() {
+                    return Err(AuthorizedDispatchError::ApprovalNotYetEffective);
+                }
+                if expires_at.is_some_and(|expires_at| expires_at.get() <= now.get()) {
+                    return Err(AuthorizedDispatchError::ApprovalExpired);
+                }
+            }
+            _ => return Err(AuthorizedDispatchError::ApprovalNotActive),
+        }
+
+        self.stage_outbox(new, expected_operation_revision)
+            .map_err(AuthorizedDispatchError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AuthorizedDispatchError;
+    use crate::{
+        DurableOperationState, NewDurableOperation, NewOutboxMessage, OperationTransition,
+        OutboxState, StateStore,
+    };
+    use intent_contracts::{
+        AccountId, ActionProposal, ActionProposalDescriptor, ActionProposalId, Approval, ApprovalId,
+        ApprovalRequirement, ApprovalState, ArtifactReference, BoundedText, ByteSize, CapabilityEffectClass,
+        CapabilityId, ContentHash, OperationAttemptId, OperationId, OutboxMessageId, SchemaVersion,
+        TaskId, UnixTimestampMicros,
+    };
+    use serde_json::json;
+    use std::error::Error;
+    use std::str::FromStr;
+
+    fn task_id() -> Result<TaskId, Box<dyn Error>> {
+        Ok(TaskId::from_str("018f47f7-5a86-7c00-8000-000000000a01")?)
+    }
+
+    fn proposal_id() -> Result<ActionProposalId, Box<dyn Error>> {
+        Ok(ActionProposalId::from_str(
+            "018f47f7-5a86-7c00-8000-000000000a02",
+        )?)
+    }
+
+    fn account_id() -> Result<AccountId, Box<dyn Error>> {
+        Ok(AccountId::from_str(
+            "018f47f7-5a86-7c00-8000-000000000a03",
+        )?)
+    }
+
+    fn capability_id() -> Result<CapabilityId, Box<dyn Error>> {
+        Ok(CapabilityId::from_str(
+            "018f47f7-5a86-7c00-8000-000000000a04",
+        )?)
+    }
+
+    fn operation_id() -> Result<OperationId, Box<dyn Error>> {
+        Ok(OperationId::from_str(
+            "018f47f7-5a86-7c00-8000-000000000a05",
+        )?)
+    }
+
+    fn outbox_id() -> Result<OutboxMessageId, Box<dyn Error>> {
+        Ok(OutboxMessageId::from_str(
+            "018f47f7-5a86-7c00-8000-000000000a06",
+        )?)
+    }
+
+    fn attempt_id() -> Result<OperationAttemptId, Box<dyn Error>> {
+        Ok(OperationAttemptId::from_str(
+            "018f47f7-5a86-7c00-8000-000000000a07",
+        )?)
+    }
+
+    fn arguments_hash() -> ContentHash {
+        ContentHash::from_bytes([0x5a; 32])
+    }
+
+    fn proposal() -> Result<ActionProposal, Box<dyn Error>> {
+        Ok(ActionProposal::new(
+            proposal_id()?,
+            task_id()?,
+            capability_id()?,
+            account_id()?,
+            ActionProposalDescriptor {
+                canonical_arguments: ArtifactReference::new(
+                    "018f47f7-5a86-7c00-8000-000000000a08".parse()?,
+                    arguments_hash(),
+                    ByteSize::from_bytes(18),
+                    BoundedText::try_new("application/json")?,
+                ),
+                effect_class: CapabilityEffectClass::IrreversibleOrUncertain,
+                approval_requirement: ApprovalRequirement::Always,
+            },
+        ))
+    }
+
+    fn approval(state: ApprovalState) -> Result<Approval, Box<dyn Error>> {
+        Ok(Approval::new(
+            ApprovalId::from_str("018f47f7-5a86-7c00-8000-000000000a09")?,
+            proposal_id()?,
+            arguments_hash(),
+            state,
+        ))
+    }
+
+    fn approved_operation(store: &mut StateStore) -> Result<(), Box<dyn Error>> {
+        let operation = store.create_operation(NewDurableOperation {
+            operation_id: operation_id()?,
+            task_id: task_id()?,
+            action_proposal_id: proposal_id()?,
+            account_id: account_id()?,
+            capability_id: capability_id()?,
+            arguments_hash: arguments_hash(),
+            source_schema: SchemaVersion::V1,
+            created_at: UnixTimestampMicros::try_new(100)?,
+        })?;
+        store.transition_operation(
+            operation.operation_id(),
+            OperationTransition {
+                expected_revision: operation.revision(),
+                next_state: DurableOperationState::Approved,
+                state_detail: None,
+                attempt_identity: None,
+                occurred_at: UnixTimestampMicros::try_new(110)?,
+            },
+        )?;
+        Ok(())
+    }
+
+    fn message() -> Result<NewOutboxMessage, Box<dyn Error>> {
+        Ok(NewOutboxMessage {
+            outbox_id: outbox_id()?,
+            operation_id: operation_id()?,
+            attempt_identity: attempt_id()?,
+            destination: BoundedText::try_new("connector://checkout")?,
+            message_kind: BoundedText::try_new("commit")?,
+            payload: br#"{"cart":"stable"}"#.to_vec(),
+            created_at: UnixTimestampMicros::try_new(120)?,
+        })
+    }
+
+    fn active_approval() -> Result<Approval, Box<dyn Error>> {
+        approval(ApprovalState::Approved {
+            approved_at: UnixTimestampMicros::try_new(111)?,
+            expires_at: Some(UnixTimestampMicros::try_new(200)?),
+        })
+    }
+
+    fn assert_unstaged(store: &StateStore) -> Result<(), Box<dyn Error>> {
+        assert!(store.load_outbox(outbox_id()?)?.is_none());
+        let operation = store
+            .load_operation(operation_id()?)?
+            .ok_or("operation missing")?;
+        assert_eq!(operation.state(), DurableOperationState::Approved);
+        assert_eq!(operation.revision(), 1);
+        assert_eq!(store.operation_journal(operation_id()?)?.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn exact_approved_binding_stages_atomically() -> Result<(), Box<dyn Error>> {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        let staged = store.stage_authorized_outbox(
+            &proposal()?,
+            &active_approval()?,
+            message()?,
+            1,
+            UnixTimestampMicros::try_new(120)?,
+        )?;
+        assert_eq!(staged.state(), OutboxState::Pending);
+        assert_eq!(
+            store
+                .load_operation(operation_id()?)?
+                .ok_or("operation missing")?
+                .state(),
+            DurableOperationState::DispatchPending
+        );
+        assert_eq!(store.operation_journal(operation_id()?)?.len(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn rebound_account_is_rejected_without_dispatch_residue() -> Result<(), Box<dyn Error>> {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        let mut value = serde_json::to_value(proposal()?)?;
+        value["account_id"] = json!("018f47f7-5a86-7c00-8000-000000000aff");
+        let rebound: ActionProposal = serde_json::from_value(value)?;
+        let error = store
+            .stage_authorized_outbox(
+                &rebound,
+                &active_approval()?,
+                message()?,
+                1,
+                UnixTimestampMicros::try_new(120)?,
+            )
+            .expect_err("rebound account unexpectedly dispatched");
+        assert!(matches!(
+            error,
+            AuthorizedDispatchError::BindingMismatch("account id")
+        ));
+        assert_unstaged(&store)?;
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_proposal_fails_closed_until_target_is_durable() -> Result<(), Box<dyn Error>> {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        let mut value = serde_json::to_value(proposal()?)?;
+        value["target_resource"] = json!({
+            "provider": "shop",
+            "account": "account-a",
+            "resource": "cart/17"
+        });
+        let targeted: ActionProposal = serde_json::from_value(value)?;
+        let error = store
+            .stage_authorized_outbox(
+                &targeted,
+                &active_approval()?,
+                message()?,
+                1,
+                UnixTimestampMicros::try_new(120)?,
+            )
+            .expect_err("targeted proposal unexpectedly dispatched without durable target binding");
+        assert!(matches!(
+            error,
+            AuthorizedDispatchError::TargetBindingUnsupported
+        ));
+        assert_unstaged(&store)?;
+        Ok(())
+    }
+
+    #[test]
+    fn expired_approval_and_proposal_leave_no_dispatch_residue() -> Result<(), Box<dyn Error>> {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        let expired_approval = approval(ApprovalState::Approved {
+            approved_at: UnixTimestampMicros::try_new(111)?,
+            expires_at: Some(UnixTimestampMicros::try_new(120)?),
+        })?;
+        let error = store
+            .stage_authorized_outbox(
+                &proposal()?,
+                &expired_approval,
+                message()?,
+                1,
+                UnixTimestampMicros::try_new(120)?,
+            )
+            .expect_err("expired approval unexpectedly dispatched");
+        assert!(matches!(error, AuthorizedDispatchError::ApprovalExpired));
+        assert_unstaged(&store)?;
+
+        let mut value = serde_json::to_value(proposal()?)?;
+        value["expires_at"] = json!(119);
+        let expired_proposal: ActionProposal = serde_json::from_value(value)?;
+        let error = store
+            .stage_authorized_outbox(
+                &expired_proposal,
+                &active_approval()?,
+                message()?,
+                1,
+                UnixTimestampMicros::try_new(120)?,
+            )
+            .expect_err("expired proposal unexpectedly dispatched");
+        assert!(matches!(error, AuthorizedDispatchError::ProposalExpired));
+        assert_unstaged(&store)?;
+        Ok(())
+    }
+}
