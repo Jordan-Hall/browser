@@ -49,7 +49,8 @@ fn load_outbox_from_connection(
             r#"
             SELECT operation_id, attempt_identity, destination, message_kind, payload,
                    payload_hash, state, lease_owner, lease_expires_at_micros,
-                   dispatch_started_at_micros, created_at_micros, updated_at_micros
+                   dispatch_started_at_micros, completed_at_micros, failure_detail,
+                   created_at_micros, updated_at_micros
             FROM outbox_messages WHERE outbox_id = ?1
             "#,
             [outbox_id.to_string()],
@@ -65,8 +66,10 @@ fn load_outbox_from_connection(
                     row.get::<_, Option<String>>(7)?,
                     row.get::<_, Option<i64>>(8)?,
                     row.get::<_, Option<i64>>(9)?,
-                    row.get::<_, i64>(10)?,
-                    row.get::<_, i64>(11)?,
+                    row.get::<_, Option<i64>>(10)?,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, i64>(12)?,
+                    row.get::<_, i64>(13)?,
                 ))
             },
         )
@@ -82,6 +85,8 @@ fn load_outbox_from_connection(
         lease_owner,
         lease_expires_at,
         dispatch_started_at,
+        completed_at,
+        failure_detail,
         created_at,
         updated_at,
     )) = raw
@@ -94,6 +99,17 @@ fn load_outbox_from_connection(
     let actual_hash = hash_payload(&payload);
     if stored_hash != actual_hash {
         return Err(OutboxError::PayloadHashMismatch { outbox_id });
+    }
+    let state = OutboxState::parse(&state)?;
+    let completed_at = optional_timestamp(completed_at, "completion")?;
+    if matches!(
+        state,
+        OutboxState::Pending | OutboxState::Leased | OutboxState::Attempting
+    ) && (completed_at.is_some() || failure_detail.is_some())
+    {
+        return Err(OutboxError::InvalidStoredRecord(
+            "non-terminal outbox record contains terminal metadata".to_owned(),
+        ));
     }
 
     Ok(Some(OutboxMessage {
@@ -108,7 +124,7 @@ fn load_outbox_from_connection(
         })?,
         payload,
         payload_hash: stored_hash,
-        state: OutboxState::parse(&state)?,
+        state,
         lease_owner: lease_owner
             .map(BoundedText::try_new)
             .transpose()
