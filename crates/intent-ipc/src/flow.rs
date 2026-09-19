@@ -166,10 +166,7 @@ impl<T> PriorityQueue<T> {
     pub(crate) fn has_any(&self, mut predicate: impl FnMut(&T) -> bool) -> bool {
         self.reserved.iter().any(&mut predicate)
             || self.reliable.iter().any(&mut predicate)
-            || self
-                .best_effort
-                .iter()
-                .any(|(_, item)| predicate(item))
+            || self.best_effort.iter().any(|(_, item)| predicate(item))
     }
 
     #[must_use]
