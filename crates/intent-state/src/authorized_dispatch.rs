@@ -1,7 +1,10 @@
 use crate::{
     DurableOperationState, NewOutboxMessage, OutboxError, OutboxMessage, StateError, StateStore,
 };
-use intent_contracts::{ActionProposal, Approval, ApprovalState, OperationId, UnixTimestampMicros};
+use intent_contracts::{
+    ActionProposal, Approval, ApprovalState, ContentHash, OperationId, UnixTimestampMicros,
+};
+use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
 
@@ -21,24 +24,22 @@ pub enum AuthorizedDispatchError {
 impl fmt::Display for AuthorizedDispatchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::State(error) => {
-                write!(formatter, "state error while authorizing dispatch: {error}")
-            }
-            Self::Outbox(error) => write!(formatter, "outbox error after authorization: {error}"),
+            Self::State(error) => write!(formatter, "state error while binding dispatch records: {error}"),
+            Self::Outbox(error) => write!(formatter, "outbox error after record binding: {error}"),
             Self::OperationNotFound(operation_id) => {
                 write!(formatter, "durable operation {operation_id} does not exist")
             }
             Self::BindingMismatch(field) => {
-                write!(formatter, "approved action does not match durable {field}")
+                write!(formatter, "dispatch records do not match {field}")
             }
-            Self::ApprovalNotActive => formatter.write_str("approval is not in the approved state"),
+            Self::ApprovalNotActive => formatter.write_str("approval record is not approved"),
             Self::ApprovalNotYetEffective => {
-                formatter.write_str("approval timestamp is later than the dispatch time")
+                formatter.write_str("approval record timestamp is later than the staging time")
             }
-            Self::ApprovalExpired => formatter.write_str("approval has expired"),
+            Self::ApprovalExpired => formatter.write_str("approval record has expired"),
             Self::ProposalExpired => formatter.write_str("action proposal has expired"),
             Self::TargetBindingUnsupported => formatter.write_str(
-                "targeted action dispatch is blocked until the target binding is durable",
+                "targeted action staging is blocked until the target binding is durable",
             ),
         }
     }
@@ -66,8 +67,18 @@ impl From<OutboxError> for AuthorizedDispatchError {
     }
 }
 
+#[must_use]
+fn hash_payload(payload: &[u8]) -> ContentHash {
+    ContentHash::from_bytes(Sha256::digest(payload).into())
+}
+
 impl StateStore {
-    pub fn stage_authorized_outbox(
+    /// Stage an outbox message only when persisted records and exact payload bytes agree.
+    ///
+    /// This is a record-binding check, not a grant of executable authority or user consent.
+    /// Callers must separately enforce the runtime-owner, authority, policy, and provider gates
+    /// before any external effect is attempted.
+    pub fn stage_record_bound_outbox(
         &mut self,
         proposal: &ActionProposal,
         approval: &Approval,
@@ -96,6 +107,21 @@ impl StateStore {
         }
         if operation.arguments_hash() != proposal.arguments_hash() {
             return Err(AuthorizedDispatchError::BindingMismatch("argument hash"));
+        }
+        if proposal.canonical_arguments().content_hash() != proposal.arguments_hash() {
+            return Err(AuthorizedDispatchError::BindingMismatch(
+                "canonical argument hash",
+            ));
+        }
+        let payload_size = u64::try_from(new.payload.len())
+            .map_err(|_| AuthorizedDispatchError::BindingMismatch("payload byte size"))?;
+        if proposal.canonical_arguments().byte_size().as_bytes() != payload_size {
+            return Err(AuthorizedDispatchError::BindingMismatch(
+                "payload byte size",
+            ));
+        }
+        if hash_payload(&new.payload) != proposal.arguments_hash() {
+            return Err(AuthorizedDispatchError::BindingMismatch("payload hash"));
         }
         if proposal.target_resource().is_some() {
             return Err(AuthorizedDispatchError::TargetBindingUnsupported);
@@ -138,7 +164,7 @@ impl StateStore {
 
 #[cfg(test)]
 mod tests {
-    use super::AuthorizedDispatchError;
+    use super::{AuthorizedDispatchError, hash_payload};
     use crate::{
         DurableOperationState, NewDurableOperation, NewOutboxMessage, OperationTransition,
         OutboxState, StateStore,
@@ -152,6 +178,8 @@ mod tests {
     use serde_json::json;
     use std::error::Error;
     use std::str::FromStr;
+
+    const ARGUMENTS: &[u8] = br#"{"cart":"stable"}"#;
 
     fn task_id() -> Result<TaskId, Box<dyn Error>> {
         Ok(TaskId::from_str("018f47f7-5a86-7c00-8000-000000000a01")?)
@@ -192,7 +220,7 @@ mod tests {
     }
 
     fn arguments_hash() -> ContentHash {
-        ContentHash::from_bytes([0x5a; 32])
+        hash_payload(ARGUMENTS)
     }
 
     fn proposal() -> Result<ActionProposal, Box<dyn Error>> {
@@ -205,7 +233,7 @@ mod tests {
                 canonical_arguments: ArtifactReference::new(
                     "018f47f7-5a86-7c00-8000-000000000a08".parse()?,
                     arguments_hash(),
-                    ByteSize::from_bytes(18),
+                    ByteSize::from_bytes(u64::try_from(ARGUMENTS.len())?),
                     BoundedText::try_new("application/json")?,
                 ),
                 effect_class: CapabilityEffectClass::IrreversibleOrUncertain,
@@ -254,12 +282,12 @@ mod tests {
             attempt_identity: attempt_id()?,
             destination: BoundedText::try_new("connector://checkout")?,
             message_kind: BoundedText::try_new("commit")?,
-            payload: br#"{"cart":"stable"}"#.to_vec(),
+            payload: ARGUMENTS.to_vec(),
             created_at: UnixTimestampMicros::try_new(120)?,
         })
     }
 
-    fn active_approval() -> Result<Approval, Box<dyn Error>> {
+    fn approved_record() -> Result<Approval, Box<dyn Error>> {
         approval(ApprovalState::Approved {
             approved_at: UnixTimestampMicros::try_new(111)?,
             expires_at: Some(UnixTimestampMicros::try_new(200)?),
@@ -278,12 +306,12 @@ mod tests {
     }
 
     #[test]
-    fn exact_approved_binding_stages_atomically() -> Result<(), Box<dyn Error>> {
+    fn exact_record_binding_stages_atomically() -> Result<(), Box<dyn Error>> {
         let mut store = StateStore::open_in_memory_for_tests()?;
         approved_operation(&mut store)?;
-        let staged = store.stage_authorized_outbox(
+        let staged = store.stage_record_bound_outbox(
             &proposal()?,
-            &active_approval()?,
+            &approved_record()?,
             message()?,
             1,
             UnixTimestampMicros::try_new(120)?,
@@ -301,20 +329,61 @@ mod tests {
     }
 
     #[test]
+    fn rebound_payload_is_rejected_without_dispatch_residue() -> Result<(), Box<dyn Error>> {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+
+        let mut same_size = message()?;
+        same_size.payload = br#"{"cart":"stablE"}"#.to_vec();
+        let Err(error) = store.stage_record_bound_outbox(
+            &proposal()?,
+            &approved_record()?,
+            same_size,
+            1,
+            UnixTimestampMicros::try_new(120)?,
+        ) else {
+            return Err("same-size rebound payload unexpectedly staged".into());
+        };
+        assert!(matches!(
+            error,
+            AuthorizedDispatchError::BindingMismatch("payload hash")
+        ));
+        assert_unstaged(&store)?;
+
+        let mut wrong_size = message()?;
+        wrong_size.payload = br#"{"cart":"changed"}"#.to_vec();
+        let Err(error) = store.stage_record_bound_outbox(
+            &proposal()?,
+            &approved_record()?,
+            wrong_size,
+            1,
+            UnixTimestampMicros::try_new(120)?,
+        ) else {
+            return Err("wrong-size rebound payload unexpectedly staged".into());
+        };
+        assert!(matches!(
+            error,
+            AuthorizedDispatchError::BindingMismatch("payload byte size")
+        ));
+        assert_unstaged(&store)?;
+        Ok(())
+    }
+
+    #[test]
     fn rebound_account_is_rejected_without_dispatch_residue() -> Result<(), Box<dyn Error>> {
         let mut store = StateStore::open_in_memory_for_tests()?;
         approved_operation(&mut store)?;
         let mut value = serde_json::to_value(proposal()?)?;
         value["account_id"] = json!("018f47f7-5a86-7c00-8000-000000000aff");
         let rebound: ActionProposal = serde_json::from_value(value)?;
-        let Err(error) = store.stage_authorized_outbox(
+        let Err(error) = store.stage_record_bound_outbox(
             &rebound,
-            &active_approval()?,
+            &approved_record()?,
             message()?,
             1,
             UnixTimestampMicros::try_new(120)?,
         ) else {
-            return Err("rebound account unexpectedly dispatched".into());
+            return Err("rebound account unexpectedly staged".into());
         };
         assert!(matches!(
             error,
@@ -335,15 +404,15 @@ mod tests {
             "resource": "cart/17"
         });
         let targeted: ActionProposal = serde_json::from_value(value)?;
-        let Err(error) = store.stage_authorized_outbox(
+        let Err(error) = store.stage_record_bound_outbox(
             &targeted,
-            &active_approval()?,
+            &approved_record()?,
             message()?,
             1,
             UnixTimestampMicros::try_new(120)?,
         ) else {
             return Err(
-                "targeted proposal unexpectedly dispatched without durable target binding".into(),
+                "targeted proposal unexpectedly staged without durable target binding".into(),
             );
         };
         assert!(matches!(
@@ -355,21 +424,21 @@ mod tests {
     }
 
     #[test]
-    fn expired_approval_and_proposal_leave_no_dispatch_residue() -> Result<(), Box<dyn Error>> {
+    fn expired_records_leave_no_dispatch_residue() -> Result<(), Box<dyn Error>> {
         let mut store = StateStore::open_in_memory_for_tests()?;
         approved_operation(&mut store)?;
         let expired_approval = approval(ApprovalState::Approved {
             approved_at: UnixTimestampMicros::try_new(111)?,
             expires_at: Some(UnixTimestampMicros::try_new(120)?),
         })?;
-        let Err(error) = store.stage_authorized_outbox(
+        let Err(error) = store.stage_record_bound_outbox(
             &proposal()?,
             &expired_approval,
             message()?,
             1,
             UnixTimestampMicros::try_new(120)?,
         ) else {
-            return Err("expired approval unexpectedly dispatched".into());
+            return Err("expired approval record unexpectedly staged".into());
         };
         assert!(matches!(error, AuthorizedDispatchError::ApprovalExpired));
         assert_unstaged(&store)?;
@@ -377,14 +446,14 @@ mod tests {
         let mut value = serde_json::to_value(proposal()?)?;
         value["expires_at"] = json!(119);
         let expired_proposal: ActionProposal = serde_json::from_value(value)?;
-        let Err(error) = store.stage_authorized_outbox(
+        let Err(error) = store.stage_record_bound_outbox(
             &expired_proposal,
-            &active_approval()?,
+            &approved_record()?,
             message()?,
             1,
             UnixTimestampMicros::try_new(120)?,
         ) else {
-            return Err("expired proposal unexpectedly dispatched".into());
+            return Err("expired proposal unexpectedly staged".into());
         };
         assert!(matches!(error, AuthorizedDispatchError::ProposalExpired));
         assert_unstaged(&store)?;
