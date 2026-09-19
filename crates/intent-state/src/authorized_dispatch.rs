@@ -24,7 +24,10 @@ pub enum AuthorizedDispatchError {
 impl fmt::Display for AuthorizedDispatchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::State(error) => write!(formatter, "state error while binding dispatch records: {error}"),
+            Self::State(error) => write!(
+                formatter,
+                "state error while binding dispatch records: {error}"
+            ),
             Self::Outbox(error) => write!(formatter, "outbox error after record binding: {error}"),
             Self::OperationNotFound(operation_id) => {
                 write!(formatter, "durable operation {operation_id} does not exist")
