@@ -11,8 +11,23 @@ fn invalid(task: TaskId) {
     requires_workspace(task);
 }
 ```
+
+Profile, workspace and account scope cannot be substituted implicitly:
+
+```compile_fail
+use intent_contracts::{ProfileId, WorkspaceId};
+fn requires_profile(_: ProfileId) {}
+fn invalid(workspace: WorkspaceId) { requires_profile(workspace); }
+```
+
+```compile_fail
+use intent_contracts::{AccountId, TaskId};
+fn requires_account(_: AccountId) {}
+fn invalid(task: TaskId) { requires_account(task); }
+```
 "#]
 
+mod byte_size;
 mod decimal_i128;
 mod ids;
 mod migration;
@@ -23,8 +38,8 @@ mod version;
 pub use ids::{
     AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId,
     CheckpointId, ConnectorId, EvidenceId, GoalContractId, MemoryRecordId, ObservationId,
-    OperationAttemptId, OperationId, OutboxMessageId, ReceiptId, RequestId, TaskId, TraceId,
-    ViewDefinitionId, WorkerInstanceId, WorkspaceId,
+    OperationAttemptId, OperationId, OutboxMessageId, ProfileId, ReceiptId, RequestId, TaskId,
+    TraceId, ViewDefinitionId, WorkerInstanceId, WorkspaceId,
 };
 pub use migration::{
     DocumentAccess, MAX_MIGRATION_DOCUMENT_BYTES, MAX_MIGRATION_ERROR_BYTES, MAX_MIGRATION_SCHEMAS,
