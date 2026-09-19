@@ -155,9 +155,11 @@ fn read_cursor_services_all_sixty_four_sockets_in_bounded_windows() -> Result<()
     for _ in 0..8 {
         let mut budget = ReadBudget::new(MAX_READ_BYTES_PER_POLL);
         let mut last = None;
+        let mut first_blocked = None;
         for offset in 0..sockets.len() {
             let index = (cursor + offset) % sockets.len();
             let before = budget.consumed();
+            let before_blocks = budget.blocked_reads();
             if let ReadOutcome::Frame(_) = budget.read_one(&mut sockets[index], 4096)? {
                 visits[index] += 1;
                 senders[index].write_all(&frame)?;
@@ -165,10 +167,73 @@ fn read_cursor_services_all_sixty_four_sockets_in_bounded_windows() -> Result<()
             if budget.consumed() > before {
                 last = Some(offset);
             }
+            if first_blocked.is_none() && budget.blocked_reads() != before_blocks {
+                first_blocked = Some(offset);
+            }
         }
         assert_eq!(budget.consumed(), MAX_READ_BYTES_PER_POLL);
-        cursor = next_read_cursor(cursor, sockets.len(), last);
+        cursor = next_read_cursor(cursor, sockets.len(), last, first_blocked);
     }
     assert_eq!(visits, [1; 64]);
+    Ok(())
+}
+
+#[test]
+fn a_partially_serviced_worker_gets_the_first_window_on_the_next_poll() -> Result<(), Box<dyn Error>>
+{
+    let mut senders = Vec::new();
+    let mut sockets = Vec::new();
+    for size in [8192, 8192, 8192, 4096, 8192] {
+        let frame =
+            Frame::new(FrameLane::Control, vec![2; size - 5]).encode(crate::wire::wire_limits())?;
+        let (receiver, mut sender) = UnixStream::pair()?;
+        sender.write_all(&frame)?;
+        senders.push(sender);
+        sockets.push(FramedSocket::new(receiver)?);
+    }
+    let mut budget = ReadBudget::new(MAX_READ_BYTES_PER_POLL);
+    let mut last = None;
+    let mut first_blocked = None;
+    for (offset, socket) in sockets.iter_mut().enumerate() {
+        let before = budget.consumed();
+        let before_blocks = budget.blocked_reads();
+        budget.read_one(socket, if offset == 3 { 4096 } else { 8192 })?;
+        if budget.consumed() > before {
+            last = Some(offset);
+        }
+        if first_blocked.is_none() && budget.blocked_reads() != before_blocks {
+            first_blocked = Some(offset);
+        }
+    }
+    assert_eq!(budget.consumed(), MAX_READ_BYTES_PER_POLL);
+    assert_eq!(budget.blocked_reads(), 1);
+    let cursor = next_read_cursor(0, sockets.len(), last, first_blocked);
+    assert_eq!(cursor, 4, "partially serviced worker was skipped");
+    let mut budget = ReadBudget::new(MAX_READ_BYTES_PER_POLL);
+    assert!(matches!(
+        budget.read_one(&mut sockets[cursor], 8192)?,
+        ReadOutcome::Frame(_)
+    ));
+    assert!(matches!(
+        budget.read_one(&mut sockets[cursor], 4096)?,
+        ReadOutcome::Pending
+    ));
+    assert_eq!(budget.consumed(), 4096);
+    assert_eq!(budget.blocked_reads(), 0);
+    assert_eq!(
+        health_failure_after_reads(
+            WorkerState::Ready,
+            HealthAges {
+                starting: Duration::ZERO,
+                heartbeat: Duration::from_secs(10),
+                progress: Duration::ZERO
+            },
+            false,
+            policy(),
+            HealthReadBlocks::default()
+        ),
+        Some(WorkerFailure::HeartbeatTimeout)
+    );
+    drop(senders);
     Ok(())
 }

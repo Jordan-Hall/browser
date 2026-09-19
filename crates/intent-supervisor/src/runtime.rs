@@ -45,11 +45,15 @@ fn next_read_cursor(
     read_start: usize,
     worker_count: usize,
     last_serviced_offset: Option<usize>,
+    first_blocked_offset: Option<usize>,
 ) -> usize {
     if worker_count == 0 {
         return 0;
     }
-    let advance = last_serviced_offset.map_or(1, |offset| offset.saturating_add(1));
+    // A partially serviced entry must get a full window next time. Otherwise
+    // the same boundary entry can be budget-blocked on every poll indefinitely.
+    let advance = first_blocked_offset
+        .unwrap_or_else(|| last_serviced_offset.map_or(1, |offset| offset.saturating_add(1)));
     read_start.wrapping_add(advance) % worker_count
 }
 
@@ -1098,12 +1102,14 @@ impl Supervisor {
             self.read_cursor % generations.len()
         };
         let mut last_serviced_offset = None;
+        let mut first_blocked_offset = None;
         for offset in 0..generations.len() {
             let id = generations[(read_start + offset) % generations.len()];
             let Some(entry) = self.entries.get_mut(&id) else {
                 continue;
             };
             let read_before = read_budget.consumed();
+            let blocked_before = read_budget.blocked_reads();
             match entry.poll(now, &mut read_budget) {
                 Ok(true) => {
                     self.admission.release(id);
@@ -1133,8 +1139,16 @@ impl Supervisor {
             if read_budget.consumed() > read_before {
                 last_serviced_offset = Some(offset);
             }
+            if first_blocked_offset.is_none() && read_budget.blocked_reads() != blocked_before {
+                first_blocked_offset = Some(offset);
+            }
         }
-        self.read_cursor = next_read_cursor(read_start, generations.len(), last_serviced_offset);
+        self.read_cursor = next_read_cursor(
+            read_start,
+            generations.len(),
+            last_serviced_offset,
+            first_blocked_offset,
+        );
         for _ in 0..8 {
             let entries = &self.entries;
             let message = self.queues.pop_ready(now, |id| {
@@ -1280,10 +1294,13 @@ mod tests {
 
     #[test]
     fn read_cursor_resumes_after_the_last_worker_that_consumed_bytes() {
-        assert_eq!(next_read_cursor(0, 64, Some(7)), 8);
-        assert_eq!(next_read_cursor(60, 64, Some(7)), 4);
-        assert_eq!(next_read_cursor(9, 64, None), 10);
-        assert_eq!(next_read_cursor(0, 0, None), 0);
+        assert_eq!(next_read_cursor(0, 64, Some(7), None), 8);
+        assert_eq!(next_read_cursor(60, 64, Some(7), None), 4);
+        assert_eq!(next_read_cursor(9, 64, None, None), 10);
+        assert_eq!(next_read_cursor(0, 0, None, None), 0);
+        assert_eq!(next_read_cursor(0, 64, Some(7), Some(7)), 7);
+        assert_eq!(next_read_cursor(60, 64, Some(7), Some(7)), 3);
+        assert_eq!(next_read_cursor(9, 64, None, Some(2)), 11);
     }
 
     #[test]
