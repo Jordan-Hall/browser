@@ -25,11 +25,15 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt
+      - name: Install and verify pinned Rust toolchain
+        run: |
+          TOOLCHAIN="$(python scripts/rust_toolchain.py --channel)"
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --component clippy --component rustfmt
+          rustup default "$TOOLCHAIN"
+          python scripts/rust_toolchain.py --verify-active
       - name: Check portable CORE code
         run: |
           cargo fmt --all -- --check
@@ -54,15 +58,17 @@ jobs:
     steps:
       - name: Check out repository
         id: checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
 
-      - name: Install pinned Rust toolchain
+      - name: Install and verify pinned Rust toolchain
         id: toolchain
         run: |
-          rustup toolchain install 1.98.1 --profile minimal --component clippy --component rustfmt
-          rustup default 1.98.1
+          TOOLCHAIN="$(python3 scripts/rust_toolchain.py --channel)"
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --component clippy --component rustfmt
+          rustup default "$TOOLCHAIN"
+          python3 scripts/rust_toolchain.py --verify-active
 
       - name: Resolve missing lockfiles for diagnostic evidence
         id: dependencies
@@ -130,7 +136,7 @@ jobs:
 
       - name: Upload verification evidence even on failure
         if: ${{ always() && steps.checkout.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: core-verification-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/conformance/
