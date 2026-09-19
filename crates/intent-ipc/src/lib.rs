@@ -5,6 +5,7 @@ mod bounded_json;
 mod bounded_sequence;
 mod cancellation;
 mod codec;
+mod document_import;
 mod envelope;
 mod error;
 mod flow;
@@ -20,6 +21,7 @@ pub use cancellation::{
     MAX_CANCELLATION_RECORDS, deadline_status,
 };
 pub use codec::ControlCodec;
+pub use document_import::{CoreDocumentImport, ReadOnlyCoreDocument, import_core_document};
 pub use envelope::{Envelope, EnvelopeKind, decode_control, encode_control};
 pub use error::{WireError, WireErrorCode};
 pub use flow::{

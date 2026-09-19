@@ -64,8 +64,17 @@ macro_rules! core_records {
             input: &[u8],
             limits: WireLimits,
         ) -> Result<CoreRecord, WireError> {
+            let (version, value) = decode_record_document(input, limits)?;
+            require_v1(version)?;
+            decode_core_record_value(kind, value)
+        }
+
+        pub(crate) fn decode_core_record_value(
+            kind: CoreRecordKind,
+            value: serde_json::Value,
+        ) -> Result<CoreRecord, WireError> {
             match kind {
-                $(CoreRecordKind::$record => decode_typed::<$record>(input, limits)
+                $(CoreRecordKind::$record => decode_value::<$record>(value)
                     .map(Box::new).map(CoreRecord::$record)),+
             }
         }
@@ -88,7 +97,10 @@ core_records! {
     ArtifactReference => "intent.artifact_reference",
 }
 
-fn decode_typed<T: DeserializeOwned>(input: &[u8], limits: WireLimits) -> Result<T, WireError> {
+pub(crate) fn decode_record_document(
+    input: &[u8],
+    limits: WireLimits,
+) -> Result<(SchemaVersion, serde_json::Value), WireError> {
     if input.len() > limits.max_control_frame_bytes {
         return Err(WireError::new(
             WireErrorCode::FrameTooLarge,
@@ -109,12 +121,26 @@ fn decode_typed<T: DeserializeOwned>(input: &[u8], limits: WireLimits) -> Result
             "invalid record schema_version",
         )
     })?;
+    Ok((version, value))
+}
+
+fn require_v1(version: SchemaVersion) -> Result<(), WireError> {
     if version != SchemaVersion::V1 {
         return Err(WireError::new(
             WireErrorCode::UnsupportedSchema,
             "record codec implements schema 1.0 only",
         ));
     }
+    Ok(())
+}
+
+fn decode_typed<T: DeserializeOwned>(input: &[u8], limits: WireLimits) -> Result<T, WireError> {
+    let (version, value) = decode_record_document(input, limits)?;
+    require_v1(version)?;
+    decode_value(value)
+}
+
+fn decode_value<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, WireError> {
     serde_json::from_value(value).map_err(|_| {
         WireError::new(
             WireErrorCode::InvalidRecord,

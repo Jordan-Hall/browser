@@ -1,6 +1,9 @@
 use crate::{ConformanceCheck, ConformanceResult};
 use intent_contracts::{MigrationRegistry, SchemaVersion};
-use intent_ipc::{CoreRecordKind, WireLimits, decode_core_record};
+use intent_ipc::{
+    CoreDocumentImport, CoreRecordKind, WireErrorCode, WireLimits, decode_core_record,
+    import_core_document,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -58,6 +61,22 @@ pub(crate) fn check() -> ConformanceResult<Vec<ConformanceCheck>> {
             .is_ok()
         {
             return Err("unsupported record restriction was silently discarded".into());
+        }
+        unsupported["schema_version"] = serde_json::json!({"major": 1, "minor": 1});
+        let source = format!(" \n{}\t\n", serde_json::to_string(&unsupported)?).into_bytes();
+        let imported = import_core_document(kind, &source, WireLimits::default())?;
+        let CoreDocumentImport::ReadOnlyNewerMinor(preserved) = &imported else {
+            return Err("newer document must remain opaque, not become a current record".into());
+        };
+        if preserved.original_bytes() != source
+            || preserved.source_version() != SchemaVersion::try_new(1, 1)?
+            || preserved.kind() != kind
+            || !matches!(imported.encode_for_write(WireLimits::default()), Err(error)
+                if error.code() == WireErrorCode::UnsupportedSchema)
+            || !matches!(decode_core_record(kind, &source, WireLimits::default()), Err(error)
+                if error.code() == WireErrorCode::UnsupportedSchema)
+        {
+            return Err("newer document lost bytes or escaped read-only interpretation".into());
         }
         checks.push(ConformanceCheck {
             name: kind.family_name(),

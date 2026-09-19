@@ -36,8 +36,17 @@ def seeds(target: str, fixtures: list[dict]) -> list[bytes]:
         raise ValueError("seed fixtures must cover each CORE record family exactly once")
     encoded = lambda value: json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
     if target == "record_codec":
-        return [bytes([index]) + encoded(records["intent." + name][shape])
-                for index, name in enumerate(FAMILIES) for shape in ("full", "minimal")]
+        current = [bytes([index]) + encoded(records["intent." + name][shape])
+                   for index, name in enumerate(FAMILIES) for shape in ("full", "minimal")]
+        future = [bytes([index]) + encoded({**records["intent." + name][shape],
+                  "schema_version": {"major": 1, "minor": 1},
+                  "future_only": {"unrecognized_permission": False}})
+                  for index, name in enumerate(FAMILIES) for shape in ("full", "minimal")]
+        unsupported = [bytes([index]) + b'{"schema_version":{"major":2,"minor":0}}'
+                       for index in range(len(FAMILIES))]
+        duplicate = [bytes([index]) + b'{"schema_version":{"major":1,"minor":1},"x":0,"x":1}'
+                     for index in range(len(FAMILIES))]
+        return current + future + unsupported + duplicate
     envelopes = [encoded({"schema_version": {"major": 1, "minor": 0},
                           "trace_id": "018f47f7-5a86-7c00-8000-000000000099",
                           "message": {"kind": "event"}, "payload": records["intent." + name]["full"]})

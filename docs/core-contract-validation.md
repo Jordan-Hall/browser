@@ -25,6 +25,20 @@ the document byte/shape budgets and duplicate-key check; it is not an equivalent
 untrusted-input API. Owned values built inside the runtime remain the caller's
 responsibility.
 
+## Preserving newer documents without interpreting them
+
+Use `import_core_document` when a caller must retain a same-major newer-minor
+record without dropping unknown fields. It applies the same bounded JSON/header
+checks, then returns an explicitly read-only opaque document rather than a
+validated current record. `encode_for_write` refuses to rewrite it; only its
+unchanged original bytes can be retrieved for archival. The supplied family is
+routing metadata, not validation of a future schema. Current-schema imports
+still use the strict typed decoder, and unsupported majors remain errors.
+
+[The preservation boundary and tests](core-schema-preservation.md) document the
+exact scope. It does not change live negotiation, migrate numeric money, or
+supply a durable product import workflow.
+
 ## Migration registration
 
 `MigrationRegistry` now requires a validator for every exact family/version in a

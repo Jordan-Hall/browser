@@ -15,11 +15,27 @@ class FuzzSmokeTests(unittest.TestCase):
 
     def test_record_seeds_have_every_selector_and_both_shapes(self):
         seeds = FUZZ.seeds("record_codec", self.fixtures)
-        self.assertEqual(len(seeds), 26)
+        self.assertEqual(len(seeds), 78)
         for index in range(13):
             for shape, data in zip(("full", "minimal"), seeds[2 * index:2 * index + 2]):
                 self.assertEqual(data[0], index)
                 self.assertEqual(json.loads(data[1:]), self.fixtures[index][shape])
+
+    def test_record_import_seeds_exercise_read_only_and_rejected_paths_without_mutating_fixtures(self):
+        original = json.dumps(self.fixtures, sort_keys=True)
+        seeds = FUZZ.seeds("record_codec", self.fixtures)
+        for index in range(13):
+            for shape, data in zip(("full", "minimal"), seeds[26 + 2 * index:28 + 2 * index]):
+                self.assertEqual(data[0], index)
+                expected = dict(self.fixtures[index][shape])
+                expected.update(schema_version={"major": 1, "minor": 1},
+                                future_only={"unrecognized_permission": False})
+                self.assertEqual(json.loads(data[1:]), expected)
+            self.assertEqual(seeds[52 + index][0], index)
+            self.assertEqual(json.loads(seeds[52 + index][1:])["schema_version"], {"major": 2, "minor": 0})
+            self.assertEqual(seeds[65 + index][0], index)
+            self.assertIn(b'"x":0,"x":1', seeds[65 + index])
+        self.assertEqual(json.dumps(self.fixtures, sort_keys=True), original)
 
     def test_duplicate_and_missing_seed_families_are_rejected(self):
         for fixtures in (self.fixtures[:-1], self.fixtures + self.fixtures[:1]):
