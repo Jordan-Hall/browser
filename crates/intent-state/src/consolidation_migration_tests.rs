@@ -31,7 +31,7 @@ fn canonical_v8_upgrade_keeps_task_checkpoint_bytes_and_migration_checksums() ->
     migrations::apply_migrations(&mut connection)?;
     let after = history(&connection)?;
     assert_eq!(&after[..8], before.as_slice());
-    assert_eq!(after.len(), 11);
+    assert_eq!(after.len(), 12);
     assert_eq!(after[8].1, "consistent_workspace_checkpoints");
     assert_eq!(after[9].1, "durable_recovery_authority");
     assert_eq!(
