@@ -4,7 +4,7 @@
 - [x] Phase A: Frame. Compare the consolidated implementation with the CORE task ledger and live issues.
 - [x] Phase B: Design the workflow. Work in stable CORE task order, verify each correction, then continue to later workstreams only after CORE acceptance.
 - [ ] Phase C: Run the loop.
-  - [ ] Establish the pinned toolchain and baseline checks for CORE-01.T01.
+  - [x] Establish the pinned toolchain and baseline checks for CORE-01.T01.
   - [x] Reject empty provider identities through constructors and deserialization for CORE-01.T02.
   - [x] Add checked spending amounts and exact narrowing conversions; verify generated wire round trips.
   - [x] Enforce symmetric structural budgets during IPC encoding and decoding.
@@ -33,4 +33,4 @@ The user explicitly requires cross-platform support. Native Windows tests are re
 
 Design comparison phases: Frame, Fan out, Cross-judge, Pick, Graft, Verify. Prefer a small internal backend over duplicating state machines. Reject any candidate that substitutes successful no-ops for unavailable durability or authentication guarantees.
 
-Current implementation and verification status: docs/core-native-progress.md. The three saved patches are integrated. Native Windows verification passed within the recorded scope; Linux verification is in progress. CORE acceptance remains open, and no later workstream has started.
+Current implementation and verification status: docs/core-native-progress.md. The three saved patches are integrated. Native Windows verification passed within the recorded scope; Linux/macOS/Windows CI for the CORE-01.T01 baseline passed on PR #817. CORE acceptance remains open, and no later workstream has started.
