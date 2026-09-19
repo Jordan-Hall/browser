@@ -420,7 +420,12 @@ mod tests {
         let limits = WireLimits::for_tests();
 
         let mut header_decoder = FrameDecoder::new(limits);
-        assert!(header_decoder.push(&[FrameLane::Control as u8, 0])?.frames().is_empty());
+        assert!(
+            header_decoder
+                .push(&[FrameLane::Control as u8, 0])?
+                .frames()
+                .is_empty()
+        );
         let Err(header_error) = header_decoder.finish() else {
             return Err("truncated header unexpectedly accepted at EOF".into());
         };
