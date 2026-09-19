@@ -115,9 +115,7 @@ impl CancellationRegistry {
         let removed = self
             .records
             .remove(&registration.cancellation_id)
-            .ok_or(CancellationError::UnknownId(
-                registration.cancellation_id,
-            ))?;
+            .ok_or(CancellationError::UnknownId(registration.cancellation_id))?;
         Ok(removed.state)
     }
 
@@ -157,9 +155,7 @@ impl CancellationRegistry {
         registration: CancellationRegistration,
     ) -> Result<&CancellationRecord, CancellationError> {
         let Some(record) = self.records.get(&registration.cancellation_id) else {
-            return Err(CancellationError::UnknownId(
-                registration.cancellation_id,
-            ));
+            return Err(CancellationError::UnknownId(registration.cancellation_id));
         };
         if record.generation != registration.generation {
             return Err(CancellationError::StaleGeneration(
@@ -174,9 +170,7 @@ impl CancellationRegistry {
         registration: CancellationRegistration,
     ) -> Result<&mut CancellationRecord, CancellationError> {
         let Some(record) = self.records.get_mut(&registration.cancellation_id) else {
-            return Err(CancellationError::UnknownId(
-                registration.cancellation_id,
-            ));
+            return Err(CancellationError::UnknownId(registration.cancellation_id));
         };
         if record.generation != registration.generation {
             return Err(CancellationError::StaleGeneration(
@@ -219,7 +213,10 @@ impl fmt::Display for CancellationError {
             Self::RegistryFull => formatter.write_str("cancellation registry is full"),
             Self::UnknownId(id) => write!(formatter, "unknown cancellation id {id}"),
             Self::GenerationConflict(id) => {
-                write!(formatter, "cancellation id {id} is owned by another generation")
+                write!(
+                    formatter,
+                    "cancellation id {id} is owned by another generation"
+                )
             }
             Self::StaleGeneration(id) => {
                 write!(formatter, "stale generation for cancellation id {id}")
@@ -286,7 +283,10 @@ mod tests {
         );
         let mut registry = CancellationRegistry::new(1);
         registry.register(first)?;
-        assert_eq!(registry.register(second), Err(CancellationError::RegistryFull));
+        assert_eq!(
+            registry.register(second),
+            Err(CancellationError::RegistryFull)
+        );
         assert_eq!(
             registry.retire(first),
             Err(CancellationError::RetireActive(first.cancellation_id()))
