@@ -1,0 +1,229 @@
+--- a/crates/intent-state/src/workspace_checkpoints.rs
++++ b/crates/intent-state/src/workspace_checkpoints.rs
+@@ -30,85 +30,43 @@
+     ) -> Result<GraphRevision, CheckpointError> {
+         validate_graph(graph)?;
+         let bytes = encode_bounded(graph, MAX_GRAPH_BYTES)?;
+-        let next = expected_revision
+-            .checked_add(1)
+-            .ok_or(CheckpointError::Invalid("graph revision overflow"))?;
+-        let workspace = graph.workspace.workspace_id();
+         let tx = self
+             .connection
+             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+-        let existing: Option<(String, i64)> = tx
+-            .query_row(
+-                "SELECT privacy_scope, revision FROM workspace_graphs WHERE workspace_id=?1",
+-                [workspace.to_string()],
+-                |r| Ok((r.get(0)?, r.get(1)?)),
+-            )
+-            .optional()?;
+-        if let Some((old_scope, revision)) = existing {
+-            if old_scope != scope.as_str() {
+-                return Err(CheckpointError::AccessDenied);
+-            }
+-            if unsigned(revision)? != expected_revision {
+-                return Err(CheckpointError::Conflict);
+-            }
+-        } else if expected_revision != 0 {
+-            return Err(CheckpointError::Conflict);
+-        }
+-        // Removing a node must not hide operations which still belong to it.
+-        let task_ids: BTreeSet<_> = graph
+-            .tasks
+-            .iter()
+-            .map(|t| t.task_id().to_string())
+-            .collect();
+-        {
+-            let mut query = tx.prepare(
+-                "SELECT task_id FROM workspace_graph_tasks WHERE workspace_id=?1 AND active=1",
++        let revision = write_workspace_graph(&tx, scope, expected_revision, graph, &bytes, now)?;
++        tx.commit()?;
++        Ok(revision)
++    }
++
++    /// Installs a new workspace graph from validated archive data without attaching it to any
++    /// pre-existing durable operation history. This is a data-activation boundary only: it does
++    /// not enable runtime dispatch, restore provider/session state, or grant execution authority.
++    pub fn activate_new_workspace_graph(
++        &mut self,
++        scope: &ArtifactScope,
++        graph: &WorkspaceGraph,
++        now: UnixTimestampMicros,
++    ) -> Result<GraphRevision, CheckpointError> {
++        validate_graph(graph)?;
++        let bytes = encode_bounded(graph, MAX_GRAPH_BYTES)?;
++        let tx = self
++            .connection
++            .transaction_with_behavior(TransactionBehavior::Immediate)?;
++        for task in &graph.tasks {
++            let used: bool = tx.query_row(
++                "SELECT EXISTS(SELECT 1 FROM durable_operations WHERE task_id=?1)",
++                [task.task_id().to_string()],
++                |row| row.get(0),
+             )?;
+-            let previous = query.query_map([workspace.to_string()], |r| r.get::<_, String>(0))?;
+-            for previous in previous {
+-                let previous = previous?;
+-                if !task_ids.contains(&previous) {
+-                    let used: bool = tx.query_row(
+-                        "SELECT EXISTS(SELECT 1 FROM durable_operations WHERE task_id=?1)",
+-                        [&previous],
+-                        |r| r.get(0),
+-                    )?;
+-                    if used {
+-                        return Err(CheckpointError::Invalid(
+-                            "cannot remove a task with durable operation history",
+-                        ));
+-                    }
+-                }
+-            }
+-        }
+-        if expected_revision == 0 {
+-            tx.execute("INSERT INTO workspace_graphs(workspace_id,privacy_scope,revision,graph,graph_hash,updated_at_micros) VALUES (?1,?2,?3,?4,?5,?6)",
+-                params![workspace.to_string(), scope.as_str(), sql(next)?, bytes, hash(&bytes).to_hex(), now.get()])?;
+-        } else {
+-            let changed = tx.execute("UPDATE workspace_graphs SET revision=?1,graph=?2,graph_hash=?3,updated_at_micros=?4 WHERE workspace_id=?5 AND revision=?6",
+-                params![sql(next)?, bytes, hash(&bytes).to_hex(), now.get(), workspace.to_string(), sql(expected_revision)?])?;
+-            if changed != 1 {
+-                return Err(CheckpointError::Conflict);
+-            }
+-        }
+-        tx.execute(
+-            "UPDATE workspace_graph_tasks SET active=0 WHERE workspace_id=?1",
+-            [workspace.to_string()],
+-        )?;
+-        for task in &task_ids {
+-            let changed = tx.execute("INSERT INTO workspace_graph_tasks(task_id,workspace_id,active) VALUES (?1,?2,1) ON CONFLICT(task_id) DO UPDATE SET active=1 WHERE workspace_graph_tasks.workspace_id=excluded.workspace_id",
+-                params![task, workspace.to_string()])?;
+-            if changed != 1 {
++            if used {
+                 return Err(CheckpointError::Invalid(
+-                    "task identity belongs to another workspace",
++                    "archive activation cannot attach existing operation history",
+                 ));
+             }
+         }
++        let revision = write_workspace_graph(&tx, scope, 0, graph, &bytes, now)?;
+         tx.commit()?;
+-        Ok(GraphRevision {
+-            workspace_id: workspace,
+-            revision: next,
+-        })
++        Ok(revision)
+     }
+ 
+     /// Captures graph, operation projections, cursor positions and artifact pins
+@@ -252,6 +210,112 @@
+     }
+ }
+ 
++fn write_workspace_graph(
++    tx: &rusqlite::Transaction<'_>,
++    scope: &ArtifactScope,
++    expected_revision: u64,
++    graph: &WorkspaceGraph,
++    bytes: &[u8],
++    now: UnixTimestampMicros,
++) -> Result<GraphRevision, CheckpointError> {
++    let next = expected_revision
++        .checked_add(1)
++        .ok_or(CheckpointError::Invalid("graph revision overflow"))?;
++    let workspace = graph.workspace.workspace_id();
++    let existing: Option<(String, i64)> = tx
++        .query_row(
++            "SELECT privacy_scope, revision FROM workspace_graphs WHERE workspace_id=?1",
++            [workspace.to_string()],
++            |row| Ok((row.get(0)?, row.get(1)?)),
++        )
++        .optional()?;
++    if let Some((old_scope, revision)) = existing {
++        if old_scope != scope.as_str() {
++            return Err(CheckpointError::AccessDenied);
++        }
++        if unsigned(revision)? != expected_revision {
++            return Err(CheckpointError::Conflict);
++        }
++    } else if expected_revision != 0 {
++        return Err(CheckpointError::Conflict);
++    }
++
++    let task_ids: BTreeSet<_> = graph
++        .tasks
++        .iter()
++        .map(|task| task.task_id().to_string())
++        .collect();
++    {
++        let mut query = tx.prepare(
++            "SELECT task_id FROM workspace_graph_tasks WHERE workspace_id=?1 AND active=1",
++        )?;
++        let previous = query.query_map([workspace.to_string()], |row| row.get::<_, String>(0))?;
++        for previous in previous {
++            let previous = previous?;
++            if !task_ids.contains(&previous) {
++                let used: bool = tx.query_row(
++                    "SELECT EXISTS(SELECT 1 FROM durable_operations WHERE task_id=?1)",
++                    [&previous],
++                    |row| row.get(0),
++                )?;
++                if used {
++                    return Err(CheckpointError::Invalid(
++                        "cannot remove a task with durable operation history",
++                    ));
++                }
++            }
++        }
++    }
++
++    if expected_revision == 0 {
++        tx.execute(
++            "INSERT INTO workspace_graphs(workspace_id,privacy_scope,revision,graph,graph_hash,updated_at_micros) VALUES (?1,?2,?3,?4,?5,?6)",
++            params![
++                workspace.to_string(),
++                scope.as_str(),
++                sql(next)?,
++                bytes,
++                hash(bytes).to_hex(),
++                now.get()
++            ],
++        )?;
++    } else {
++        let changed = tx.execute(
++            "UPDATE workspace_graphs SET revision=?1,graph=?2,graph_hash=?3,updated_at_micros=?4 WHERE workspace_id=?5 AND revision=?6",
++            params![
++                sql(next)?,
++                bytes,
++                hash(bytes).to_hex(),
++                now.get(),
++                workspace.to_string(),
++                sql(expected_revision)?
++            ],
++        )?;
++        if changed != 1 {
++            return Err(CheckpointError::Conflict);
++        }
++    }
++    tx.execute(
++        "UPDATE workspace_graph_tasks SET active=0 WHERE workspace_id=?1",
++        [workspace.to_string()],
++    )?;
++    for task in &task_ids {
++        let changed = tx.execute(
++            "INSERT INTO workspace_graph_tasks(task_id,workspace_id,active) VALUES (?1,?2,1) ON CONFLICT(task_id) DO UPDATE SET active=1 WHERE workspace_graph_tasks.workspace_id=excluded.workspace_id",
++            params![task, workspace.to_string()],
++        )?;
++        if changed != 1 {
++            return Err(CheckpointError::Invalid(
++                "task identity belongs to another workspace",
++            ));
++        }
++    }
++    Ok(GraphRevision {
++        workspace_id: workspace,
++        revision: next,
++    })
++}
++
+ fn validate_graph(graph: &WorkspaceGraph) -> Result<(), CheckpointError> {
+     if graph.schema_version != SchemaVersion::V1 {
+         return Err(CheckpointError::Invalid("unsupported graph schema"));
