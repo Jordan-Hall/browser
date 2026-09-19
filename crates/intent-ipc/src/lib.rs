@@ -11,6 +11,7 @@ mod envelope;
 mod error;
 mod flow;
 mod frame;
+mod legacy_import;
 mod limits;
 mod negotiation;
 mod record_codec;
@@ -30,6 +31,7 @@ pub use flow::{
     MAX_QUEUE_CAPACITY, PriorityQueue, QueueConfigError, QueueLimits,
 };
 pub use frame::{DecodeBatch, FRAME_HEADER_BYTES, Frame, FrameDecoder, FrameLane};
+pub use legacy_import::{LegacyNumericMoneyImport, migrate_legacy_numeric_money_goal_v1};
 pub use limits::WireLimits;
 pub use negotiation::{
     MAX_PROTOCOL_CAPABILITIES, MAX_PROTOCOL_RANGES, NegotiatedProtocol, NegotiationError,
