@@ -384,3 +384,57 @@ fn activation_cannot_attach_existing_operation_history_to_imported_task() -> Res
     );
     Ok(())
 }
+
+#[test]
+fn terminal_imported_tasks_are_rejected_atomically() -> Result {
+    let mut profile = Profile::new()?;
+    let workspace_id = id(50)?;
+    let workspace = profile.persist(
+        CoreRecordKind::Workspace,
+        &current_workspace(workspace_id)?,
+        2,
+    )?;
+
+    for (offset, state) in ["completed", "cancelled", "failed"].into_iter().enumerate() {
+        let mut task: Value =
+            serde_json::to_value(current_task(workspace_id, 51 + offset as u64)?)?;
+        task["state"] = Value::from(state);
+        let artifact = profile.persist_bytes(
+            CoreRecordKind::Task,
+            &serde_json::to_vec(&task)?,
+            3 + offset as i64,
+        )?;
+        assert!(matches!(
+            activate_persisted_core_workspace(
+                &mut profile.owner,
+                &profile.artifacts,
+                request(profile.scope.clone(), workspace, vec![artifact], Vec::new(),)?,
+                WireLimits::default(),
+            ),
+            Err(CoreDocumentPersistenceError::WorkspaceGraph(
+                WorkspaceCheckpointError::Invalid(
+                    "archive activation cannot activate a terminal task"
+                )
+            ))
+        ));
+    }
+
+    let active_task = profile.persist(CoreRecordKind::Task, &current_task(workspace_id, 54)?, 6)?;
+    let revision = activate_persisted_core_workspace(
+        &mut profile.owner,
+        &profile.artifacts,
+        request(
+            profile.scope.clone(),
+            workspace,
+            vec![active_task],
+            Vec::new(),
+        )?,
+        WireLimits::default(),
+    )?;
+    assert_eq!(
+        revision.revision, 1,
+        "terminal-task rejection left no durable partial graph"
+    );
+    assert!(!profile.owner.state().dispatch_status()?.enabled);
+    Ok(())
+}
