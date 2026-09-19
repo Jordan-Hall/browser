@@ -195,7 +195,7 @@
         805
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; the source is published in #805.",
+      "remaining": "Local real-worker cancellation, deadline checks and bounded generation retirement exist. An unpublished regression measures progress backpressure in two real workers and checks cancellation acknowledgement before backlog draining. Trusted durable-dispatch integration, byte/accounting baseline, product control-latency qualification and independent task acceptance remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -222,6 +222,17 @@
           ],
           "scope": "Linux approved/cooperative worker process boundary and executed local and GitHub CI regressions; not external-effect authorization or whole-task acceptance.",
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
+        },
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-fixture-worker/src/main.rs",
+            "crates/intent-fixture-worker/src/progress_pressure.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Two real Linux cooperative workers report progress backpressure before task cancellation. The regression requires their acknowledgements before the measured backlog drains, orderly exit without escalation and an independent worker result. The fixture uses an explicit parent-observed acknowledgement before exit. Local working-tree verification only; no whole-task acceptance or production latency qualification."
         }
       ]
     },

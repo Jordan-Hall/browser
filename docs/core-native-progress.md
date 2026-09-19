@@ -1,5 +1,17 @@
 # CORE native implementation checkpoint
 
+## 2026-09-19 measured cancellation backpressure
+
+Local fixture and regression changes build on main `ce06a3aa0364b65b2c1fe4e4d8a05f0721abb09e`, including merged PR #824. A parent-controlled start lets two real cooperative workers fill their progress sockets without supervisor reads. Each reports repeated refused progress admissions and its admitted frame count. The test requires cancellation acknowledgements before that measured backlog drains, immediate lease revocation, successful exit without escalation, and a completed request through an independent worker.
+
+The final run admitted 168 progress frames per worker and observed each acknowledgement after consuming only 8 frames. Its 34.640 ms acknowledgement interval includes an intentional 30 ms parent delay and is not production latency qualification. A container-only mutation that drained all 168 frames failed the new assertion. A separate controlled-delay run reproduced the fixture's former exit-before-acknowledgement race. Both this fixture and the older stdout/stderr flood fixture now wait for a parent release marker after acknowledgement observation.
+
+Pinned Rust 1.98.1 formatting, strict Clippy, 64 Linux supervisor/worker test results and 25 Python validator tests passed. The Linux suite ran serially; one process-observation helper is marked ignored and invoked by its passing parent. An earlier four-thread run hit the existing broker crash-test deadline while executable sealing took 8.8 seconds. Serial success does not qualify that concurrent case. The unchanged release gate still rejects all 37 unaccepted tasks.
+
+At verification time, these were unpublished working-tree changes. Exact source hashes, commands, negative checks and limitations are in [the verification report](verification/core-progress-backpressure-20260919.json). Native Windows/macOS supervision, remote CI, full workspace qualification and independent task acceptance are not claimed. No later epic has started. Earlier entries below retain their original historical scope.
+
+## Earlier checkpoint
+
 This working-tree checkpoint extends commit `e33408ffa09dfd826715b25f063ec0849b1dde50`.
 The changes are uncommitted on `main`. CORE acceptance remains open; no later workstream was started.
 

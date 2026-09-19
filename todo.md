@@ -1,5 +1,7 @@
 # Implementation run
 
+Standing instruction, 2026-09-19: commit verified work and continue until the user explicitly stops execution or every epic and subtask is done. Finish CORE implementation and acceptance before starting the next epic. Keep incomplete checks and platform limits visible; do not substitute source publication for task acceptance.
+
 - [x] Read the Principles section of the poteto-mode skill.
 - [x] Phase A: Frame. Compare the consolidated implementation with the CORE task ledger and live issues.
 - [x] Phase B: Design the workflow. Work in stable CORE task order, verify each correction, then continue to later workstreams only after CORE acceptance.
@@ -20,6 +22,16 @@
 - [ ] Phase E: Verify and hand back. Require actual task evidence and the unchanged require-accepted gate.
 
 Completion requires all 37 CORE tasks to satisfy their individual criteria and the acceptance ledger gate before subsequent workstreams. The existing ledger reports zero accepted tasks. Platform, independent review, real-provider and power-loss criteria require their own evidence; unit test success cannot replace them.
+
+## 2026-09-19 cancellation transport continuation
+
+- [x] Check PR #824 and preserve its active owner's changes. The user subsequently merged it; the verification baseline is now main `ce06a3aa0364b65b2c1fe4e4d8a05f0721abb09e`.
+- [x] Trace the real worker cancellation path. The existing flood test assumes saturation after a sleep and ignores progress admission failures.
+- [x] Add a progress-only fixture that reports measured socket backpressure after a parent-controlled start.
+- [x] Prove both real workers acknowledge cancellation before their measured progress backlog drains, and an unrelated worker still completes work.
+- [x] Run Linux process tests and strict checks; preserve the CORE acceptance gate and record actual evidence. All 64 relevant Linux results passed serially, along with strict Clippy and formatting. Earlier concurrent broker timeout remains unqualified.
+
+The throughput constraint is Linux process verification from Windows. Use the pinned Rust container and native Linux Cargo/build caches. This unit changes only fixture/test code and evidence, on top of merged PR #824. The data shape is a fixture progress producer with waiting, filling and saturated states. Marker files synchronize readiness and record admitted frame counts without adding a runtime API. A timed flood alone cannot prove socket pressure, and runtime metrics would unnecessarily expand the public interface. Both flood fixtures now wait for parent-observed cancellation before exiting; a controlled 30 ms delay reproduced the old fixed-sleep race. Concurrent broker qualification remains open after an existing crash-test timeout; final fixture verification runs serially.
 
 ## Cross-platform architecture
 

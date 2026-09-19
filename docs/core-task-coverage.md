@@ -57,3 +57,7 @@ PR #813 adds exact schema validators, all 13 v1 record fixtures, explicit JSON e
 ## Branch consolidation
 
 Both task and workspace checkpoint implementations are retained. See `docs/branch-consolidation-20260918.md`. Merging unfinished work does not establish acceptance or production readiness.
+
+## Measured cancellation backpressure
+
+An unpublished CORE-01.T07 regression now verifies cancellation acknowledgement before measured progress backlogs drain in two real Linux workers. Both flood fixtures use parent-observed acknowledgements before exit, replacing their fixed-sleep assumption. The [verification report](verification/core-progress-backpressure-20260919.json) records the final serial checks, mutation rejection and remaining concurrent-load limitation on top of merged PR #824. No task status is promoted by this evidence.

@@ -1,0 +1,69 @@
+{
+  "base_commit": "ce06a3aa0364b65b2c1fe4e4d8a05f0721abb09e",
+  "publication": "unpublished working-tree changes",
+  "task": "CORE-01.T07",
+  "issue": 127,
+  "baseline_includes_pr": 824,
+  "platform": "Linux 6.6.87.2-microsoft-standard-WSL2 x86_64 GNU/Linux, Docker on Windows",
+  "toolchain": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "source_sha256": {
+    "Cargo.lock": "c564234415db4d7ee659e9d72c66273d6fb466b1cd02760e5ef4f4e8cc87e1cb",
+    "crates/intent-fixture-worker/src/main.rs": "af2bdf0b19c42b2da63e24c9788ad8c8c4c2d59ed2a26abfef5a2c95473e6afd",
+    "crates/intent-fixture-worker/src/progress_pressure.rs": "d2007c93c81ba2d0f4828ba2f60f303652482980baaeb30679133a53e5d647ad",
+    "crates/intent-fixture-worker/tests/supervision.rs": "233c3f768191ab969717402b3c9b3f4ffb9e038c000ed13366dc7240ddec62fe",
+    "crates/intent-supervisor/src/runtime.rs": "a046bb81b6d6b6e766e75ddc9b87b62e9b7ffc6d1c270662beb9a74c5c56c39c"
+  },
+  "checks": {
+    "cargo fmt --all -- --check": "success",
+    "cargo clippy --offline --locked -p intent-supervisor -p intent-fixture-worker --all-targets --all-features -- -D warnings": "success",
+    "cargo test --offline --locked -p intent-supervisor -p intent-fixture-worker --all-targets --no-fail-fast -- --test-threads=1 --nocapture": "success",
+    "python -m unittest discover -s scripts/tests -q": "success, 25 tests",
+    "python scripts/check_core_coverage.py": "success, inventory only",
+    "python scripts/check_core_coverage.py --require-accepted": "expected rejection, 37 unaccepted tasks"
+  },
+  "rust_results": {
+    "passed": 64,
+    "failed": 0,
+    "ignored_helpers": 1,
+    "ignored_helper_execution": "resource_observation_child is invoked by its passing parent"
+  },
+  "measured_scenario": {
+    "admitted_frames": [
+      168,
+      168
+    ],
+    "both_acknowledged_microseconds": 34640,
+    "drained_frames_at_ack": [
+      8,
+      8
+    ],
+    "independent_worker_completed": true,
+    "local_revoke_microseconds": 33,
+    "production_latency_qualification": false,
+    "scenario": "two_measured_progress_backlogs"
+  },
+  "negative_checks": [
+    "A controlled 30 ms parent delay reproduced successful child exit before ACK observation with the old 15 ms fixture sleep. The parent release handshake fixes this fixture race.",
+    "A container-only mutation that increases aggregate and progress-lane read limits drained all 168 admitted frames before ACK observation. The new backlog assertion rejected it. The original runtime was restored before final tests."
+  ],
+  "earlier_failures": [
+    "The initial concurrent run exposed the new fixture exit race; the release handshake replaced its fixed sleep.",
+    "A later four-thread run failed the existing broker crash failpoint deadline of 8 seconds while executable sealing took 8.8 seconds. That test passed in final serial verification. Four-thread whole-suite qualification remains unresolved.",
+    "A serial run exposed the same old fixed-sleep race in the existing stdout/stderr flood test. It now uses the same parent release handshake and passes in final verification."
+  ],
+  "local_logs_sha256": {
+    "target/pressure-linux-exit-race.log": "c8d1aba32f27d0718d2f72212223936cf589d1de1ca331f3993abfc099a7db23",
+    "target/pressure-linux-parallel-timeout.log": "da4402e2bd80966fe5ec29656c9b76430b1bc448324c636aa8cdf5e4fbbfbffa",
+    "target/pressure-linux-old-flood-race.log": "2ec44cefa657c363c799b9f9bb2322dc7777ac35ce52249435d59e98723104b6",
+    "target/pressure-linux-verification.log": "881e80f8cbc475e421ad240ac22fa6126df53676093bff1e0df14ea1a9e3f3d1",
+    "target/pressure-python.log": "3438a989aace26864e370244de1c5a14d186b9e0c035de4b14552a7125e752c7"
+  },
+  "limits": [
+    "This is fixture and regression code; it does not add native Windows or macOS supervisor support.",
+    "The two workers are cooperative Linux processes. Counts describe admitted and observed frames, not direct kernel socket byte occupancy.",
+    "The measured ACK interval includes an intentional 30 ms parent delay and is not production latency qualification.",
+    "The original Windows build compiled the fixture targets with zero Linux test cases. Final Linux-only edits have no native-platform execution claim.",
+    "No full workspace, remote CI, fuzz campaign, power-loss, hostile containment, or independent whole-task acceptance is claimed.",
+    "All CORE task statuses remain unaccepted; no later epic was started."
+  ]
+}
