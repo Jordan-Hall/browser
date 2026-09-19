@@ -190,7 +190,10 @@ impl FramedSocket {
                 }
                 let limit = self.buffer.len().min(*byte_budget);
                 match self.stream.read(&mut self.buffer[..limit]) {
-                    Ok(0) => return Ok(ReadOutcome::Closed),
+                    Ok(0) => {
+                        self.decoder.finish()?;
+                        return Ok(ReadOutcome::Closed);
+                    }
                     Ok(length) => {
                         self.offset = 0;
                         self.length = length;
@@ -370,6 +373,40 @@ mod tests {
         });
         assert!(receiver.discard_unstarted());
         assert!(receiver.idle());
+        Ok(())
+    }
+
+    #[test]
+    fn eof_with_partial_frame_is_a_protocol_error() -> Result<(), Box<dyn std::error::Error>> {
+        let (receiver, mut sender) = UnixStream::pair()?;
+        let mut receiver = FramedSocket::new(receiver)?;
+        let bytes = encode_event(
+            ControlMessage::Heartbeat {
+                generation: WorkerInstanceId::from_uuid(Uuid::new_v4()),
+                sequence: 9,
+            },
+            None,
+        )?;
+        sender.write_all(&bytes[..bytes.len() - 1])?;
+        drop(sender);
+
+        let mut budget = MAX_PACKET_BYTES;
+        assert!(receiver.read_one(&mut budget).is_err());
+        assert!(receiver.decoder.is_poisoned());
+        Ok(())
+    }
+
+    #[test]
+    fn clean_eof_remains_a_closed_transport() -> Result<(), Box<dyn std::error::Error>> {
+        let (receiver, sender) = UnixStream::pair()?;
+        let mut receiver = FramedSocket::new(receiver)?;
+        drop(sender);
+        let mut budget = MAX_PACKET_BYTES;
+        assert!(matches!(
+            receiver.read_one(&mut budget)?,
+            ReadOutcome::Closed
+        ));
+        assert!(!receiver.decoder.is_poisoned());
         Ok(())
     }
 }

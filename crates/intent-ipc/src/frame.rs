@@ -102,6 +102,9 @@ impl DecodeBatch {
 }
 
 /// Incremental bounded decoder that emits only complete frames after validating the header budget.
+///
+/// A framing error poisons the decoder. Callers must discard the connection rather than resume at
+/// an unknown offset. `finish` must be called on EOF so a truncated header or payload is rejected.
 #[derive(Debug)]
 pub struct FrameDecoder {
     limits: WireLimits,
@@ -110,6 +113,7 @@ pub struct FrameDecoder {
     current_lane: Option<FrameLane>,
     current_payload_len: usize,
     payload: Vec<u8>,
+    poisoned: bool,
 }
 
 impl FrameDecoder {
@@ -122,10 +126,58 @@ impl FrameDecoder {
             current_lane: None,
             current_payload_len: 0,
             payload: Vec::new(),
+            poisoned: false,
         }
     }
 
     pub fn push(&mut self, input: &[u8]) -> Result<DecodeBatch, WireError> {
+        if self.poisoned {
+            return Err(Self::poisoned_error());
+        }
+
+        match self.push_inner(input) {
+            Ok(batch) => Ok(batch),
+            Err(error) => {
+                self.poisoned = true;
+                self.reset_frame_state();
+                Err(error)
+            }
+        }
+    }
+
+    /// Finalize the stream at EOF. Any partial frame is a protocol error and poisons the decoder.
+    pub fn finish(&mut self) -> Result<(), WireError> {
+        if self.poisoned {
+            return Err(Self::poisoned_error());
+        }
+        if self.header_len == 0 && self.current_lane.is_none() && self.payload.is_empty() {
+            return Ok(());
+        }
+
+        self.poisoned = true;
+        self.reset_frame_state();
+        Err(WireError::new(
+            WireErrorCode::InvalidEnvelope,
+            "stream ended with an incomplete frame",
+        ))
+    }
+
+    #[must_use]
+    pub const fn is_poisoned(&self) -> bool {
+        self.poisoned
+    }
+
+    #[must_use]
+    pub fn buffered_payload_len(&self) -> usize {
+        self.payload.len()
+    }
+
+    #[must_use]
+    pub fn buffered_payload_capacity(&self) -> usize {
+        self.payload.capacity()
+    }
+
+    fn push_inner(&mut self, input: &[u8]) -> Result<DecodeBatch, WireError> {
         let mut cursor = 0_usize;
         let mut frames = Vec::new();
         let frame_budget = self.limits.max_frames_per_feed.max(1);
@@ -175,16 +227,6 @@ impl FrameDecoder {
         })
     }
 
-    #[must_use]
-    pub fn buffered_payload_len(&self) -> usize {
-        self.payload.len()
-    }
-
-    #[must_use]
-    pub fn buffered_payload_capacity(&self) -> usize {
-        self.payload.capacity()
-    }
-
     fn consume_header(&mut self, input: &[u8]) -> Result<usize, WireError> {
         let missing = FRAME_HEADER_BYTES - self.header_len;
         let take = missing.min(input.len());
@@ -195,31 +237,20 @@ impl FrameDecoder {
             return Ok(take);
         }
 
-        let lane = match FrameLane::try_from(self.header[0]) {
-            Ok(lane) => lane,
-            Err(error) => {
-                self.reset_frame_state();
-                return Err(error);
-            }
-        };
+        let lane = FrameLane::try_from(self.header[0])?;
         let payload_len = u32::from_be_bytes([
             self.header[1],
             self.header[2],
             self.header[3],
             self.header[4],
         ]) as usize;
-
-        if let Err(error) = validate_length(lane, payload_len, self.limits) {
-            self.reset_frame_state();
-            return Err(error);
-        }
+        validate_length(lane, payload_len, self.limits)?;
 
         self.current_lane = Some(lane);
         self.current_payload_len = payload_len;
         self.payload.clear();
         if payload_len > 0 {
             self.payload.try_reserve_exact(payload_len).map_err(|_| {
-                self.reset_frame_state();
                 WireError::new(
                     WireErrorCode::AllocationFailed,
                     "failed to reserve bounded frame payload",
@@ -235,6 +266,13 @@ impl FrameDecoder {
         self.current_lane = None;
         self.current_payload_len = 0;
         self.payload = Vec::new();
+    }
+
+    fn poisoned_error() -> WireError {
+        WireError::new(
+            WireErrorCode::InvalidEnvelope,
+            "frame decoder is poisoned after a previous framing error",
+        )
     }
 }
 
@@ -277,6 +315,7 @@ mod tests {
         let batch = decoder.push(&encoded[encoded.len() - 1..])?;
         assert_eq!(batch.frames().len(), 1);
         assert_eq!(batch.frames()[0].payload(), b"action");
+        decoder.finish()?;
         Ok(())
     }
 
@@ -299,6 +338,7 @@ mod tests {
         assert_eq!(error.code(), WireErrorCode::FrameTooLarge);
         assert_eq!(decoder.buffered_payload_len(), 0);
         assert_eq!(decoder.buffered_payload_capacity(), 0);
+        assert!(decoder.is_poisoned());
         Ok(())
     }
 
@@ -310,6 +350,7 @@ mod tests {
             return Err("invalid lane unexpectedly decoded".into());
         };
         assert_eq!(error.code(), WireErrorCode::InvalidLane);
+        assert!(decoder.is_poisoned());
         Ok(())
     }
 
@@ -345,6 +386,68 @@ mod tests {
         let second_batch = decoder.push(&input[batch.consumed()..])?;
         assert_eq!(second_batch.frames().len(), 1);
         assert_eq!(second_batch.frames()[0].payload(), b"b");
+        decoder.finish()?;
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_batch_poisoning_prevents_resume_at_an_unknown_offset() -> Result<(), Box<dyn Error>>
+    {
+        let mut limits = WireLimits::for_tests();
+        limits.max_frames_per_feed = 8;
+        let first = Frame::new(FrameLane::Control, b"first".to_vec()).encode(limits)?;
+        let third = Frame::new(FrameLane::Control, b"third".to_vec()).encode(limits)?;
+        let mut input = first;
+        input.extend_from_slice(&[99, 0, 0, 0, 0]);
+        input.extend_from_slice(&third);
+        let mut decoder = FrameDecoder::new(limits);
+
+        let Err(error) = decoder.push(&input) else {
+            return Err("valid+invalid+valid batch unexpectedly decoded".into());
+        };
+        assert_eq!(error.code(), WireErrorCode::InvalidLane);
+        assert!(decoder.is_poisoned());
+
+        let Err(error) = decoder.push(&third) else {
+            return Err("poisoned decoder unexpectedly resumed".into());
+        };
+        assert_eq!(error.code(), WireErrorCode::InvalidEnvelope);
+        Ok(())
+    }
+
+    #[test]
+    fn eof_rejects_truncated_header_and_payload() -> Result<(), Box<dyn Error>> {
+        let limits = WireLimits::for_tests();
+
+        let mut header_decoder = FrameDecoder::new(limits);
+        assert!(
+            header_decoder
+                .push(&[FrameLane::Control as u8, 0])?
+                .frames()
+                .is_empty()
+        );
+        let Err(header_error) = header_decoder.finish() else {
+            return Err("truncated header unexpectedly accepted at EOF".into());
+        };
+        assert_eq!(header_error.code(), WireErrorCode::InvalidEnvelope);
+        assert!(header_decoder.is_poisoned());
+
+        let encoded = Frame::new(FrameLane::Control, b"payload".to_vec()).encode(limits)?;
+        let mut payload_decoder = FrameDecoder::new(limits);
+        assert!(
+            payload_decoder
+                .push(&encoded[..encoded.len() - 1])?
+                .frames()
+                .is_empty()
+        );
+        let Err(payload_error) = payload_decoder.finish() else {
+            return Err("truncated payload unexpectedly accepted at EOF".into());
+        };
+        assert_eq!(payload_error.code(), WireErrorCode::InvalidEnvelope);
+        assert!(payload_decoder.is_poisoned());
+
+        let mut clean = FrameDecoder::new(limits);
+        clean.finish()?;
         Ok(())
     }
 }
