@@ -1,0 +1,22 @@
+--- a/crates/intent-contracts/src/records/state_accessors.rs
++++ b/crates/intent-contracts/src/records/state_accessors.rs
+@@ -1,6 +1,6 @@
+ use super::{
+     ActionProposal, Approval, ApprovalState, ArtifactReference, GoalConstraint, GoalContract, Task,
+-    TaskState, Workspace,
++    TaskState, Workspace, WorkspaceState,
+ };
+ use crate::{
+     AccountId, AccountQualifiedResourceId, ActionProposalId, CapabilityId, ContentHash,
+@@ -30,6 +30,11 @@
+     pub const fn revision(&self) -> u64 {
+         self.revision
+     }
++
++    #[must_use]
++    pub const fn state(&self) -> WorkspaceState {
++        self.state
++    }
+ }
+ 
+ impl Task {
