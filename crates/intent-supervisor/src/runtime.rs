@@ -72,6 +72,34 @@ pub enum WorkerFailure {
     OsExit,
     OsFailure,
 }
+fn health_failure_after_reads(
+    state: WorkerState,
+    starting_age: Duration,
+    heartbeat_age: Duration,
+    progress_age: Duration,
+    has_sent_pending: bool,
+    handshake_timeout: Duration,
+    heartbeat_timeout: Duration,
+    progress_timeout: Duration,
+    read_budget_exhausted: bool,
+) -> Option<WorkerFailure> {
+    if read_budget_exhausted {
+        return None;
+    }
+    match state {
+        WorkerState::Starting if starting_age >= handshake_timeout => {
+            Some(WorkerFailure::HandshakeTimeout)
+        }
+        WorkerState::Ready if heartbeat_age >= heartbeat_timeout => {
+            Some(WorkerFailure::HeartbeatTimeout)
+        }
+        WorkerState::Ready if has_sent_pending && progress_age >= progress_timeout => {
+            Some(WorkerFailure::ProgressTimeout)
+        }
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WorkerSnapshot {
     pub generation: WorkerInstanceId,
@@ -409,26 +437,6 @@ impl Entry {
         if self.lease.is_revoked() && self.stop_at.is_none() {
             self.stop(now, CancellationId::from_uuid(Uuid::new_v4()), None);
         }
-        match self.state {
-            WorkerState::Starting
-                if now.duration_since(self.started) >= self.config.health.handshake_timeout =>
-            {
-                self.fail(now, WorkerFailure::HandshakeTimeout)
-            }
-            WorkerState::Ready
-                if now.duration_since(self.heartbeat) >= self.config.health.heartbeat_timeout =>
-            {
-                self.fail(now, WorkerFailure::HeartbeatTimeout)
-            }
-            WorkerState::Ready
-                if self.pending.values().any(|r| r.sent)
-                    && now.duration_since(self.progress_at)
-                        >= self.config.health.work_progress_timeout =>
-            {
-                self.fail(now, WorkerFailure::ProgressTimeout)
-            }
-            _ => {}
-        }
         if self.state == WorkerState::Starting {
             self.control.poll_authentication(
                 self.child.id(),
@@ -450,6 +458,19 @@ impl Entry {
         }
         if self.progress.identity.is_some() {
             self.read_progress(now, read_budget)?;
+        }
+        if let Some(failure) = health_failure_after_reads(
+            self.state,
+            now.duration_since(self.started),
+            now.duration_since(self.heartbeat),
+            now.duration_since(self.progress_at),
+            self.pending.values().any(|request| request.sent),
+            self.config.health.handshake_timeout,
+            self.config.health.heartbeat_timeout,
+            self.config.health.work_progress_timeout,
+            read_budget.consumed() >= MAX_READ_BYTES_PER_POLL,
+        ) {
+            self.fail(now, failure);
         }
         if let Some(stop) = self.stop_at {
             if let Some(socket) = self.control.socket.as_mut()
@@ -1225,7 +1246,8 @@ impl Drop for Supervisor {
 
 #[cfg(test)]
 mod tests {
-    use super::next_read_cursor;
+    use super::{WorkerFailure, WorkerState, health_failure_after_reads, next_read_cursor};
+    use std::time::Duration;
 
     #[test]
     fn read_cursor_resumes_after_the_last_worker_that_consumed_bytes() {
@@ -1233,5 +1255,65 @@ mod tests {
         assert_eq!(next_read_cursor(60, 64, Some(7)), 4);
         assert_eq!(next_read_cursor(9, 64, None), 10);
         assert_eq!(next_read_cursor(0, 0, None), 0);
+    }
+
+    #[test]
+    fn exhausted_shared_read_budget_defers_health_expiry_until_worker_can_read() {
+        let old = Duration::from_secs(10);
+        let timeout = Duration::from_secs(1);
+        for (state, pending) in [
+            (WorkerState::Starting, false),
+            (WorkerState::Ready, false),
+            (WorkerState::Ready, true),
+        ] {
+            assert_eq!(
+                health_failure_after_reads(
+                    state, old, old, old, pending, timeout, timeout, timeout, true,
+                ),
+                None
+            );
+        }
+        assert_eq!(
+            health_failure_after_reads(
+                WorkerState::Starting,
+                old,
+                old,
+                old,
+                false,
+                timeout,
+                timeout,
+                timeout,
+                false,
+            ),
+            Some(WorkerFailure::HandshakeTimeout)
+        );
+        assert_eq!(
+            health_failure_after_reads(
+                WorkerState::Ready,
+                old,
+                old,
+                Duration::ZERO,
+                false,
+                timeout,
+                timeout,
+                timeout,
+                false,
+            ),
+            Some(WorkerFailure::HeartbeatTimeout)
+        );
+        assert_eq!(
+            health_failure_after_reads(
+                WorkerState::Ready,
+                old,
+                Duration::ZERO,
+                old,
+                true,
+                timeout,
+                timeout,
+                timeout,
+                false,
+            ),
+            Some(WorkerFailure::ProgressTimeout)
+        );
     }
 }
