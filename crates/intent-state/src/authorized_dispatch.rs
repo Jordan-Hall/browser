@@ -342,7 +342,9 @@ mod tests {
             1,
             UnixTimestampMicros::try_new(120)?,
         ) else {
-            return Err("targeted proposal unexpectedly dispatched without durable target binding".into());
+            return Err(
+                "targeted proposal unexpectedly dispatched without durable target binding".into(),
+            );
         };
         assert!(matches!(
             error,
