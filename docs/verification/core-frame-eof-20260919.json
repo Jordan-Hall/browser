@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T04 incremental malformed-stream and EOF framing repair; not task acceptance",
+  "pr": 823,
+  "code_commit": "693869fc660ba4dd8e4925e0cb6ef8c2d44affe4",
+  "code_tree": "e8842d65b452b1e3939ba14c78263b6bdc291584",
+  "base_commit": "aeb2e1f3b5cdeb77ae183cb828c252376da3f04b",
+  "tested_merge_commit": "eca89de6182c4c721649109b6d4f5177460a9867",
+  "source_sha256": {
+    "crates/intent-ipc/src/frame.rs": "64467b4c85967af9095d33ef277aceea66b4cfce515d2ee1985bd3b3562e2bc1",
+    "crates/intent-supervisor/src/wire.rs": "d1eeb47d3951283316da0e1394b77ef6fb4ae0d07212cd5eab68c50583f37c8f",
+    "fuzz/fuzz_targets/frame_decoder.rs": "0d0e319133ff1c7672d4fd5258ccd15ead620d1676ebdcfa982416ce0d79fdf4",
+    "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "local": {
+    "execution": "unavailable",
+    "reason": "The automation container could not resolve github.com, so no local repository test pass is claimed. Verification is from exact GitHub CI/fuzz artifacts."
+  },
+  "ci": {
+    "run_id": 35452845220,
+    "conclusion": "success",
+    "rust_toolchain": "1.98.1",
+    "workspace_passing_tests": 357,
+    "workspace_ignored_helpers": 1,
+    "doctests": 17,
+    "python_tests": 25,
+    "jobs": {
+      "rust_checks": 105922894226,
+      "ubuntu_24_04": 105922894307,
+      "windows_2025": 105922894215,
+      "macos_15": 105922894151
+    },
+    "artifact_id": 10587655937,
+    "archive_sha256": "35b5ffd96c6de19cc656f2bb9d758f6103ba9adbd92a9e164d30d2b1629a6179",
+    "source_tar_sha256": "42d6d2ed4b362e19da88a559d0eddcbbd4091179e1510f8abc784c6ed5e1cb7e",
+    "source_tar_files": 262,
+    "checks": [
+      "coverage inventory",
+      "workspace and fuzz formatting",
+      "strict workspace Clippy",
+      "workspace targets",
+      "workspace doctests",
+      "fuzz target compilation",
+      "architecture checker",
+      "contract conformance",
+      "native Ubuntu 24.04",
+      "native Windows 2025",
+      "native macOS 15"
+    ]
+  },
+  "fuzz": {
+    "run_id": 35452845205,
+    "conclusion": "success",
+    "scope": "bounded parser smoke, not production qualification",
+    "toolchain": "nightly-2026-09-17",
+    "cargo_fuzz": "0.13.2",
+    "sanitizer": "address",
+    "seconds_per_target": 60,
+    "seed": 183726,
+    "max_input_bytes": 65536,
+    "rss_limit_mb": 1024,
+    "targets": [
+      {
+        "target": "frame_decoder",
+        "job_id": 105922894212,
+        "artifact_id": 10587531117,
+        "archive_sha256": "177847668b0ec9a3c085f3cbfe83df564a477434e6c407502727b6d511d6ab7d",
+        "executed_units": 3325714,
+        "max_reported_coverage": 145,
+        "instrumentation_observed": true,
+        "result": "success"
+      },
+      {
+        "target": "control_envelope",
+        "job_id": 105922894072,
+        "artifact_id": 10587258024,
+        "archive_sha256": "1fbc366d6a3e8fe4d5a17100ec0ea735d06c4db3f266e5e578a6e3923f12d71b",
+        "executed_units": 4289836,
+        "max_reported_coverage": 1818,
+        "instrumentation_observed": true,
+        "result": "success"
+      },
+      {
+        "target": "record_codec",
+        "job_id": 105922894194,
+        "artifact_id": 10586888402,
+        "archive_sha256": "2b19bd2f121e2be4e2e4bafa5057030cedd0475ec29b55f0550d7318f1ed3654",
+        "executed_units": 2111393,
+        "max_reported_coverage": 6768,
+        "instrumentation_observed": true,
+        "result": "success"
+      }
+    ]
+  },
+  "review": {
+    "final_request_comment": 5743203217,
+    "final_response_comment": 5743222523,
+    "reviewed_code_commit": "693869fc660ba4dd8e4925e0cb6ef8c2d44affe4",
+    "result": "Codex completed review of the exact code head with no major issues.",
+    "inline_threads": 0,
+    "independent_task_acceptance": false
+  },
+  "first_ci_attempt": {
+    "run_id": 35452711919,
+    "result": "failed_format_only",
+    "handling": "No pass was claimed. The assertion was formatted exactly as rustfmt required and all exact-head gates were rerun."
+  },
+  "remaining": [
+    "Aggregate bytes read across many simultaneous supervisor connections are not yet bounded by one shared per-poll budget.",
+    "CORE-01.T07 real transport backpressure separation remains a separate acceptance item.",
+    "Automated code review is not independent whole-task acceptance.",
+    "All existing CORE release and --require-accepted gates remain in force."
+  ],
+  "accepted": false,
+  "production_ready": false
+}
