@@ -13,8 +13,7 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn actual_checker_rejects_target_specific_dependency_renamed_to_an_allowed_name(
-) -> Result<(), Box<dyn Error>> {
+fn actual_checker_rejects_target_specific_alias() -> Result<(), Box<dyn Error>> {
     let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let root =
         Fixture(std::env::temp_dir().join(format!("intent-arch-{}-{unique}", std::process::id())));
