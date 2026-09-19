@@ -140,11 +140,8 @@ fn cheap_activation_validation_precedes_terminal_task_artifact_reads() -> Result
 
     let mut terminal: Value = serde_json::to_value(current_task(workspace_id, 71)?)?;
     terminal["state"] = Value::from("completed");
-    let terminal = profile.persist_bytes(
-        CoreRecordKind::Task,
-        &serde_json::to_vec(&terminal)?,
-        3,
-    )?;
+    let terminal =
+        profile.persist_bytes(CoreRecordKind::Task, &serde_json::to_vec(&terminal)?, 3)?;
 
     assert!(matches!(
         activate_persisted_core_workspace(
@@ -182,12 +179,7 @@ fn cheap_activation_validation_precedes_terminal_task_artifact_reads() -> Result
     let revision = activate_persisted_core_workspace(
         &mut profile.owner,
         &profile.artifacts,
-        activation_request(
-            profile.scope.clone(),
-            workspace,
-            Vec::new(),
-            vec![active],
-        )?,
+        activation_request(profile.scope.clone(), workspace, Vec::new(), vec![active])?,
         WireLimits::default(),
     )?;
     assert_eq!(revision.revision, 1);
