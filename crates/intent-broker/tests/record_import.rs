@@ -131,7 +131,7 @@ fn newer_minor_import_persists_exact_bytes_and_stays_read_only() -> Result<(), B
     )?;
 
     assert!(matches!(
-        imported,
+        &imported,
         PersistedCoreDocumentImport::ReadOnlyNewerMinor { .. }
     ));
     assert!(imported.is_read_only());
