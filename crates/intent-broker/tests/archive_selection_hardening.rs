@@ -37,7 +37,10 @@ impl Fixture {
         })
     }
 
-    fn current_request(&self, created_at: i64) -> Result<DurableCoreDocumentRequest, Box<dyn Error>> {
+    fn current_request(
+        &self,
+        created_at: i64,
+    ) -> Result<DurableCoreDocumentRequest, Box<dyn Error>> {
         Ok(DurableCoreDocumentRequest {
             artifact_id: ArtifactId::from_uuid(Uuid::new_v4()),
             privacy_scope: self.scope.clone(),

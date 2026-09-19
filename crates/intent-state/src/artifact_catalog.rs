@@ -133,8 +133,8 @@ impl StateStore {
                 maximum,
             });
         }
-        let expected_size = usize::try_from(metadata.byte_size())
-            .map_err(|_| ArtifactError::SizeOverflow)?;
+        let expected_size =
+            usize::try_from(metadata.byte_size()).map_err(|_| ArtifactError::SizeOverflow)?;
         let mut bytes = Vec::new();
         bytes.try_reserve_exact(expected_size).map_err(|error| {
             ArtifactError::InvalidInput(format!(
@@ -191,8 +191,9 @@ fn validate_catalog_query(value: &str, limit: usize, label: &str) -> Result<(), 
 }
 
 fn sql_limit(limit: usize) -> Result<i64, ArtifactError> {
-    i64::try_from(limit)
-        .map_err(|_| ArtifactError::InvalidInput("artifact metadata page limit is too large".to_owned()))
+    i64::try_from(limit).map_err(|_| {
+        ArtifactError::InvalidInput("artifact metadata page limit is too large".to_owned())
+    })
 }
 
 fn catalog_entry(
