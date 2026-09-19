@@ -23,25 +23,27 @@ pub fn activate_persisted_core_workspace(
     use intent_ipc::CoreRecord;
     use record_import::{CoreDocumentArchiveSelection, CoreDocumentPersistenceError};
 
-    for artifact_id in request.task_artifacts.iter().copied() {
-        if let CoreDocumentArchiveSelection::Current {
-            record: CoreRecord::Task(task),
-            ..
-        } = record_import::select_persisted_core_document_import(
-            owner.state(),
-            artifact_root,
-            &request.privacy_scope,
-            artifact_id,
-            limits,
-        )? && matches!(
-            task.state(),
-            TaskState::Completed | TaskState::Cancelled | TaskState::Failed
-        ) {
-            return Err(CoreDocumentPersistenceError::WorkspaceGraph(
-                intent_state::WorkspaceCheckpointError::Invalid(
-                    "archive activation cannot activate a terminal task",
-                ),
-            ));
+    if request.task_artifacts.len() <= intent_state::MAX_GRAPH_TASKS {
+        for artifact_id in request.task_artifacts.iter().copied() {
+            if let CoreDocumentArchiveSelection::Current {
+                record: CoreRecord::Task(task),
+                ..
+            } = record_import::select_persisted_core_document_import(
+                owner.state(),
+                artifact_root,
+                &request.privacy_scope,
+                artifact_id,
+                limits,
+            )? && matches!(
+                task.state(),
+                TaskState::Completed | TaskState::Cancelled | TaskState::Failed
+            ) {
+                return Err(CoreDocumentPersistenceError::WorkspaceGraph(
+                    intent_state::WorkspaceCheckpointError::Invalid(
+                        "archive activation cannot activate a terminal task",
+                    ),
+                ));
+            }
         }
     }
 
