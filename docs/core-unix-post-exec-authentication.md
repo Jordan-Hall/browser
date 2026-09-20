@@ -18,7 +18,10 @@ listener's nonblocking flag.
 
 Linux local runs pass all four parent cases and their four child executions.
 Disabling the peer comparison makes the foreign-connection case fail; restoring
-the exact source makes all cases pass. Native macOS verification remains pending.
+the exact source makes all cases pass. Published source `9d035eb` also passed
+all four CI jobs in run 35528771410. Native macOS 15 and Ubuntu 24.04 each
+executed all four parent and four child cases. The 307 archived source files
+match the qualified revision; see [published qualification](verification/core-unix-post-exec-authentication-ci-20260920.json).
 See [the scoped evidence](verification/core-unix-post-exec-authentication-20260920.json).
 
 This qualifies the connected-peer and issued-verifier primitives only. The

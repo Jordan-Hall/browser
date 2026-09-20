@@ -256,10 +256,11 @@
         852,
         853,
         854,
-        856
+        856,
+        857
       ],
       "status": "partially_implemented",
-      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Issued move-only verifiers and connected peer observation are published in #854 at 5f94b12 with qualified exact-source CI, real Windows pipes and a Linux silent-peer mutation control. Owned bootstrap token and enumerated application-buffer disposal are published in #856 at f455135 with exact-source CI and three bounded instrumented parser-fuzz runs. JSON/compiler/kernel copies are outside that claim. Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Issued move-only verifiers and connected peer observation are published in #854 at 5f94b12 with qualified exact-source CI, real Windows pipes and a Linux silent-peer mutation control. Owned bootstrap token and enumerated application-buffer disposal are published in #856 at f455135 with exact-source CI and three bounded instrumented parser-fuzz runs. JSON/compiler/kernel copies are outside that claim. Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04. Post-exec Unix peer authentication is qualified on native macOS and Linux in #857 at 9d035eb.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -351,8 +352,8 @@
           "published_verification_report": "docs/verification/core-bootstrap-secret-disposal-ci-20260920.json"
         },
         {
-          "publication": "unpublished",
-          "scope": "Post-exec connected Unix peer primitive, including real child PID/UID/GID, foreign connector, credential mismatch and reuse. Native macOS verification pending; no platform supervisor claim.",
+          "publication": "published",
+          "scope": "Post-exec connected Unix peer primitive, including real child PID/UID/GID, foreign connector, credential mismatch and reuse. Qualified on native macOS and Linux; no platform supervisor claim.",
           "source_files": [
             "crates/intent-local-transport/src/auth.rs",
             "crates/intent-local-transport/src/peer.rs"
@@ -360,7 +361,9 @@
           "test_files": [
             "crates/intent-local-transport/tests/unix_spawned_peer.rs"
           ],
-          "verification_report": "docs/verification/core-unix-post-exec-authentication-20260920.json"
+          "verification_report": "docs/verification/core-unix-post-exec-authentication-20260920.json",
+          "commit": "9d035eb5101183292f29a5bce28a8b0815a1d24d",
+          "published_verification_report": "docs/verification/core-unix-post-exec-authentication-ci-20260920.json"
         }
       ]
     },
