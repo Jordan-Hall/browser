@@ -241,6 +241,18 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
         }
         if let Some(compensation) = &data.compensation {
             validate_evidence(&compensation.evidence, compensation.attempt)?;
+            let original_recorded_at = data
+                .evidence
+                .as_ref()
+                .ok_or("compensation requires original committed evidence")?
+                .recorded_at;
+            if compensation
+                .attempt
+                .started_at
+                .is_none_or(|started| started < original_recorded_at)
+            {
+                return Err("compensation cannot predate original committed evidence");
+            }
             if compensation
                 .evidence
                 .outcome
