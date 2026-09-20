@@ -19,8 +19,8 @@ mod stream;
 mod strict_json;
 
 pub use cancellation::{
-    CancellationError, CancellationRegistry, CancellationState, DeadlineStatus,
-    MAX_CANCELLATION_RECORDS, deadline_status,
+    CancellationError, CancellationRegistration, CancellationRegistry, CancellationState,
+    DeadlineStatus, MAX_CANCELLATION_RECORDS, deadline_status,
 };
 pub use codec::ControlCodec;
 pub use document_import::{CoreDocumentImport, ReadOnlyCoreDocument, import_core_document};
