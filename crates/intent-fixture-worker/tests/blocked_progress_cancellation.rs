@@ -64,6 +64,14 @@ fn supervisor() -> Result<Supervisor, SupervisorError> {
     )
 }
 
+fn two_worker_supervisor() -> Result<Supervisor, SupervisorError> {
+    Supervisor::new(
+        &std::env::temp_dir(),
+        AdmissionLimits::new(2, 256 * 1024 * 1024, 200, [0; 2], [0; 2], [0; 2])?,
+        SchedulerLimits::default(),
+    )
+}
+
 fn until(
     supervisor: &mut Supervisor,
     id: WorkerInstanceId,
@@ -223,6 +231,107 @@ fn cancellation_crosses_control_while_real_progress_transport_is_backpressured()
         serde_json::json!({
             "scenario": "real_progress_socket_backpressure_with_independent_control_cancel",
             "cancel_to_reap_microseconds": elapsed.as_micros(),
+            "cancel_acknowledged": true,
+            "signal_escalation": false,
+            "production_latency_qualification": false
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
+    let health = HealthPolicy {
+        stop_grace: Duration::from_millis(750),
+        terminate_grace: Duration::from_millis(750),
+        ..HealthPolicy::default()
+    };
+    let scope = scope();
+    let capability = capability();
+    let mut supervisor = two_worker_supervisor()?;
+    let mut workers = Vec::new();
+
+    for _ in 0..2 {
+        let marker =
+            std::env::temp_dir().join(format!("intent-two-worker-cancel-{}", Uuid::new_v4()));
+        let id = supervisor.launch(
+            image()?,
+            config(scope, capability, health)?,
+            &[marker.to_string_lossy().into_owned()],
+        )?;
+        let ready = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+            matches!(snapshot.state, WorkerState::Ready | WorkerState::Failed)
+        })?;
+        if ready.state != WorkerState::Ready {
+            return Err(format!("worker did not become ready: {ready:?}").into());
+        }
+
+        let lease = supervisor.lease(id)?;
+        let request = RequestId::from_uuid(Uuid::new_v4());
+        let permit = lease.admit(
+            request,
+            lease.scope(),
+            capability,
+            MessageFamily::LifecycleControl,
+            Instant::now() + Duration::from_secs(5),
+        )?;
+        supervisor.submit_immediate(permit, BoundedText::try_new("start progress flood")?)?;
+        workers.push((id, request, marker));
+    }
+
+    for (_, _, marker) in &workers {
+        let blocked_deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match std::fs::read(marker) {
+                Ok(contents) if contents == b"progress transport backpressured" => break,
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            supervisor.poll();
+            if Instant::now() >= blocked_deadline {
+                return Err("both workers did not reach real progress backpressure".into());
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    let cancellation = CancellationId::from_uuid(Uuid::new_v4());
+    let started = Instant::now();
+    let receipts = supervisor.cancel_task(scope.task_id, cancellation);
+    assert_eq!(receipts.len(), 2);
+    assert!(receipts.iter().all(|receipt| receipt.newly_revoked));
+    assert!(
+        receipts
+            .iter()
+            .all(|receipt| receipt.previously_admitted_requests == 1)
+    );
+    for (id, _, _) in &workers {
+        assert!(receipts.iter().any(|receipt| receipt.generation == *id));
+    }
+
+    for (id, request, marker) in workers {
+        let stopped = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+            matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+        })?;
+        assert!(stopped.cancellation_acknowledged);
+        assert!(!stopped.stop_escalated);
+        assert_eq!(
+            std::fs::read(&marker)?,
+            b"cancel received while progress backpressured"
+        );
+        assert_eq!(supervisor.retire(id)?.unresolved_requests, vec![request]);
+        std::fs::remove_file(marker)?;
+    }
+
+    let elapsed = started.elapsed();
+    assert!(elapsed < health.stop_grace);
+    println!(
+        "{}",
+        serde_json::json!({
+            "scenario": "task_cancel_across_two_real_backpressured_workers",
+            "worker_boundaries": 2,
+            "cancel_to_both_reaped_microseconds": elapsed.as_micros(),
             "cancel_acknowledged": true,
             "signal_escalation": false,
             "production_latency_qualification": false
