@@ -20,6 +20,7 @@ uuid.workspace = true
 nix.workspace = true
 
 [dev-dependencies]
+rusqlite.workspace = true
 intent-state = { path = "../intent-state" }
 intent-recovery = { path = "../intent-recovery" }
 hmac.workspace = true
