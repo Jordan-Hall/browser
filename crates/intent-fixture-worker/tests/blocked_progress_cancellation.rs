@@ -249,7 +249,7 @@ fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
     let scope = scope();
     let capability = capability();
     let mut supervisor = two_worker_supervisor()?;
-    let mut workers = Vec::new();
+    let mut launched = Vec::new();
 
     for _ in 0..2 {
         let marker =
@@ -265,7 +265,12 @@ fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
         if ready.state != WorkerState::Ready {
             return Err(format!("worker did not become ready: {ready:?}").into());
         }
+        launched.push((id, marker));
+    }
 
+    let request_deadline = Instant::now() + Duration::from_secs(30);
+    let mut workers = Vec::new();
+    for (id, marker) in launched {
         let lease = supervisor.lease(id)?;
         let request = RequestId::from_uuid(Uuid::new_v4());
         let permit = lease.admit(
@@ -273,27 +278,33 @@ fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
             lease.scope(),
             capability,
             MessageFamily::LifecycleControl,
-            Instant::now() + Duration::from_secs(5),
+            request_deadline,
         )?;
         supervisor.submit_immediate(permit, BoundedText::try_new("start progress flood")?)?;
         workers.push((id, request, marker));
     }
 
-    for (_, _, marker) in &workers {
-        let blocked_deadline = Instant::now() + Duration::from_secs(5);
-        loop {
+    // submit_immediate flushes both Execute frames. Stop polling after that: the fixture
+    // markers are historical, while leaving the supervisor idle keeps both real progress
+    // sockets saturated until cancellation is sent on their separate control sockets.
+    let blocked_deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let mut blocked = 0;
+        for (_, _, marker) in &workers {
             match std::fs::read(marker) {
-                Ok(contents) if contents == b"progress transport backpressured" => break,
+                Ok(contents) if contents == b"progress transport backpressured" => blocked += 1,
                 Ok(_) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
-            supervisor.poll();
-            if Instant::now() >= blocked_deadline {
-                return Err("both workers did not reach real progress backpressure".into());
-            }
-            std::thread::sleep(Duration::from_millis(1));
         }
+        if blocked == workers.len() {
+            break;
+        }
+        if Instant::now() >= blocked_deadline {
+            return Err("both workers did not reach real progress backpressure".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
     }
 
     let cancellation = CancellationId::from_uuid(Uuid::new_v4());
@@ -310,10 +321,19 @@ fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
         assert!(receipts.iter().any(|receipt| receipt.generation == *id));
     }
 
-    for (id, request, marker) in workers {
-        let stopped = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
-            matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
-        })?;
+    let mut terminal = Vec::new();
+    for (id, _, _) in &workers {
+        terminal.push(until(
+            &mut supervisor,
+            *id,
+            Duration::from_secs(5),
+            |snapshot| matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed),
+        )?);
+    }
+    let elapsed = started.elapsed();
+    assert!(elapsed < health.stop_grace);
+
+    for ((id, request, marker), stopped) in workers.into_iter().zip(terminal) {
         assert!(stopped.cancellation_acknowledged);
         assert!(!stopped.stop_escalated);
         assert_eq!(
@@ -324,8 +344,6 @@ fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
         std::fs::remove_file(marker)?;
     }
 
-    let elapsed = started.elapsed();
-    assert!(elapsed < health.stop_grace);
     println!(
         "{}",
         serde_json::json!({
