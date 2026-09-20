@@ -138,6 +138,10 @@ fn cancellation_crosses_control_while_real_progress_transport_is_backpressured()
     assert!(stopped.cancellation_acknowledged);
     assert!(!stopped.stop_escalated);
     assert!(elapsed < health.stop_grace);
+    assert_eq!(
+        std::fs::read(&marker)?,
+        b"cancel received while progress backpressured"
+    );
     assert_eq!(supervisor.retire(id)?.unresolved_requests, vec![request]);
     std::fs::remove_file(&marker)?;
 
