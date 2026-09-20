@@ -98,8 +98,8 @@
         847,
         849
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Record families, immutable action binding, checked execution outcomes and per-family invariants are implemented. Refreshed independent whole-task review approves combined source 3e2b499, including the latest projection corrections; its exact-source CI and fuzz checks passed. PR #847 is merged. Merge #849 and refresh exact-main qualification and review for the subsequent projection corrections before final acceptance.",
+      "status": "accepted",
+      "remaining": "",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -178,7 +178,13 @@
           ],
           "verification_report": "docs/verification/core-records-combined-20260920.json"
         }
-      ]
+      ],
+      "acceptance_evidence": {
+        "commit": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
+        "reviewer": "Separate Codex whole-task acceptance reviewer; refreshed all six changed task files against approved37c996f",
+        "review_url": "https://github.com/Jordan-Hall/browser/issues/123#issuecomment-5751468206",
+        "report": "docs/verification/core-records-main-acceptance-20260920.json"
+      }
     },
     {
       "issue": 124,
@@ -1469,11 +1475,10 @@
       "implementation_evidence": []
     }
   ],
-  "reviewed_remote_head": "5cdcd5ef71940cd3bcc129cbd02ac68c20aa7ce7",
+  "reviewed_remote_head": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
   "current_source": {
     "publication": "published",
-    "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
-    "implementation_pr": 813,
-    "scope": "Record and migration validation on the implemented broker/recovery stack. All task acceptance remains open."
+    "commit": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
+    "scope": "Integrated main after PRs #847 and #849. T01, T02 and T03 are accepted; remaining task status and evidence are recorded individually. Overall CORE remains incomplete."
   }
 }
