@@ -214,8 +214,16 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
         }
         let outcome = data.evidence.as_ref().map(|e| e.outcome);
         let committed = outcome.is_some_and(|o| o.committed_reference().is_some());
+        let compensable = outcome.is_some_and(|o| {
+            matches!(
+                o,
+                ExecutionOutcome::LocalCommitted { .. }
+                    | ExecutionOutcome::ExternalCommitted { .. }
+            )
+        });
         let valid = match data.stage {
-            S::Verified | S::Compensated => committed,
+            S::Verified => committed,
+            S::Compensated => compensable,
             S::Failed => {
                 outcome.is_none_or(|o| matches!(o, ExecutionOutcome::ProvenNotCommitted { .. }))
             }
