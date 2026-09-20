@@ -86,6 +86,24 @@ class CoreConformanceGateTests(unittest.TestCase):
             all(not invariant["passed"] for invariant in report["invariants"])
         )
 
+    def test_non_test_ignored_and_path_escape_evidence_are_rejected(self):
+        manifest = copy.deepcopy(self.manifest)
+        evidence = manifest["invariants"][0]["evidence"][1]
+        evidence["test_name"] = "new"
+        with self.assertRaises(GATE.GateError):
+            GATE.validate_manifest(manifest, ROOT)
+
+        manifest = copy.deepcopy(self.manifest)
+        manifest["invariants"][0]["evidence"][1]["test_file"] = "../Cargo.toml"
+        with self.assertRaises(GATE.GateError):
+            GATE.validate_manifest(manifest, ROOT)
+
+    def test_inconsistent_reused_evidence_id_is_rejected(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["invariants"][-1]["evidence"][0]["step"] = "tests"
+        with self.assertRaises(GATE.GateError):
+            GATE.validate_manifest(manifest, ROOT)
+
     def test_failure_report_is_written_atomically(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "report.json"
