@@ -52,4 +52,6 @@ on each platform, architecture checks and 18 portable conformance checks.
 Removing only the pre-Hello peer filter made the silent foreign-peer case fail
 with HandshakeTimeout; restoring the exact runtime made it pass.
 See [the scoped verification report](verification/core-authentication-api-20260920.json).
-Published exact-source CI remains a separate gate.
+Published source `5f94b12` in PR #854 passed all four CI jobs in run
+35523791706. The source archive and all three native allocation artifacts match
+the qualified revision. See [the published CI report](verification/core-authentication-api-ci-20260920.json).

@@ -248,10 +248,11 @@
         789,
         805,
         852,
-        853
+        853,
+        854
       ],
       "status": "partially_implemented",
-      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Issued move-only verifiers and connected peer observation are locally verified, including real Windows pipes and a Linux silent-peer mutation control; publication and exact-source CI are pending. Secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Issued move-only verifiers and connected peer observation are published in #854 at 5f94b12 with qualified exact-source CI, real Windows pipes and a Linux silent-peer mutation control. Secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -308,7 +309,7 @@
           "commit": "bbb64eb8ab2975f03db9acdd636082ddda7aa994"
         },
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-local-transport/src/auth.rs",
             "crates/intent-local-transport/src/peer.rs",
@@ -320,7 +321,8 @@
             "crates/intent-fixture-worker/tests/supervision.rs"
           ],
           "scope": "Issued verifier and connected observation API; no public caller-created observed evidence or token-to-verifier constructor; not whole-task acceptance.",
-          "verification_report": "docs/verification/core-authentication-api-20260920.json"
+          "verification_report": "docs/verification/core-authentication-api-20260920.json",
+          "commit": "5f94b126a05b2ab7d410cfe7b32cc55938e1a740"
         }
       ]
     },
