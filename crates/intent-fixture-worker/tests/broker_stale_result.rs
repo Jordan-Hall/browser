@@ -32,7 +32,6 @@ const PAYLOAD: &[u8] = b"stale generation payload";
 struct Profile {
     root: PathBuf,
 }
-
 impl Profile {
     fn new() -> TestResult<Self> {
         let root = std::env::temp_dir().join(format!("intent-stale-result-{}", Uuid::new_v4()));
@@ -40,7 +39,6 @@ impl Profile {
         Ok(Self { root })
     }
 }
-
 impl Drop for Profile {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
@@ -50,24 +48,20 @@ impl Drop for Profile {
 fn hash(bytes: &[u8]) -> ContentHash {
     ContentHash::from_bytes(Sha256::digest(bytes).into())
 }
-
 fn id<T: std::str::FromStr>(n: u64) -> TestResult<T>
 where
     T::Err: Error + 'static,
 {
     Ok(format!("018f47f7-5a86-7c00-8000-{n:012x}").parse()?)
 }
-
 fn now() -> TestResult<UnixTimestampMicros> {
     Ok(UnixTimestampMicros::try_new(i64::try_from(
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros(),
     )?)?)
 }
-
 fn future() -> TestResult<UnixTimestampMicros> {
     Ok(UnixTimestampMicros::try_new(now()?.get() + 60_000_000)?)
 }
-
 fn graph() -> TestResult<WorkspaceGraph> {
     Ok(WorkspaceGraph {
         schema_version: SchemaVersion::V1,
@@ -90,7 +84,6 @@ fn graph() -> TestResult<WorkspaceGraph> {
         worker_instances: vec![],
     })
 }
-
 fn authority(revision: u64) -> TestResult<AuthorityUpdate> {
     Ok(AuthorityUpdate {
         account_id: id(12)?,
@@ -103,7 +96,6 @@ fn authority(revision: u64) -> TestResult<AuthorityUpdate> {
         evidence_key_id: EvidenceVerifier::new([79; 32])?.key_id(),
     })
 }
-
 fn broker(profile: &Profile) -> TestResult<RuntimeBroker> {
     let mut owner = RuntimeOwner::open_profile(&profile.root, now()?)?;
     owner.state_mut().save_workspace_graph(
@@ -123,7 +115,6 @@ fn broker(profile: &Profile) -> TestResult<RuntimeBroker> {
     broker.update_authority(authority(0)?)?;
     Ok(broker)
 }
-
 fn action() -> TestResult<RecoverableAction> {
     Ok(RecoverableAction {
         operation: NewDurableOperation {
@@ -146,7 +137,6 @@ fn action() -> TestResult<RecoverableAction> {
         compensation: None,
     })
 }
-
 fn stage(broker: &mut RuntimeBroker) -> TestResult<OutboxMessageId> {
     let operation = broker.prepare_action(action()?)?;
     broker.approve_action(
@@ -156,10 +146,12 @@ fn stage(broker: &mut RuntimeBroker) -> TestResult<OutboxMessageId> {
     )?;
     Ok(broker.enqueue_action(operation, 1)?)
 }
-
-fn launch(broker: &mut RuntimeBroker, mode: &str) -> TestResult<WorkerInstanceId> {
-    let path = Path::new(env!("CARGO_BIN_EXE_intent-fixture-worker"));
-    let image = ExecutableImage::load(path, hash(&fs::read(path)?))?;
+fn launch(
+    broker: &mut RuntimeBroker,
+    executable: &Path,
+    args: &[String],
+) -> TestResult<WorkerInstanceId> {
+    let image = ExecutableImage::load(executable, hash(&fs::read(executable)?))?;
     let config = WorkerConfig::new(
         WorkerScope {
             task_id: id(2)?,
@@ -169,14 +161,17 @@ fn launch(broker: &mut RuntimeBroker, mode: &str) -> TestResult<WorkerInstanceId
         [id::<CapabilityId>(13)?],
         Priority::Interactive,
         ProcessLimits::new(128 * 1024 * 1024, 10, 64, 100)?,
-        HealthPolicy::default(),
+        HealthPolicy {
+            stop_grace: Duration::from_secs(2),
+            terminate_grace: Duration::from_secs(2),
+            ..HealthPolicy::default()
+        },
         Duration::from_secs(20),
         RestartPolicy::never(),
         ExecutionBoundary::CooperativeLocal,
     )?;
-    Ok(broker.launch(image, config, &[mode.to_owned()])?)
+    Ok(broker.launch(image, config, args)?)
 }
-
 fn until(broker: &mut RuntimeBroker, predicate: impl Fn(&RuntimeBroker) -> bool) -> TestResult {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -190,7 +185,6 @@ fn until(broker: &mut RuntimeBroker, predicate: impl Fn(&RuntimeBroker) -> bool)
         std::thread::sleep(Duration::from_millis(1));
     }
 }
-
 fn ready(broker: &mut RuntimeBroker, worker: WorkerInstanceId) -> TestResult {
     until(broker, |broker| {
         broker
@@ -198,7 +192,6 @@ fn ready(broker: &mut RuntimeBroker, worker: WorkerInstanceId) -> TestResult {
             .is_ok_and(|snapshot| snapshot.state == WorkerState::Ready)
     })
 }
-
 fn state(broker: &RuntimeBroker) -> TestResult<DurableOperationState> {
     Ok(broker
         .state()
@@ -211,25 +204,35 @@ fn state(broker: &RuntimeBroker) -> TestResult<DurableOperationState> {
 fn late_result_from_revoked_worker_cannot_authorize_replacement_dispatch() -> TestResult {
     let profile = Profile::new()?;
     let mut broker = broker(&profile)?;
-    let old = launch(&mut broker, "late-result")?;
+    let replacement_ready = profile.root.join("replacement-ready");
+    let old_path = Path::new(env!("CARGO_BIN_EXE_intent-stale-result-worker"));
+    let old = launch(
+        &mut broker,
+        old_path,
+        &[replacement_ready.to_string_lossy().into_owned()],
+    )?;
     ready(&mut broker, old)?;
     let outbox = stage(&mut broker)?;
     broker.dispatch(outbox, old, Duration::from_secs(2))?;
     assert_eq!(state(&broker)?, DurableOperationState::Attempting);
-
     let outcomes = broker.cancel_worker(old)?;
     assert_eq!(outcomes.len(), 1);
     assert_eq!(state(&broker)?, DurableOperationState::NeedsReconciliation);
     assert_eq!(broker.inflight_count(), 0);
-
-    let replacement = launch(&mut broker, "normal")?;
+    let replacement_path = Path::new(env!("CARGO_BIN_EXE_intent-fixture-worker"));
+    let replacement = launch(&mut broker, replacement_path, &["normal".to_owned()])?;
     ready(&mut broker, replacement)?;
+    assert_eq!(
+        broker.worker_snapshot(old)?.state,
+        WorkerState::Draining,
+        "the revoked worker must still be waiting to release its late result"
+    );
+    fs::write(&replacement_ready, b"replacement ready")?;
     until(&mut broker, |broker| {
         broker.worker_snapshot(old).is_ok_and(|snapshot| {
             matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
         })
     })?;
-
     assert_eq!(state(&broker)?, DurableOperationState::NeedsReconciliation);
     assert!(
         broker
