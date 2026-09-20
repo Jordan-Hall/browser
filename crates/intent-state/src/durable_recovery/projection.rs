@@ -59,6 +59,17 @@ fn timestamp(value: i64) -> Result<UnixTimestampMicros, RecoveryError> {
     UnixTimestampMicros::try_new(value).map_err(|_| RecoveryError::Integrity("stored outcome time"))
 }
 
+type EvidenceRow = (
+    String,
+    String,
+    Option<String>,
+    Option<Vec<u8>>,
+    String,
+    i64,
+    String,
+    String,
+);
+
 fn validate_action_binding(
     op: &DurableOperation,
     effect: &str,
@@ -195,32 +206,14 @@ fn validate_origin(
     Ok(())
 }
 
-fn load_evidence(
-    db: &Connection,
+fn decode_evidence_row(
     op: &DurableOperation,
     attempt: ExecutionAttempt,
     effect: &str,
     source: &str,
-) -> Result<Option<ExecutionEvidence>, RecoveryError> {
-    type Row = (
-        String,
-        String,
-        Option<String>,
-        Option<Vec<u8>>,
-        String,
-        i64,
-        String,
-        String,
-    );
-    let row: Option<Row> = db.query_row(
-        "SELECT e.evidence_id,e.verdict,e.receipt,CASE WHEN length(e.payload)<=8192 THEN e.payload END,e.payload_hash,e.recorded_at_micros,e.key_id,a.evidence_key_id FROM recovery_evidence e JOIN recovery_attempts a ON a.attempt_id=e.attempt_id AND a.operation_id=e.operation_id WHERE e.operation_id=?1 AND e.attempt_id=?2 ORDER BY CASE e.verdict WHEN 'inconclusive' THEN 1 ELSE 0 END,e.recorded_at_micros DESC,e.evidence_id LIMIT 1",
-        params![op.operation_id().to_string(),attempt.id.to_string()],
-        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?)),
-    ).optional()?;
-    let Some((id, verdict, receipt, payload, payload_hash, recorded, key, attempt_key)) = row
-    else {
-        return Ok(None);
-    };
+    row: EvidenceRow,
+) -> Result<ExecutionEvidence, RecoveryError> {
+    let (id, verdict, receipt, payload, payload_hash, recorded, key, attempt_key) = row;
     let payload = payload.ok_or(RecoveryError::Limit("stored outcome envelope"))?;
     if digest(&payload) != hash(&payload_hash)? || key != attempt_key {
         return Err(RecoveryError::Integrity(
@@ -287,23 +280,48 @@ fn load_evidence(
             "stored evidence outcome columns disagree",
         ));
     }
-    let contradictory: bool = db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM recovery_evidence WHERE operation_id=?1 AND attempt_id=?2 AND verdict!='inconclusive' AND (verdict!=?3 OR receipt IS NOT ?4))",
-        params![op.operation_id().to_string(),attempt.id.to_string(),verdict,receipt], |r| r.get(0),
-    )?;
-    if contradictory {
-        return Err(RecoveryError::Integrity(
-            "contradictory stored final evidence",
-        ));
-    }
-    Ok(Some(ExecutionEvidence {
+    Ok(ExecutionEvidence {
         evidence_id: EvidenceId::from_uuid(value.evidence_id),
         attempt_id: attempt.id,
         payload_hash: hash(&payload_hash)?,
         observed_at: value.observed_at,
         recorded_at,
         outcome,
-    }))
+    })
+}
+
+fn load_evidence(
+    db: &Connection,
+    op: &DurableOperation,
+    attempt: ExecutionAttempt,
+    effect: &str,
+    source: &str,
+) -> Result<Option<ExecutionEvidence>, RecoveryError> {
+    let row: Option<EvidenceRow> = db.query_row(
+        "SELECT e.evidence_id,e.verdict,e.receipt,CASE WHEN length(e.payload)<=8192 THEN e.payload END,e.payload_hash,e.recorded_at_micros,e.key_id,a.evidence_key_id FROM recovery_evidence e JOIN recovery_attempts a ON a.attempt_id=e.attempt_id AND a.operation_id=e.operation_id WHERE e.operation_id=?1 AND e.attempt_id=?2 ORDER BY CASE e.verdict WHEN 'inconclusive' THEN 1 ELSE 0 END,e.recorded_at_micros DESC,e.evidence_id LIMIT 1",
+        params![op.operation_id().to_string(),attempt.id.to_string()],
+        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?)),
+    ).optional()?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let selected = decode_evidence_row(op, attempt, effect, source, row)?;
+    let mut stmt = db.prepare(
+        "SELECT e.evidence_id,e.verdict,e.receipt,CASE WHEN length(e.payload)<=8192 THEN e.payload END,e.payload_hash,e.recorded_at_micros,e.key_id,a.evidence_key_id FROM recovery_evidence e JOIN recovery_attempts a ON a.attempt_id=e.attempt_id AND a.operation_id=e.operation_id WHERE e.operation_id=?1 AND e.attempt_id=?2 AND e.verdict!='inconclusive' ORDER BY e.recorded_at_micros,e.evidence_id",
+    )?;
+    let rows = stmt.query_map(
+        params![op.operation_id().to_string(), attempt.id.to_string()],
+        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?)),
+    )?;
+    for row in rows {
+        let candidate = decode_evidence_row(op, attempt, effect, source, row?)?;
+        if candidate.outcome != selected.outcome {
+            return Err(RecoveryError::Integrity(
+                "contradictory stored final evidence",
+            ));
+        }
+    }
+    Ok(Some(selected))
 }
 
 fn load_compensation(
