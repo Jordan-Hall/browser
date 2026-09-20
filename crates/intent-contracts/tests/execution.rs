@@ -106,6 +106,26 @@ fn accepted_verified_and_inconclusive_cannot_be_relabelled() -> Result {
 }
 
 #[test]
+fn verified_compensation_phase_requires_write_evidence() -> Result {
+    let mut data = sent()?;
+    data.stage = ExecutionStage::Verified;
+    data.phase = ExecutionPhase::Compensation {
+        original_operation_id: OperationId::from_uuid(Uuid::from_u128(20)),
+        original_attempt_id: OperationAttemptId::from_uuid(Uuid::from_u128(21)),
+        original_receipt: ContentHash::from_bytes([22; 32]),
+    };
+    data.evidence = Some(evidence(ExecutionOutcome::ReadCompleted {
+        capture: ContentHash::from_bytes([23; 32]),
+    })?);
+    assert!(record(data.clone()).is_err());
+    data.evidence = Some(evidence(ExecutionOutcome::ExternalCommitted {
+        receipt: ContentHash::from_bytes([24; 32]),
+    })?);
+    assert!(record(data).is_ok());
+    Ok(())
+}
+
+#[test]
 fn execution_import_rejects_unknown_fields_and_broken_attempt_bindings() -> Result {
     let encoded = serde_json::to_value(record(sent()?)?)?;
     for (key, value) in [
