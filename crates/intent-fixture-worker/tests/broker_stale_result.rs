@@ -169,10 +169,9 @@ fn stage(broker: &mut RuntimeBroker) -> TestResult<OutboxMessageId> {
 }
 fn launch(
     broker: &mut RuntimeBroker,
-    executable: &Path,
+    image: ExecutableImage,
     args: &[String],
 ) -> TestResult<WorkerInstanceId> {
-    let image = ExecutableImage::load(executable, hash(&fs::read(executable)?))?;
     let config = WorkerConfig::new(
         WorkerScope {
             task_id: id(2)?,
@@ -227,9 +226,13 @@ fn late_result_from_revoked_worker_cannot_authorize_replacement_dispatch() -> Te
     let mut broker = broker(&profile)?;
     let replacement_ready = profile.root.join("replacement-ready");
     let old_path = Path::new(env!("CARGO_BIN_EXE_intent-stale-result-worker"));
+    let replacement_path = Path::new(env!("CARGO_BIN_EXE_intent-fixture-worker"));
+    let old_image = ExecutableImage::load(old_path, hash(&fs::read(old_path)?))?;
+    let replacement_image =
+        ExecutableImage::load(replacement_path, hash(&fs::read(replacement_path)?))?;
     let old = launch(
         &mut broker,
-        old_path,
+        old_image,
         &[replacement_ready.to_string_lossy().into_owned()],
     )?;
     ready(&mut broker, old)?;
@@ -240,8 +243,7 @@ fn late_result_from_revoked_worker_cannot_authorize_replacement_dispatch() -> Te
     assert_eq!(outcomes.len(), 1);
     assert_eq!(state(&broker)?, DurableOperationState::NeedsReconciliation);
     assert_eq!(broker.inflight_count(), 0);
-    let replacement_path = Path::new(env!("CARGO_BIN_EXE_intent-fixture-worker"));
-    let replacement = launch(&mut broker, replacement_path, &["normal".to_owned()])?;
+    let replacement = launch(&mut broker, replacement_image, &["normal".to_owned()])?;
     ready(&mut broker, replacement)?;
     assert_eq!(
         broker.worker_snapshot(old)?.state,
@@ -249,6 +251,14 @@ fn late_result_from_revoked_worker_cannot_authorize_replacement_dispatch() -> Te
         "the revoked worker must still be waiting to release its late result"
     );
     fs::write(&replacement_ready, b"replacement ready")?;
+    std::thread::sleep(Duration::from_millis(30));
+    until(&mut broker, |broker| {
+        broker.worker_snapshot(old).is_ok_and(|snapshot| {
+            (snapshot.cancellation_acknowledged && snapshot.late_messages >= 1)
+                || matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+        })
+    })?;
+    fs::write(replacement_ready.with_extension("release"), [])?;
     until(&mut broker, |broker| {
         broker.worker_snapshot(old).is_ok_and(|snapshot| {
             matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)

@@ -20,6 +20,12 @@ use std::{
 use uuid::Uuid;
 
 type TestResult = Result<(), Box<dyn Error>>;
+struct Markers(std::path::PathBuf);
+impl Drop for Markers {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 fn scope() -> WorkerScope {
     WorkerScope {
         account_id: AccountId::from_uuid(Uuid::new_v4()),
@@ -68,6 +74,25 @@ fn supervisor(workers: usize) -> Result<Supervisor, SupervisorError> {
             [0; 2],
         )?,
         SchedulerLimits::default(),
+    )
+}
+fn observed_stop_config(
+    scope: WorkerScope,
+    capability: CapabilityId,
+) -> Result<WorkerConfig, SupervisorError> {
+    WorkerConfig::new(
+        scope,
+        WorkerRole::FixtureWorker,
+        [capability],
+        Priority::Background,
+        limits()?,
+        HealthPolicy {
+            stop_grace: Duration::from_secs(5),
+            ..HealthPolicy::default()
+        },
+        Duration::from_secs(20),
+        RestartPolicy::never(),
+        ExecutionBoundary::CooperativeLocal,
     )
 }
 fn until(
@@ -286,19 +311,27 @@ fn heartbeats_do_not_mask_stalled_work() -> TestResult {
 
 #[test]
 fn stop_revokes_both_worker_generations_without_waiting_for_saturated_progress() -> TestResult {
+    let markers =
+        Markers(std::env::temp_dir().join(format!("intent-flood-stop-{}", Uuid::new_v4())));
+    std::fs::create_dir(&markers.0)?;
+    let release = markers.0.join("release");
+    let args = [
+        "flood".to_owned(),
+        release.to_str().ok_or("non-UTF8 release path")?.to_owned(),
+    ];
     let mut supervisor = supervisor(3)?;
     let shared = scope();
     let capability = cap();
     let approved = image()?;
     let first = supervisor.launch(
         approved.clone(),
-        config(shared, capability)?,
-        &["flood".to_owned()],
+        observed_stop_config(shared, capability)?,
+        &args,
     )?;
     let second = supervisor.launch(
         approved.clone(),
-        config(shared, capability)?,
-        &["flood".to_owned()],
+        observed_stop_config(shared, capability)?,
+        &args,
     )?;
     let other = supervisor.launch(approved, config(scope(), capability)?, &[])?;
     ready(&mut supervisor, first)?;
@@ -315,6 +348,15 @@ fn stop_revokes_both_worker_generations_without_waiting_for_saturated_progress()
     assert!(first_lease.is_revoked());
     assert!(second_lease.is_revoked());
     assert!(!supervisor.lease(other)?.is_revoked());
+    for worker in [first, second] {
+        until(
+            &mut supervisor,
+            worker,
+            Duration::from_secs(2),
+            |snapshot| snapshot.cancellation_acknowledged,
+        )?;
+    }
+    std::fs::write(release, [])?;
     let first_snapshot = terminal(&mut supervisor, first)?;
     let second_snapshot = terminal(&mut supervisor, second)?;
     assert!(first_snapshot.cancellation_acknowledged);
@@ -332,6 +374,126 @@ fn stop_revokes_both_worker_generations_without_waiting_for_saturated_progress()
     assert_eq!(supervisor.snapshot(other)?.state, WorkerState::Ready);
     supervisor.cancel(other, cancel_id())?;
     terminal(&mut supervisor, other)?;
+    Ok(())
+}
+
+#[test]
+fn cancellation_acknowledgements_precede_draining_measured_progress_backlogs() -> TestResult {
+    const MAX_LOCALLY_QUEUED_PROGRESS_FRAMES: u64 = 1;
+    let markers =
+        Markers(std::env::temp_dir().join(format!("intent-progress-pressure-{}", Uuid::new_v4())));
+    std::fs::create_dir(&markers.0)?;
+    let start = markers.0.join("start");
+    let reports = [markers.0.join("first"), markers.0.join("second")];
+    let mut supervisor = supervisor(3)?;
+    let shared = scope();
+    let capability = cap();
+    let approved = image()?;
+    let pressure_config = observed_stop_config(shared, capability)?;
+    let mut workers = Vec::new();
+    for report in &reports {
+        workers.push(supervisor.launch(
+            approved.clone(),
+            pressure_config.clone(),
+            &[
+                "progress-pressure".to_owned(),
+                start.to_str().ok_or("non-UTF8 start path")?.to_owned(),
+                report.to_str().ok_or("non-UTF8 report path")?.to_owned(),
+            ],
+        )?);
+    }
+    let other = supervisor.launch(approved, config(scope(), capability)?, &[])?;
+    for &worker in workers.iter().chain(std::iter::once(&other)) {
+        ready(&mut supervisor, worker)?;
+    }
+    let leases = workers
+        .iter()
+        .map(|&worker| supervisor.lease(worker))
+        .collect::<Result<Vec<_>, _>>()?;
+    std::fs::write(&start, [])?;
+    let pressure_deadline = Instant::now() + Duration::from_secs(3);
+    while !reports.iter().all(|report| report.is_file()) {
+        if Instant::now() >= pressure_deadline {
+            return Err("workers did not report progress backpressure".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let admitted = reports
+        .iter()
+        .map(|report| Ok(std::fs::read_to_string(report)?.parse::<u64>()?))
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+    assert!(admitted.iter().all(|&count| count > 1));
+
+    let started = Instant::now();
+    let receipts = supervisor.cancel_task(shared.task_id, cancel_id());
+    let revoked_after = started.elapsed();
+    assert_eq!(receipts.len(), 2);
+    assert!(leases.iter().all(|lease| lease.is_revoked()));
+    assert!(!supervisor.lease(other)?.is_revoked());
+    assert!(revoked_after < Duration::from_millis(250));
+
+    supervisor.poll();
+    std::thread::sleep(Duration::from_millis(30));
+    let mut acknowledgements = [None, None];
+    while acknowledgements.iter().any(Option::is_none) {
+        supervisor.poll();
+        for (index, &worker) in workers.iter().enumerate() {
+            let snapshot = supervisor.snapshot(worker)?;
+            if !snapshot.cancellation_acknowledged
+                && matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+            {
+                return Err(format!(
+                    "worker exited before acknowledgement was observed: {snapshot:?}"
+                )
+                .into());
+            }
+            if acknowledgements[index].is_none() && snapshot.cancellation_acknowledged {
+                assert!(
+                    snapshot.late_messages + MAX_LOCALLY_QUEUED_PROGRESS_FRAMES < admitted[index],
+                    "worker drained progress before acknowledging cancellation: {snapshot:?}; admitted={}",
+                    admitted[index]
+                );
+                acknowledgements[index] = Some(snapshot.late_messages);
+                std::fs::write(reports[index].with_extension("release"), [])?;
+            }
+        }
+        if started.elapsed() >= Duration::from_secs(2) {
+            return Err(
+                "cancellation acknowledgements timed out under measured backpressure".into(),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let acknowledged_after = started.elapsed();
+    for &worker in &workers {
+        let stopped = terminal(&mut supervisor, worker)?;
+        assert_eq!(stopped.state, WorkerState::Stopped);
+        assert_eq!(stopped.exit_code, Some(0));
+        assert!(!stopped.stop_escalated);
+    }
+    let request = submit(&mut supervisor, other, capability, Duration::from_secs(2))?;
+    until(&mut supervisor, other, Duration::from_secs(3), |snapshot| {
+        snapshot.retained_observations == 1
+    })?;
+    let result = supervisor
+        .take_result(other, request)?
+        .ok_or("missing independent result")?;
+    assert_eq!(result.request_id, request);
+    assert_eq!(result.generation, other);
+    supervisor.cancel(other, cancel_id())?;
+    terminal(&mut supervisor, other)?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "scenario": "two_measured_progress_backlogs",
+            "admitted_frames": admitted,
+            "drained_frames_at_ack": acknowledgements,
+            "local_revoke_microseconds": revoked_after.as_micros(),
+            "both_acknowledged_microseconds": acknowledged_after.as_micros(),
+            "independent_worker_completed": true,
+            "production_latency_qualification": false
+        })
+    );
     Ok(())
 }
 

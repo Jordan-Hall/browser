@@ -219,10 +219,11 @@
       "title": "Wire cancellation, deadlines and backpressure",
       "implementation_prs": [
         791,
-        805
+        805,
+        843
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; the source is published in #805.",
+      "remaining": "PR #843 verifies local outbound cancellation under reserved queue pressure and acknowledgement before measured progress backlogs drain in real workers. Required artifact delivery, identical-registration reuse after retirement, complete byte/accounting baseline, real-provider integration, product control latency and independent whole-task acceptance remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -249,6 +250,19 @@
           ],
           "scope": "Linux approved/cooperative worker process boundary and executed local and GitHub CI regressions; not external-effect authorization or whole-task acceptance.",
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
+        },
+        {
+          "publication": "published",
+          "source_files": [
+            "crates/intent-fixture-worker/src/main.rs",
+            "crates/intent-fixture-worker/src/progress_pressure.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Two real Linux workers report progress backpressure before task cancellation; acknowledgements precede measured backlog draining and an independent worker completes work. PR #843 verifies the code with strict checks, native platform CI and parser fuzz jobs. No whole-task acceptance or production latency qualification.",
+          "commit": "ceb2ac1501a2fa34b54de9b9193b406d86f3233c",
+          "verification_report": "docs/verification/core-cancellation-ci-20260920.json"
         }
       ]
     },

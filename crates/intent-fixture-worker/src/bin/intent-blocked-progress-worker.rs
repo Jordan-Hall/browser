@@ -65,7 +65,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .with_cancellation_id(cancellation_id),
                     )?;
-                    std::thread::sleep(Duration::from_millis(15));
+                    let release = std::path::Path::new(&marker).with_extension("release");
+                    let release_deadline = Instant::now() + Duration::from_secs(3);
+                    while !release.try_exists()? {
+                        if Instant::now() >= release_deadline {
+                            return Err(
+                                "parent did not observe cancellation acknowledgement".into()
+                            );
+                        }
+                        client.poll_control()?;
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
                     return Ok(());
                 }
                 _ => return Err("invalid blocked-progress fixture message".into()),

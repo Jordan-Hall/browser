@@ -4,6 +4,9 @@
 mod broker_effect;
 
 #[cfg(target_os = "linux")]
+mod progress_pressure;
+
+#[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use intent_contracts::{TraceId, UnixTimestampMicros};
     use intent_ipc::{Envelope, EnvelopeKind};
@@ -18,6 +21,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<_> = std::env::args().skip(1).take(17).collect();
     let mode = args.first().map(String::as_str).unwrap_or("normal");
+    let mut progress_pressure = if mode == "progress-pressure" {
+        Some(progress_pressure::ProgressPressure::new(
+            args.get(1).ok_or("missing pressure start path")?,
+            args.get(2).ok_or("missing pressure report path")?,
+        ))
+    } else {
+        None
+    };
+    let cancellation_release = match mode {
+        "progress-pressure" => args
+            .get(2)
+            .map(|path| std::path::Path::new(path).with_extension("release")),
+        "flood" => args.get(1).map(std::path::PathBuf::from),
+        _ => None,
+    };
     let packet = WorkerClient::read_bootstrap(&mut std::io::stdin().lock())?;
     if mode == "inherited-fd-probe" {
         let expected_absent = args.get(1).ok_or("missing descriptor target")?;
@@ -163,6 +181,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = child.kill();
                         let _ = child.wait();
                     }
+                    if let Some(release) = &cancellation_release {
+                        let deadline = Instant::now() + Duration::from_secs(3);
+                        while !release.try_exists()? {
+                            let _ = client.poll_control()?;
+                            if Instant::now() >= deadline {
+                                return Err(
+                                    "parent did not observe cancellation acknowledgement".into()
+                                );
+                            }
+                            std::thread::sleep(Duration::from_millis(1));
+                        }
+                        return Ok(());
+                    }
                     // Leave time for the supervisor to consume the acknowledgement before exit.
                     std::thread::sleep(Duration::from_millis(15));
                     return Ok(());
@@ -271,6 +302,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             std::io::stdout().write_all(&[b'x'; 4096])?;
             std::io::stderr().write_all(&[b'y'; 4096])?;
+        }
+        if let Some(pressure) = &mut progress_pressure {
+            pressure.poll(&mut client)?;
         }
         if mode != "flood" {
             std::thread::sleep(Duration::from_millis(1));

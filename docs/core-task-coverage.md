@@ -57,3 +57,7 @@ PR #813 adds exact schema validators, all 13 v1 record fixtures, explicit JSON e
 ## Branch consolidation
 
 Both task and workspace checkpoint implementations are retained. See `docs/branch-consolidation-20260918.md`. Merging unfinished work does not establish acceptance or production readiness.
+
+## Measured cancellation backpressure
+
+[PR #843](https://github.com/Jordan-Hall/browser/pull/843) verifies cancellation acknowledgement before measured progress backlogs drain in two real Linux workers. Its fixtures wait for parent-observed final messages before exit. The [CI report](verification/core-cancellation-ci-20260920.json) records successful remote native checks and parser fuzz jobs at the exact source head. Earlier local timing failures remain in their original reports. No whole-task acceptance follows from this increment.

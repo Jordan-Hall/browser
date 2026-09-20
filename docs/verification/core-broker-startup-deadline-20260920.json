@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "scope": "Separate broker subprocess setup from the original crash-phase deadline",
+  "base_commit": "f258485886c312f2b959b3fd840d1d9d488e51b7",
+  "upstream_main": "f0763c7",
+  "source_sha256": {
+    "crates/intent-fixture-worker/tests/broker.rs": "22f24e2c803a6c591c6871217a32382d3b88853001e9132ca7269af4238a2516",
+    "Cargo.lock": "0e91be48e5f30e41b1a2d0dde422ff1b941fde4eedc86deeccc559dc3feb861f"
+  },
+  "environment": {
+    "rust": "1.98.1",
+    "platform": "Linux WSL2 x86_64",
+    "test_threads": 4
+  },
+  "checks": {
+    "old_combined_deadline": "Nine-second setup delay failed the old eight-second deadline before staging",
+    "setup_delay": "Nine-second delay before broker open passed both before-send and after-effect crash phases",
+    "scenario_delay": "Nine-second delay after parent start was rejected waiting for kill-marker at the unchanged eight-second deadline",
+    "format": "passed",
+    "strict_clippy": "passed for supervisor and fixture worker, all targets and features",
+    "broker_tests": "16 passed, 0 failed",
+    "concurrent_suite": "73 passed, 2 failed, 1 ignored process helper invoked by its passing parent",
+    "concurrent_failures": [
+      "blocked_progress_cancellation::task_cancellation_crosses_two_real_busy_worker_boundaries: cancellation_acknowledged assertion",
+      "broker_stale_result::late_result_from_revoked_worker_cannot_authorize_replacement_dispatch: withheld late result not observed"
+    ]
+  },
+  "evidence_sha256": {
+    "target/broker-startup-before.log": "c9515bac3d2c19b5bec30da45f8b1dc70218593da5e7ab36fbe623dc26c939e4",
+    "target/broker-startup-verification.log": "5ab2f0be326088a75fcf62489b67d74af029705dcf1657b877ed34548618ea81",
+    "target/verify-broker-startup.sh": "de64ba021d15c85da5e861065191f6b7a4f3221009087c3ae2c6240f960a6640"
+  },
+  "review": "Independent readonly review by gpt-5.6-sol found no broker-handshake defect and flagged the failing concurrent targets",
+  "limitations": [
+    "Local verification only; no remote CI or native Windows/macOS process qualification",
+    "Concurrent suite is not green; both unrelated failures require follow-up",
+    "No CORE task acceptance or production readiness claimed"
+  ]
+}
