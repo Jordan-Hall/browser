@@ -49,5 +49,18 @@
   "limits": [
     "The first Linux wrapper exited 101 because a CRLF terminated the final package argument; LF-normalized rerun passed",
     "This test-only change does not independently accept the whole task or establish production readiness"
-  ]
+  ],
+  "published_verification": {
+    "source_commit": "7c602115935b778646312a4f1521e0322f1411b4",
+    "tested_merge_commit": "921d2194ae7bf5f253121d5a5f0a9fbc57214283",
+    "pr": "https://github.com/Jordan-Hall/browser/pull/845",
+    "ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35503204777",
+    "fuzz_run": "https://github.com/Jordan-Hall/browser/actions/runs/35503204786",
+    "result": "Rust checks, native Ubuntu/Windows/macOS jobs and all three bounded parser fuzz jobs succeeded",
+    "artifact_id": 10602793088,
+    "artifact_name": "core-verification-35503204777-1",
+    "source_files_matched": 239,
+    "source_archive_sha256": "1d5fdb7d7fde2c7c6ab5797d08c4c962a42f8b561b1e034f203e4e65813c770c",
+    "verification_sha256": "ce36d7b5f795b3c4f67bd2e846bd3b22ca88874c9235f157cd9dac362666e01f"
+  }
 }
