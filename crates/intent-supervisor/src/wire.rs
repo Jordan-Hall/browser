@@ -204,6 +204,7 @@ pub(crate) struct FramedSocket {
     offset: usize,
     length: usize,
     outgoing: Option<Outgoing>,
+    outgoing_reserved: bool,
     reserved_outgoing: Option<Outgoing>,
     reserve_next: bool,
 }
@@ -217,6 +218,7 @@ impl FramedSocket {
             offset: 0,
             length: 0,
             outgoing: None,
+            outgoing_reserved: false,
             reserved_outgoing: None,
             reserve_next: false,
         })
@@ -273,6 +275,7 @@ impl FramedSocket {
             return Err(SupervisorError::QueueFull);
         }
         self.outgoing = Some(Outgoing { bytes, offset: 0 });
+        self.outgoing_reserved = false;
         self.reserve_next = false;
         Ok(())
     }
@@ -280,11 +283,12 @@ impl FramedSocket {
         if bytes.len() > MAX_PACKET_BYTES + 5 {
             return Err(SupervisorError::Protocol);
         }
-        if self.reserved_outgoing.is_some() {
+        if self.outgoing_reserved || self.reserved_outgoing.is_some() {
             return Err(SupervisorError::QueueFull);
         }
         if self.outgoing.is_none() {
             self.outgoing = Some(Outgoing { bytes, offset: 0 });
+            self.outgoing_reserved = true;
         } else {
             self.reserved_outgoing = Some(Outgoing { bytes, offset: 0 });
         }
@@ -303,6 +307,7 @@ impl FramedSocket {
                 if self.outgoing.is_none() {
                     return Ok(());
                 }
+                self.outgoing_reserved = true;
             }
             let Some(outgoing) = self.outgoing.as_mut() else {
                 continue;
@@ -318,6 +323,7 @@ impl FramedSocket {
                     remaining = remaining.saturating_sub(sent);
                     if outgoing.offset == outgoing.bytes.len() {
                         self.outgoing = None;
+                        self.outgoing_reserved = false;
                         continue;
                     }
                 }
@@ -344,6 +350,7 @@ impl FramedSocket {
             return false;
         }
         self.outgoing = None;
+        self.outgoing_reserved = false;
         self.reserve_next = false;
         true
     }
@@ -381,6 +388,7 @@ impl std::fmt::Debug for FramedSocket {
                     .as_ref()
                     .map(|m| m.bytes.len().saturating_sub(m.offset)),
             )
+            .field("outgoing_reserved", &self.outgoing_reserved)
             .field(
                 "reserved_outgoing_bytes",
                 &self
@@ -418,6 +426,24 @@ mod tests {
         assert_eq!(budget.consumed(), 8192);
         assert_eq!(complete, 2);
         drop(senders);
+        Ok(())
+    }
+
+    #[test]
+    fn reserved_control_from_idle_still_uses_exactly_one_slot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, _peer) = UnixStream::pair()?;
+        let mut sender = FramedSocket::new(stream)?;
+        let first = Frame::new(intent_ipc::FrameLane::Control, vec![7; 8]).encode(wire_limits())?;
+        let second = Frame::new(intent_ipc::FrameLane::Control, vec![8; 8]).encode(wire_limits())?;
+
+        sender.queue_reserved(first)?;
+        assert!(sender.outgoing_reserved);
+        sender.flush(0)?;
+        assert!(matches!(
+            sender.queue_reserved(second),
+            Err(SupervisorError::QueueFull)
+        ));
         Ok(())
     }
 
