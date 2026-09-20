@@ -160,9 +160,9 @@ impl RuntimeOwner {
         tx.commit()?;
         Ok(())
     }
-    /// Durable cancellation linearization point. Revoke the worker first in the same writer
-    /// transaction that retires its unstarted claims and marks already-started effects uncertain.
-    /// The caller must commit this before notifying or terminating the worker.
+    /// Durable cancellation linearization point for work that has not started dispatch. Revoke
+    /// the worker and retire its unstarted claims in one writer transaction before notification.
+    /// Already-started attempts are retained for the caller's reconciliation path.
     pub fn revoke_worker(
         &mut self,
         worker: intent_contracts::WorkerInstanceId,
@@ -237,45 +237,6 @@ impl RuntimeOwner {
             )?;
         }
 
-        let started = {
-            let mut statement = tx.prepare(
-                "SELECT operation_id,attempt_id,outbox_id FROM recovery_attempts \
-                 WHERE worker_id=?1 AND runtime_epoch=?2 AND started_at_micros IS NOT NULL \
-                 ORDER BY operation_id",
-            )?;
-            statement
-                .query_map(params![worker.to_string(), self.epoch.to_string()], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                })?
-                .collect::<Result<Vec<_>, _>>()?
-        };
-        for (operation, attempt, outbox) in started {
-            let operation_id = dispatch::parse(&operation)?;
-            let attempt_id = dispatch::parse(&attempt)?;
-            let op = load(&tx, operation_id)?;
-            if op.attempt_identity() != Some(attempt_id) {
-                continue;
-            }
-            if op.state() == DurableOperationState::Attempting {
-                tx.execute(
-                    "UPDATE outbox_messages SET state='completed',completed_at_micros=?2,updated_at_micros=?2 \
-                     WHERE outbox_id=?1 AND state='attempting'",
-                    params![outbox, now.get()],
-                )?;
-                transition(
-                    &tx,
-                    &op,
-                    DurableOperationState::NeedsReconciliation,
-                    Some(attempt_id),
-                    now,
-                    "worker revoked after dispatch start; external outcome uncertain",
-                )?;
-            }
-        }
         tx.execute(
             "DELETE FROM recovery_claims WHERE worker_id=?1 AND runtime_epoch=?2",
             params![worker.to_string(), self.epoch.to_string()],
