@@ -32,11 +32,39 @@ def _bounded(message: str) -> str:
 def _rust_function_attributes(path: Path, name: str) -> str | None:
     source = path.read_text(encoding="utf-8")
     match = re.search(
-        rf"(?P<attrs>(?:^[ \t]*#\[[^\n]+\][ \t]*\n)*)^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*(?:<[^>]*>)?[ \t]*\(",
+        rf"^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*(?:<[^>]*>)?[ \t]*\(",
         source,
         re.MULTILINE,
     )
-    return None if match is None else match.group("attrs")
+    if match is None:
+        return None
+    cursor = match.start()
+    attributes: list[str] = []
+    while cursor > 0:
+        end = cursor
+        while end > 0 and source[end - 1].isspace():
+            end -= 1
+        if end == 0 or source[end - 1] != "]":
+            break
+        depth = 0
+        start = None
+        index = end - 1
+        while index >= 0:
+            if source[index] == "]":
+                depth += 1
+            elif source[index] == "[":
+                depth -= 1
+                if depth == 0:
+                    if index > 0 and source[index - 1] == "#":
+                        start = index - 1
+                    break
+            index -= 1
+        if start is None:
+            break
+        attributes.append(source[start:end])
+        cursor = start
+    attributes.reverse()
+    return "\n".join(attributes)
 
 
 def _repo_file(root: Path, relative: str, evidence_id: str) -> Path:
@@ -229,9 +257,6 @@ def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
             if evidence_class in {"unit", "subprocess"}:
                 if re.search(r"#\[test\]", attributes) is None:
                     raise GateError(f"{evidence_id} does not reference a #[test] function")
-                # Conservatively reject any ignore-bearing attribute, including
-                # reason-bearing and cfg_attr forms, rather than guessing which
-                # conditional expression is active on this platform.
                 if re.search(r"\bignore\b", attributes) is not None:
                     raise GateError(f"{evidence_id} references a conditionally or explicitly ignored test")
                 if not isinstance(inventory_name, str) or not inventory_name:
@@ -257,6 +282,19 @@ def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
                 if not isinstance(fixture, str):
                     raise GateError(f"{evidence_id} has invalid fixture path")
                 _repo_file(root, fixture, evidence_id)
+            conformance_checks = item.get("conformance_checks")
+            if evidence_class == "conformance":
+                if step != "conformance":
+                    raise GateError(f"{evidence_id} must use the conformance execution step")
+                if (
+                    not isinstance(conformance_checks, list)
+                    or not conformance_checks
+                    or not all(isinstance(check, str) and check for check in conformance_checks)
+                    or len(conformance_checks) != len(set(conformance_checks))
+                ):
+                    raise GateError(f"{evidence_id} must name unique executable conformance_checks")
+            elif conformance_checks is not None:
+                raise GateError(f"{evidence_id} has conformance_checks for non-conformance evidence")
             definition = (
                 evidence_class,
                 step,
@@ -266,6 +304,7 @@ def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
                 cargo_target,
                 fixture,
                 tuple(targets),
+                tuple(conformance_checks) if conformance_checks is not None else None,
             )
             previous = evidence_definitions.get(evidence_id)
             if previous is not None and previous != definition:
@@ -290,6 +329,7 @@ def build_report(
     commit: str,
     steps: Any,
     test_inventory: dict[str, set[str]],
+    conformance_checks: dict[str, bool],
 ) -> tuple[dict[str, Any], bool]:
     if not COMMIT_RE.fullmatch(commit):
         raise GateError("commit must be an exact 40-character lowercase SHA")
@@ -297,6 +337,8 @@ def build_report(
         raise GateError("CORE_STEP_RESULTS must be a JSON object")
     if not isinstance(test_inventory, dict):
         raise GateError("test inventory must preserve Cargo target provenance")
+    if not isinstance(conformance_checks, dict):
+        raise GateError("conformance report must preserve executable check identities")
     invariants = validate_manifest(manifest, root)
     results: list[dict[str, Any]] = []
     overall = True
@@ -324,6 +366,17 @@ def build_report(
                     and evidence["inventory_name"] in target_tests
                     else "missing"
                 )
+            check_results = None
+            if supported and evidence["evidence_class"] == "conformance":
+                check_results = {
+                    name: conformance_checks.get(name)
+                    for name in evidence["conformance_checks"]
+                }
+                inventory_result = (
+                    "present"
+                    if all(result is True for result in check_results.values())
+                    else "missing_or_failed"
+                )
             passed = (
                 supported
                 and outcome == "success"
@@ -338,6 +391,7 @@ def build_report(
                     "test_name": evidence["test_name"],
                     "inventory_name": evidence.get("inventory_name"),
                     "inventory_target": inventory_target,
+                    "conformance_checks": check_results,
                     "fixture": evidence.get("fixture"),
                     "supported_targets": evidence["supported_targets"],
                     "tested_revision": commit if supported else None,
@@ -416,6 +470,32 @@ def parse_test_inventory(path: Path) -> dict[str, set[str]]:
     return inventories
 
 
+def parse_conformance_report(path: Path) -> dict[str, bool]:
+    if not path.is_file():
+        raise GateError("executable conformance report is missing")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(report, dict)
+        or report.get("format_version") != 1
+        or not isinstance(report.get("checks"), list)
+    ):
+        raise GateError("invalid executable conformance report")
+    checks: dict[str, bool] = {}
+    for check in report["checks"]:
+        if not isinstance(check, dict):
+            raise GateError("conformance check must be an object")
+        name = check.get("name")
+        passed = check.get("passed")
+        if not isinstance(name, str) or not name or type(passed) is not bool:
+            raise GateError("invalid conformance check identity or result")
+        if name in checks:
+            raise GateError(f"duplicate conformance check: {name}")
+        checks[name] = passed
+    if not checks:
+        raise GateError("executable conformance report contains no checks")
+    return checks
+
+
 def write_report(path: Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -430,6 +510,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--commit", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--test-inventory", type=Path, required=True)
+    parser.add_argument(
+        "--conformance-report",
+        type=Path,
+        default=Path("target/conformance/core-contracts.json"),
+    )
     return parser.parse_args()
 
 
@@ -442,8 +527,15 @@ def main() -> int:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         steps = json.loads(os.environ.get("CORE_STEP_RESULTS", "{}"))
         inventory = parse_test_inventory(args.test_inventory)
+        conformance_checks = parse_conformance_report(args.conformance_report)
         report, passed = build_report(
-            manifest, root, args.platform, args.commit, steps, inventory
+            manifest,
+            root,
+            args.platform,
+            args.commit,
+            steps,
+            inventory,
+            conformance_checks,
         )
     except (GateError, json.JSONDecodeError, OSError, UnicodeError) as error:
         report = {

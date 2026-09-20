@@ -32,6 +32,11 @@ class GateFollowupTests(unittest.TestCase):
             inventory.mkdir()
             (inventory / "p--lib.txt").write_text("case: test\n1 test, 0 benchmarks\n")
             (inventory / "p--lib.ignored").write_text("0 tests, 0 benchmarks\n")
+            conformance = directory / "conformance.json"
+            conformance.write_text(json.dumps({
+                "format_version": 1,
+                "checks": [{"name": "placeholder", "passed": True}],
+            }))
             for index, value in enumerate(cases):
                 with self.subTest(index=index):
                     manifest = directory / "manifest.json"
@@ -41,6 +46,7 @@ class GateFollowupTests(unittest.TestCase):
                         [sys.executable, str(ROOT / "scripts/core_conformance_gate.py"),
                          "--manifest", str(manifest), "--platform", "ubuntu-24.04",
                          "--commit", "a" * 40, "--test-inventory", str(inventory),
+                         "--conformance-report", str(conformance),
                          "--output", str(report)], cwd=ROOT, capture_output=True,
                         text=True, timeout=10, check=False,
                         env={**os.environ, "CORE_STEP_RESULTS": "{}"},
@@ -59,6 +65,22 @@ class GateFollowupTests(unittest.TestCase):
             (root / "p--lib.ignored").write_text("other: test\n1 test, 0 benchmarks\n")
             with self.assertRaises(GATE.GateError):
                 GATE.parse_test_inventory(root)
+
+    def test_multiline_attribute_block_is_visible_to_source_validation(self):
+        source = '''#[cfg_attr(
+    all(),
+    ignore = "multiline reason"
+)]
+#[test]
+fn case() {}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "case.rs"
+            path.write_text(source)
+            attributes = GATE._rust_function_attributes(path, "case")
+            self.assertIsNotNone(attributes)
+            self.assertIn("ignore", attributes)
+            self.assertIn("#[test]", attributes)
 
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust to verify effective ignores")
     def test_real_harness_ignored_forms_are_never_credited(self):

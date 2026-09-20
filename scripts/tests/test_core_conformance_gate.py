@@ -30,17 +30,20 @@ class CoreConformanceGateTests(unittest.TestCase):
         }
         self.commit = "a" * 40
         self.inventory = {}
+        self.conformance_checks = {}
         for invariant in self.manifest["invariants"]:
             for item in invariant["evidence"]:
-                if item["evidence_class"] not in {"unit", "subprocess"}:
-                    continue
-                target = GATE._cargo_target(item, item["id"])
-                key = GATE._target_inventory_id(target)
-                self.inventory.setdefault(key, set()).add(item["inventory_name"])
+                if item["evidence_class"] in {"unit", "subprocess"}:
+                    target = GATE._cargo_target(item, item["id"])
+                    key = GATE._target_inventory_id(target)
+                    self.inventory.setdefault(key, set()).add(item["inventory_name"])
+                elif item["evidence_class"] == "conformance":
+                    for check in item["conformance_checks"]:
+                        self.conformance_checks[check] = True
 
     def test_current_manifest_is_complete_and_success_is_revision_bound(self):
         report, passed = GATE.build_report(
-            self.manifest, ROOT, "ubuntu-24.04", self.commit, self.steps, self.inventory
+            self.manifest, ROOT, "ubuntu-24.04", self.commit, self.steps, self.inventory, self.conformance_checks
         )
         self.assertTrue(passed)
         self.assertTrue(report["checks_passed"])
@@ -56,10 +59,18 @@ class CoreConformanceGateTests(unittest.TestCase):
             evidence
             for invariant in report["invariants"]
             for evidence in invariant["evidence"]
-            if evidence["test_inventory"] != "not_applicable"
+            if evidence["class"] in {"unit", "subprocess"}
         ]
         self.assertTrue(test_evidence)
         self.assertTrue(all(item["inventory_target"] for item in test_evidence))
+        conformance_evidence = [
+            evidence
+            for invariant in report["invariants"]
+            for evidence in invariant["evidence"]
+            if evidence["class"] == "conformance"
+        ]
+        self.assertTrue(conformance_evidence)
+        self.assertTrue(all(evidence["conformance_checks"] for evidence in conformance_evidence))
 
     def test_omitting_a_required_invariant_fails_closed(self):
         manifest = copy.deepcopy(self.manifest)
@@ -68,7 +79,12 @@ class CoreConformanceGateTests(unittest.TestCase):
             GATE.validate_manifest(manifest, ROOT)
 
     def test_removing_action_hash_or_queue_limit_regression_fails_closed(self):
-        for evidence_id in ["CORE-01.ACTION-HASH-BINDING", "CORE-01.RELIABLE-QUEUE-LIMIT"]:
+        for evidence_id in [
+            "CORE-01.ACTION-HASH-BINDING",
+            "CORE-01.RELIABLE-QUEUE-LIMIT",
+            "CORE-01.OVERSIZED-FRAME",
+            "CORE-01.NEGOTIATION-OFFER-ROUNDTRIP",
+        ]:
             manifest = copy.deepcopy(self.manifest)
             for invariant in manifest["invariants"]:
                 invariant["evidence"] = [
@@ -91,14 +107,14 @@ class CoreConformanceGateTests(unittest.TestCase):
             else:
                 steps["tests"]["outcome"] = outcome
             report, passed = GATE.build_report(
-                self.manifest, ROOT, "ubuntu-24.04", self.commit, steps, self.inventory
+                self.manifest, ROOT, "ubuntu-24.04", self.commit, steps, self.inventory, self.conformance_checks
             )
             self.assertFalse(passed)
             self.assertFalse(report["checks_passed"])
 
     def test_platform_with_no_complete_required_evidence_cannot_pass(self):
         report, passed = GATE.build_report(
-            self.manifest, ROOT, "plan9", self.commit, self.steps, self.inventory
+            self.manifest, ROOT, "plan9", self.commit, self.steps, self.inventory, self.conformance_checks
         )
         self.assertFalse(passed)
         self.assertFalse(report["checks_passed"])
@@ -211,7 +227,7 @@ class CoreConformanceGateTests(unittest.TestCase):
         inventory[key].remove(name)
         inventory.setdefault("intent-ipc--test--record_codec", set()).add(name)
         report, passed = GATE.build_report(
-            self.manifest, ROOT, "ubuntu-24.04", self.commit, self.steps, inventory
+            self.manifest, ROOT, "ubuntu-24.04", self.commit, self.steps, inventory, self.conformance_checks
         )
         self.assertFalse(passed)
         action = next(
@@ -224,6 +240,53 @@ class CoreConformanceGateTests(unittest.TestCase):
         self.assertEqual(action["inventory_target"], key)
         self.assertEqual(action["test_inventory"], "missing")
         self.assertFalse(action["passed"])
+
+    def test_conformance_step_success_cannot_hide_a_missing_or_failed_check(self):
+        required = next(iter(self.conformance_checks))
+        for value in [None, False]:
+            checks = dict(self.conformance_checks)
+            if value is None:
+                checks.pop(required)
+            else:
+                checks[required] = value
+            report, passed = GATE.build_report(
+                self.manifest,
+                ROOT,
+                "ubuntu-24.04",
+                self.commit,
+                self.steps,
+                self.inventory,
+                checks,
+            )
+            self.assertFalse(passed)
+            record = next(
+                evidence
+                for invariant in report["invariants"]
+                for evidence in invariant["evidence"]
+                if evidence["id"] == "CORE-01.RECORD-FIXTURES"
+            )
+            self.assertEqual(record["result"], "success")
+            self.assertEqual(record["test_inventory"], "missing_or_failed")
+            self.assertFalse(record["passed"])
+
+    def test_conformance_report_parser_requires_unique_boolean_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "report.json"
+            for report in [
+                [],
+                {"format_version": 1, "checks": []},
+                {"format_version": 1, "checks": [{"name": "x", "passed": 1}]},
+                {
+                    "format_version": 1,
+                    "checks": [
+                        {"name": "x", "passed": True},
+                        {"name": "x", "passed": True},
+                    ],
+                },
+            ]:
+                path.write_text(json.dumps(report))
+                with self.subTest(report=report), self.assertRaises(GATE.GateError):
+                    GATE.parse_conformance_report(path)
 
     def test_inventory_parser_preserves_target_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -258,11 +321,23 @@ class CoreConformanceGateTests(unittest.TestCase):
 
             (path / f"{target}.ignored").write_text("0 tests, 0 benchmarks\n")
 
+    def _write_conformance_report(self, path: Path, checks=None) -> None:
+        selected = self.conformance_checks if checks is None else checks
+        path.write_text(json.dumps({
+            "format_version": 1,
+            "checks": [
+                {"name": name, "passed": passed}
+                for name, passed in sorted(selected.items())
+            ],
+        }))
+
     def test_cli_failure_retains_report_and_nonzero_status(self):
         with tempfile.TemporaryDirectory() as directory:
             inventory = Path(directory) / "tests"
             self._write_inventory(inventory)
             output = Path(directory) / "failure.json"
+            conformance = Path(directory) / "conformance.json"
+            self._write_conformance_report(conformance)
             steps = copy.deepcopy(self.steps)
             steps["tests"]["outcome"] = "failure"
             env = os.environ.copy()
@@ -277,6 +352,8 @@ class CoreConformanceGateTests(unittest.TestCase):
                     self.commit,
                     "--test-inventory",
                     str(inventory),
+                    "--conformance-report",
+                    str(conformance),
                     "--output",
                     str(output),
                 ],
@@ -298,6 +375,8 @@ class CoreConformanceGateTests(unittest.TestCase):
             manifest = Path(directory) / "manifest.json"
             manifest.write_text("[]\n")
             output = Path(directory) / "failure.json"
+            conformance = Path(directory) / "conformance.json"
+            self._write_conformance_report(conformance)
             env = os.environ.copy()
             env["CORE_STEP_RESULTS"] = json.dumps(self.steps)
             process = subprocess.run(
@@ -312,6 +391,8 @@ class CoreConformanceGateTests(unittest.TestCase):
                     self.commit,
                     "--test-inventory",
                     str(inventory),
+                    "--conformance-report",
+                    str(conformance),
                     "--output",
                     str(output),
                 ],
@@ -333,6 +414,8 @@ class CoreConformanceGateTests(unittest.TestCase):
             manifest = Path(directory) / "manifest.json"
             manifest.write_bytes(b"\xff")
             output = Path(directory) / "failure.json"
+            conformance = Path(directory) / "conformance.json"
+            self._write_conformance_report(conformance)
             env = os.environ.copy()
             env["CORE_STEP_RESULTS"] = json.dumps(self.steps)
             process = subprocess.run(
@@ -347,6 +430,8 @@ class CoreConformanceGateTests(unittest.TestCase):
                     self.commit,
                     "--test-inventory",
                     str(inventory),
+                    "--conformance-report",
+                    str(conformance),
                     "--output",
                     str(output),
                 ],

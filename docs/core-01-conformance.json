@@ -29,6 +29,21 @@
             "ubuntu-24.04",
             "windows-2025",
             "macos-15"
+          ],
+          "conformance_checks": [
+            "intent.goal_contract",
+            "intent.workspace",
+            "intent.task",
+            "intent.capability",
+            "intent.observation",
+            "intent.evidence",
+            "intent.action_proposal",
+            "intent.approval",
+            "intent.operation",
+            "intent.receipt",
+            "intent.view_definition",
+            "intent.memory_record",
+            "intent.artifact_reference"
           ]
         },
         {
@@ -55,6 +70,7 @@
       "requirement": "Malformed, oversized and unsupported-version messages are rejected safely.",
       "required_evidence_ids": [
         "CORE-01.FRAME-POISONING",
+        "CORE-01.OVERSIZED-FRAME",
         "CORE-01.RECORD-SCHEMA-CLASSIFICATION",
         "CORE-01.ACTION-HASH-BINDING"
       ],
@@ -71,6 +87,23 @@
             "macos-15"
           ],
           "inventory_name": "frame::tests::malformed_batch_poisoning_prevents_resume_at_an_unknown_offset",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        },
+        {
+          "id": "CORE-01.OVERSIZED-FRAME",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/frame.rs",
+          "test_name": "oversized_length_is_rejected_before_payload_allocation",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "frame::tests::oversized_length_is_rejected_before_payload_allocation",
           "cargo_target": {
             "package": "intent-ipc",
             "kind": "lib"
@@ -119,6 +152,7 @@
       "requirement": "Negotiated compatible versions round-trip without semantic loss.",
       "required_evidence_ids": [
         "CORE-01.NEGOTIATION-COMPATIBLE",
+        "CORE-01.NEGOTIATION-OFFER-ROUNDTRIP",
         "CORE-01.NEGOTIATION-UNSELECTED-REJECTED"
       ],
       "evidence": [
@@ -134,6 +168,23 @@
             "macos-15"
           ],
           "inventory_name": "negotiation::tests::negotiation_selects_highest_common_version_and_capability_intersection",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        },
+        {
+          "id": "CORE-01.NEGOTIATION-OFFER-ROUNDTRIP",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/negotiation.rs",
+          "test_name": "offer_round_trip_preserves_ranges_and_capabilities",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "negotiation::tests::offer_round_trip_preserves_ranges_and_capabilities",
           "cargo_target": {
             "package": "intent-ipc",
             "kind": "lib"
@@ -244,6 +295,21 @@
             "ubuntu-24.04",
             "windows-2025",
             "macos-15"
+          ],
+          "conformance_checks": [
+            "intent.goal_contract",
+            "intent.workspace",
+            "intent.task",
+            "intent.capability",
+            "intent.observation",
+            "intent.evidence",
+            "intent.action_proposal",
+            "intent.approval",
+            "intent.operation",
+            "intent.receipt",
+            "intent.view_definition",
+            "intent.memory_record",
+            "intent.artifact_reference"
           ]
         }
       ]
