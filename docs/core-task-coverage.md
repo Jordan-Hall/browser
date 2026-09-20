@@ -2,14 +2,14 @@
 
 Programme #1; epic #13; requirements #2 #3 #4 #5; integration tracker #802.
 
-The current integration includes published checkpoint PR #806, supervisor PR #805, snapshot PR #803 and policy PR #804. Durable recovery is implemented in #807; #809 adds the real-worker cooperative inline broker bridge and process-kill/independent-effect regressions. A source contribution is not accepted implementation, and acceptance is recorded only after task-level review. CORE-01.T01 is accepted; the other 36 task statuses remain open.
+The current integration includes published checkpoint PR #806, supervisor PR #805, snapshot PR #803 and policy PR #804. Durable recovery is implemented in #807; #809 adds the real-worker cooperative inline broker bridge and process-kill/independent-effect regressions. A source contribution is not accepted implementation, and acceptance is recorded only after task-level review. CORE-01.T01 and CORE-01.T02 are accepted; the other 35 task statuses remain open.
 
 The JSON ledger names every individual task. `python3 scripts/check_core_coverage.py --require-accepted` must continue to reject incomplete acceptance; neither a reference nor a generic green smoke run can substitute for task evidence.
 
 | Task | Issue | Source PRs | Status and remaining acceptance |
 |---|---|---|---|
 | `CORE-01.T01` — Bootstrap the Rust workspace and architectural checks | #121 | #785, #817, #822 | accepted: [Independent task review](https://github.com/Jordan-Hall/browser/issues/121#issuecomment-5748908212) and [exact-commit verification](verification/core-bootstrap-acceptance-20260920.json). |
-| `CORE-01.T02` — Define typed identities and value objects | #122 | #786 | implemented_pending_acceptance: Wire representation and provider-resource validation require baseline sign-off. |
+| `CORE-01.T02` — Define typed identities and value objects | #122 | #786, #819, #845 | accepted: [Whole-task acceptance audit](https://github.com/Jordan-Hall/browser/issues/122#issuecomment-5748987713), [exact-main verification](verification/core-typed-values-acceptance-20260920.json) and deterministic money-boundary evidence in #845. |
 | `CORE-01.T03` — Specify durable core record schemas | #123 | #787, #813 | implemented_pending_acceptance: Full/minimal v1 fixtures for all 13 families and nested unknown-field rejection are implemented in #813. Complete authority semantics, compatibility review and independent task acceptance remain. |
 | `CORE-01.T04` — Build bounded wire framing and errors | #124 | #788, #813 | implemented_pending_acceptance: #813 pins the existing JSON error spellings and adds bounded record imports with schema-first, duplicate-key and unknown-field checks. Extended parser qualification, compatibility review and independent task acceptance remain. |
 | `CORE-01.T05` — Authenticate locally launched worker channels | #125 | #789, #805 | implemented_pending_acceptance: Real post-spawn peer credentials, one-use bootstrap and role binding are tested locally. Independent threat-boundary review, hostile same-user isolation and platform qualification remain; the source is published in #805. |
