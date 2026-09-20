@@ -48,11 +48,15 @@ fn unused_allowance_and_closed_sockets_do_not_extend_health_deadlines() -> Resul
     ));
     assert_eq!(budget.consumed(), 2);
     assert_eq!(budget.blocked_reads(), 0);
+    let _retained_partial_sender = sender.try_clone()?;
+    sender.shutdown(std::net::Shutdown::Write)?;
     drop(sender);
     assert!(budget.read_one(&mut socket, 4096).is_err());
     assert_eq!(budget.consumed(), 2);
     assert_eq!(budget.blocked_reads(), 0);
     let (mut closed, sender) = pair()?;
+    let _retained_sender = sender.try_clone()?;
+    sender.shutdown(std::net::Shutdown::Write)?;
     drop(sender);
     assert!(matches!(
         budget.read_one(&mut closed, 4096)?,
