@@ -75,7 +75,7 @@ def _cargo_target(item: dict[str, Any], evidence_id: str) -> tuple[str, str, str
         raise GateError(f"{evidence_id} must name cargo_target")
     package = _validate_target_part(target.get("package"), "package", evidence_id)
     kind = target.get("kind")
-    if kind not in {"lib", "test"}:
+    if not isinstance(kind, str) or kind not in {"lib", "test"}:
         raise GateError(f"{evidence_id} has invalid cargo_target.kind")
     name = target.get("name")
     if kind == "lib":
@@ -206,10 +206,10 @@ def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
                 raise GateError(f"{invariant_id} evidence is missing id")
             evidence_ids.append(evidence_id)
             evidence_class = item.get("evidence_class")
-            if evidence_class not in VALID_CLASSES:
+            if not isinstance(evidence_class, str) or evidence_class not in VALID_CLASSES:
                 raise GateError(f"{evidence_id} has invalid evidence_class")
             step = item.get("step")
-            if step not in VALID_STEPS:
+            if not isinstance(step, str) or step not in VALID_STEPS:
                 raise GateError(f"{evidence_id} has invalid step")
             test_file = item.get("test_file")
             test_name = item.get("test_name")
@@ -229,13 +229,15 @@ def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
             if evidence_class in {"unit", "subprocess"}:
                 if re.search(r"#\[test\]", attributes) is None:
                     raise GateError(f"{evidence_id} does not reference a #[test] function")
-                # Rust supports #[ignore], #[ignore = "reason"] and cfg_attr(..., ignore).
-                # Reject any ignore token in the function's attribute block rather than
-                # trying to enumerate every syntactic spelling that libtest understands.
+                # Conservatively reject any ignore-bearing attribute, including
+                # reason-bearing and cfg_attr forms, rather than guessing which
+                # conditional expression is active on this platform.
                 if re.search(r"\bignore\b", attributes) is not None:
                     raise GateError(f"{evidence_id} references a conditionally or explicitly ignored test")
                 if not isinstance(inventory_name, str) or not inventory_name:
                     raise GateError(f"{evidence_id} must name its exact inventory_name")
+                if inventory_name.rsplit("::", 1)[-1] != test_name:
+                    raise GateError(f"{evidence_id} inventory name does not match its source function")
                 cargo_target = _cargo_target(item, evidence_id)
                 _validate_source_target(
                     root,
@@ -376,21 +378,39 @@ def build_report(
     )
 
 
+def _listed_tests(path: Path) -> set[str]:
+    tests: set[str] = set()
+    summaries: list[int] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.endswith(": test"):
+            name = line[: -len(": test")].strip()
+            if not name or name in tests:
+                raise GateError(f"invalid or duplicate test name: {path.name}")
+            tests.add(name)
+        elif re.fullmatch(r"\d+ tests?, \d+ benchmarks?", line.strip()):
+            summaries.append(int(line.split()[0]))
+        elif line.strip() and not line.endswith(": benchmark"):
+            raise GateError(f"unrecognized test inventory output: {path.name}")
+    if summaries != [len(tests)]:
+        raise GateError(f"test inventory summary mismatch: {path.name}")
+    return tests
+
+
 def parse_test_inventory(path: Path) -> dict[str, set[str]]:
     if not path.is_dir():
         raise GateError("test inventory path must be a directory")
     inventories: dict[str, set[str]] = {}
     for target_file in sorted(path.glob("*.txt")):
-        tests: set[str] = set()
-        for line in target_file.read_text(encoding="utf-8").splitlines():
-            if not line.endswith(": test"):
-                continue
-            qualified = line[: -len(": test")].strip()
-            if qualified:
-                tests.add(qualified)
+        tests = _listed_tests(target_file)
         if not tests:
             raise GateError(f"test inventory contains no executable tests: {target_file.name}")
-        inventories[target_file.stem] = tests
+        ignored_path = target_file.with_suffix(".ignored")
+        if not ignored_path.is_file():
+            raise GateError(f"ignored-test inventory is missing: {ignored_path.name}")
+        ignored = _listed_tests(ignored_path)
+        if not ignored.issubset(tests):
+            raise GateError(f"ignored-test inventory contradicts full listing: {target_file.name}")
+        inventories[target_file.stem] = tests - ignored
     if not inventories:
         raise GateError("test inventory contains no Cargo targets")
     return inventories

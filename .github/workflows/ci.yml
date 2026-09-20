@@ -112,11 +112,17 @@ jobs:
         run: |
           mkdir -p target/conformance/test-inventory
           cargo test --locked -p intent-contracts --lib -- --list > target/conformance/test-inventory/intent-contracts--lib.txt
+          cargo test --locked -p intent-contracts --lib -- --list --ignored > target/conformance/test-inventory/intent-contracts--lib.ignored
           cargo test --locked -p intent-contracts --test hardening -- --list > target/conformance/test-inventory/intent-contracts--test--hardening.txt
+          cargo test --locked -p intent-contracts --test hardening -- --list --ignored > target/conformance/test-inventory/intent-contracts--test--hardening.ignored
           cargo test --locked -p intent-ipc --lib -- --list > target/conformance/test-inventory/intent-ipc--lib.txt
+          cargo test --locked -p intent-ipc --lib -- --list --ignored > target/conformance/test-inventory/intent-ipc--lib.ignored
           cargo test --locked -p intent-ipc --test record_codec -- --list > target/conformance/test-inventory/intent-ipc--test--record_codec.txt
+          cargo test --locked -p intent-ipc --test record_codec -- --list --ignored > target/conformance/test-inventory/intent-ipc--test--record_codec.ignored
           cargo test --locked -p intent-fixture-worker --test blocked_progress_cancellation -- --list > target/conformance/test-inventory/intent-fixture-worker--test--blocked_progress_cancellation.txt
+          cargo test --locked -p intent-fixture-worker --test blocked_progress_cancellation -- --list --ignored > target/conformance/test-inventory/intent-fixture-worker--test--blocked_progress_cancellation.ignored
           cargo test --locked -p intent-fixture-worker --test supervision -- --list > target/conformance/test-inventory/intent-fixture-worker--test--supervision.txt
+          cargo test --locked -p intent-fixture-worker --test supervision -- --list --ignored > target/conformance/test-inventory/intent-fixture-worker--test--supervision.ignored
 
       - name: Run documentation tests
         id: doctests

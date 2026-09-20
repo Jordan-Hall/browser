@@ -228,8 +228,10 @@ class CoreConformanceGateTests(unittest.TestCase):
     def test_inventory_parser_preserves_target_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
-            (path / "intent-ipc--lib.txt").write_text("frame::tests::case: test\n")
-            (path / "intent-ipc--test--record_codec.txt").write_text("case: test\n")
+            (path / "intent-ipc--lib.txt").write_text("frame::tests::case: test\n1 test, 0 benchmarks\n")
+            (path / "intent-ipc--test--record_codec.txt").write_text("case: test\n1 test, 0 benchmarks\n")
+            for full in path.glob("*.txt"):
+                full.with_suffix(".ignored").write_text("0 tests, 0 benchmarks\n")
             parsed = GATE.parse_test_inventory(path)
             self.assertEqual(parsed["intent-ipc--lib"], {"frame::tests::case"})
             self.assertEqual(parsed["intent-ipc--test--record_codec"], {"case"})
@@ -251,7 +253,10 @@ class CoreConformanceGateTests(unittest.TestCase):
         for target, names in self.inventory.items():
             (path / f"{target}.txt").write_text(
                 "".join(f"{name}: test\n" for name in sorted(names))
+                + f"{len(names)} tests, 0 benchmarks\n"
             )
+
+            (path / f"{target}.ignored").write_text("0 tests, 0 benchmarks\n")
 
     def test_cli_failure_retains_report_and_nonzero_status(self):
         with tempfile.TemporaryDirectory() as directory:
