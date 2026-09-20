@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T07 incremental bounded cancellation-lifetime repair; not task acceptance",
+  "issue": 127,
+  "pr": 829,
+  "source_commit": "948b5cc523d3abaed5d38ce18e962a68ac6b4fe2",
+  "source_tree": "f92fa023818a2feb5902b534f71caef73dcd04c8",
+  "base_commit": "8773798ba57b2bc797e35873319d0726a2eee632",
+  "tested_merge_commit": "bd3d39b41953e0a17c8c5d63e55f8a08304afae0",
+  "merged_main_commit": "c2b400bf2495ed377683c536f0ab5623e57a711d",
+  "local": {
+    "toolchain": "1.98.1",
+    "locked": true,
+    "checks": [
+      "cargo fmt --all",
+      "cargo test --locked -p intent-ipc --all-targets",
+      "strict workspace Clippy",
+      "25 Python evidence tests",
+      "fuzz target compilation"
+    ],
+    "intent_ipc_unit_tests": 41,
+    "regressions": [
+      "generation-scoped cancellation retirement",
+      "backpressured outbound acknowledgement retained until retry and drain",
+      "queued reliable/progress/artifact work fenced after cancellation",
+      "eight incoming cancellations reuse capacity one",
+      "eight locally initiated cancellations reuse capacity one after peer acknowledgement",
+      "unsolicited peer acknowledgement leaves active work active",
+      "duplicate valid peer acknowledgement is idempotent",
+      "simultaneous incoming and outgoing cancellation preserves both acknowledgement obligations"
+    ],
+    "limits": "The broad ad-hoc offline workspace run hit only the architecture fixture's temporary crates.io workspace because the local dependency replacement is not visible there; no pass is claimed from that invocation. GitHub CI ran the repository architecture check successfully."
+  },
+  "ci": {
+    "run_id": 35478190118,
+    "conclusion": "success",
+    "jobs": {
+      "rust_checks": 105991035336,
+      "ubuntu_24_04": 105991035456,
+      "windows_2025": 105991035475,
+      "macos_15": 105991035464
+    },
+    "artifact_id": 10594868214,
+    "archive_sha256": "2594acae8689ae15209fb7c54929cf1a60506e4115d666a21c69995cc64feed5",
+    "lockfile_sha256": {
+      "Cargo.lock": "af57214b8cfc26fe7ea8185f640afa25d4e702f35fd749e6b331ddff8365a8d3",
+      "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+    }
+  },
+  "fuzz": {
+    "run_id": 35478190127,
+    "conclusion": "success",
+    "targets": {
+      "frame_decoder": {
+        "artifact_id": 10594399016,
+        "sha256": "795ee0bc43fadf059eaea22134c5c44367d9c352ec01e9adc1338a70297cc1e3"
+      },
+      "control_envelope": {
+        "artifact_id": 10594743299,
+        "sha256": "4ca89dd9cb115f469327f5b90c57c8c8984a92cb333bb8a078cd5d7e77bc4fbb"
+      },
+      "record_codec": {
+        "artifact_id": 10595306276,
+        "sha256": "ea72062c48034be3d2a0f25ef5a0436191a6634e7e6990468e4ea6617902c24e"
+      }
+    },
+    "limit": "bounded instrumented parser smoke runs; not exhaustive cancellation or production qualification"
+  },
+  "review": {
+    "request_comment": 5746332297,
+    "result_comment": 5746345633,
+    "status": "completed with no major issues",
+    "resolved_threads": [
+      4055278377,
+      4055278382,
+      4055302409
+    ],
+    "independent_task_acceptance": false
+  },
+  "remaining": [
+    "Real spawned-worker cancellation must be measured while bulk transport is actually blocked.",
+    "Stop-deadline/control-latency and byte-budget acceptance remain open.",
+    "Trusted durable-dispatch integration including #141 lease-first cancellation/persistence remains open.",
+    "Stale-epoch and in-flight external-effect end-to-end reconciliation remain open.",
+    "Independent whole-task acceptance remains open."
+  ],
+  "accepted": false,
+  "production_ready": false
+}
