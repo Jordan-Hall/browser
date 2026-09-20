@@ -25,10 +25,17 @@ class CoreConformanceGateTests(unittest.TestCase):
             "fuzz_compile": {"outcome": "success"},
         }
         self.commit = "a" * 40
+        self.inventory = {
+            item["test_name"]
+            for invariant in self.manifest["invariants"]
+            for item in invariant["evidence"]
+            if item["evidence_class"] in {"unit", "subprocess"}
+        }
+        self.steps["test_inventory"] = {"outcome": "success"}
 
     def test_current_manifest_is_complete_and_success_is_revision_bound(self):
         report, passed = GATE.build_report(
-            self.manifest, ROOT, "ubuntu-24.04", self.commit, self.steps
+            self.manifest, ROOT, "ubuntu-24.04", self.commit, self.steps, self.inventory
         )
         self.assertTrue(passed)
         self.assertTrue(report["checks_passed"])
@@ -71,14 +78,14 @@ class CoreConformanceGateTests(unittest.TestCase):
             else:
                 steps["tests"]["outcome"] = outcome
             report, passed = GATE.build_report(
-                self.manifest, ROOT, "ubuntu-24.04", self.commit, steps
+                self.manifest, ROOT, "ubuntu-24.04", self.commit, steps, self.inventory
             )
             self.assertFalse(passed)
             self.assertFalse(report["checks_passed"])
 
     def test_platform_with_no_complete_required_evidence_cannot_pass(self):
         report, passed = GATE.build_report(
-            self.manifest, ROOT, "plan9", self.commit, self.steps
+            self.manifest, ROOT, "plan9", self.commit, self.steps, self.inventory
         )
         self.assertFalse(passed)
         self.assertFalse(report["checks_passed"])
@@ -103,6 +110,32 @@ class CoreConformanceGateTests(unittest.TestCase):
         manifest["invariants"][-1]["evidence"][0]["step"] = "tests"
         with self.assertRaises(GATE.GateError):
             GATE.validate_manifest(manifest, ROOT)
+
+    def test_aggregate_success_cannot_hide_a_missing_test_inventory_entry(self):
+        inventory = set(self.inventory)
+        inventory.remove("proposal_construction_and_wire_enforce_the_same_hash_binding")
+        report, passed = GATE.build_report(
+            self.manifest, ROOT, "ubuntu-24.04", self.commit, self.steps, inventory
+        )
+        self.assertFalse(passed)
+        action = next(
+            evidence
+            for invariant in report["invariants"]
+            for evidence in invariant["evidence"]
+            if evidence["id"] == "CORE-01.ACTION-HASH-BINDING"
+        )
+        self.assertEqual(action["result"], "success")
+        self.assertEqual(action["test_inventory"], "missing")
+        self.assertFalse(action["passed"])
+
+    def test_inventory_parser_rejects_empty_or_non_test_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tests.txt"
+            path.write_text("0 tests, 0 benchmarks\n")
+            with self.assertRaises(GATE.GateError):
+                GATE.parse_test_inventory(path)
+            path.write_text("module::real_case: test\n")
+            self.assertEqual(GATE.parse_test_inventory(path), {"real_case"})
 
     def test_failure_report_is_written_atomically(self):
         with tempfile.TemporaryDirectory() as directory:
