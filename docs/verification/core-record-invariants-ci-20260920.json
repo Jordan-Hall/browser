@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "scope": "Published PR849 intrinsic record validation; not whole-task acceptance",
+  "source_commit": "11d0f523f64cb8188c86d6b06055e1dc06da7074",
+  "tested_merge_commit": "95b0e15c7f324dff6172457e67dfef1a27d8df2f",
+  "pull_request": "https://github.com/Jordan-Hall/browser/pull/849",
+  "ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35513018085",
+  "fuzz_run": "https://github.com/Jordan-Hall/browser/actions/runs/35513018061",
+  "checks": {
+    "rust_workspace": "success",
+    "native_ubuntu": "success",
+    "native_macos": "success",
+    "native_windows": "success",
+    "fuzz_control_envelope": "success",
+    "fuzz_frame_decoder": "success",
+    "fuzz_record_codec": "success"
+  },
+  "artifact": {
+    "id": 10605043439,
+    "name": "core-verification-35513018085-1",
+    "retained_local_directory": "target/base-record-ci-35513018085",
+    "commit": "11d0f52",
+    "source_files_matched": 267,
+    "compiler": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "source_archive_sha256": "436a55b13c14b731cffee4de5349ef40af013430f3653ae770bfdbd10788e7a9",
+    "verification_sha256": "e67afefabeeea705d2a339680e75c557835d9db60d20f2a1f143e8a7387142dc",
+    "lockfile_sha256": {
+      "Cargo.lock": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+      "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+    }
+  },
+  "earlier_local_evidence": "docs/verification/core-record-invariants-20260920.json",
+  "limits": [
+    "The full final-source workspace CI pass supersedes the local setup-timeout verification gap; the failed local run remains recorded",
+    "This unit does not close CORE-01.T03 or establish production readiness",
+    "Fuzz checks are finite smoke runs"
+  ]
+}
