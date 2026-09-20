@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T03 intrinsic record invariants; not whole-task acceptance",
+  "base_commit": "1ffe0b6a31e766e76452672d34fd39fbe94faf5c",
+  "source_git_blobs": {
+    "crates/intent-contracts/src/lib.rs": "254428d3236ff588ca85d0986541579cc72e2400",
+    "crates/intent-contracts/src/records.rs": "155d96cb2d6eb080e0ee0493d0f94bf9d938c217",
+    "crates/intent-contracts/src/records/collection.rs": "ccf16c63195c25ae7502ba575fc86c414c6d944a",
+    "crates/intent-contracts/src/records/proposal_validation.rs": "217484603ce16471e6062cd29e77ad9d8cfca4d4",
+    "crates/intent-contracts/src/records/state_accessors.rs": "16bb2fd8214cf15c33f085b169e6a687b8662676",
+    "crates/intent-contracts/src/records/validation.rs": "0f277629957112330aca6a7f042be604731e0edd",
+    "crates/intent-contracts/tests/action_binding.rs": "fadedae792cd721ed485cdfe3fef06b0da6d7647",
+    "crates/intent-contracts/tests/record_invariants.rs": "c21d7e535b6ae29777ed513000cd908466dd8039",
+    "crates/intent-fixture-worker/tests/cancellation_stall.rs": "515ba1f868756b5f3f2c12d75567cb778b3ab6ab",
+    "crates/intent-ipc/tests/record_invariants.rs": "1c5056f614596dcac5a7b6a3d3333910796765fe",
+    "crates/intent-state/src/authorized_dispatch.rs": "13d592396f52f821e3218775bd94f94096d38dd6",
+    "crates/intent-state/src/authorized_dispatch/tests/rejection_regressions.rs": "f9001c55f05d3e62fac37ac94d764770ea1b1164"
+  },
+  "checks": [
+    {
+      "log": "target/base-record-invariants-before.log",
+      "exit_code": 101,
+      "scope": "Five expected failing regressions against prior source: reversed Workspace/Task/Memory/Approval times and ignored deterministic-origin field",
+      "sha256": "8591e2b12f518ec0bce28100efe5f286e2b28ee748d7b68c0c3508b5d061d8d4",
+      "passing_test_results": 0,
+      "failed_test_results": 5,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/base-record-approval-tags-before.log",
+      "exit_code": 0,
+      "scope": "All five existing ApprovalState variants already reject unknown detail content",
+      "sha256": "7f7f598e76ff18fba9b572b11e1b31ffffb178a00475d0e0a95b76016f7fde72",
+      "passing_test_results": 1,
+      "failed_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/base-record-invariants-after-first.log",
+      "exit_code": 101,
+      "scope": "Shared-target build reported the obsolete infallible Approval signature; retained intermediate failure, followed by isolated build",
+      "sha256": "e41b7594728f3f8994ae60606125d88c5416ef4b60591520c67c53cd6ba03780",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/base-record-isolated-tests.log",
+      "exit_code": 0,
+      "scope": "Final source: isolated Windows contracts and IPC tests plus doctests; bounded lists, construction/import parity and canonical paths",
+      "sha256": "065739b331d63cecc67fd6d1bb384fd246f0ea538ee2a6ac969c438db6e227a1",
+      "passing_test_results": 153,
+      "failed_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/base-record-windows-clippy.log",
+      "exit_code": 0,
+      "scope": "Final source: isolated Windows strict Clippy for contracts, IPC and storage, all targets/features; incremental compilation disabled",
+      "sha256": "6ca7f1e6f02d18bd330d03f04f0441b560f3b09f5a756d78f7429d6b78afe053",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/base-record-linux-workspace.log",
+      "exit_code": 101,
+      "scope": "Record implementation source: Linux workspace formatting and strict Clippy passed; all-target tests completed with one cancellation_stall setup timeout. Doctests, architecture and conformance were skipped by shell fail-fast. Cancellation test source predates the setup allowance fix.",
+      "sha256": "f8fa08f4f5b92d210b537e22cda859b7b7bcdf110d86ff529a064f457e6a637b",
+      "passing_test_results": 454,
+      "failed_test_results": 1,
+      "ignored_results": 1
+    },
+    {
+      "log": "target/base-record-cancellation-setup-probe.log",
+      "exit_code": 127,
+      "scope": "No observation ran: the container has no python3; replaced with a shell observer",
+      "sha256": "23ed0b6d98c8722ade6f3fb434045045ecab509c27018a7e45e754816e9655f7",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/base-record-cancellation-setup-probe-shell.log",
+      "exit_code": 0,
+      "scope": "External observation of the original test child: database 104 ms, worker 11108 ms, cancellation checkpoint 11439 ms, exceeding the original parent 8 s setup deadline",
+      "sha256": "be8924ce722a391db4cdfae62a1842f4395b67e7b05b1e78fd2d43a5c47293d2",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/base-record-linux-followup.log",
+      "exit_code": 0,
+      "scope": "Final source: cancellation_stall two tests passed; workspace strict Clippy, doctests, architecture and conformance passed. Parent setup allowance is 30 s; cancellation entry and blocked-write deadlines remain 3 s. This is a targeted follow-up, not a second full workspace run.",
+      "sha256": "a5ba086066efaa6d4dce2afca79f9c065a79be99fe4cb429552deb18640f660d",
+      "passing_test_results": 19,
+      "failed_test_results": 0,
+      "ignored_results": 0
+    }
+  ],
+  "collection_limit": 16384,
+  "collection_fields": 8,
+  "independent_review": {
+    "design": "Two candidates; gpt-5.6-luna crossjudge selected A 24/25 with B 23/25 grafts",
+    "source": "No concrete correctness or compatibility finding in implementation-review.md",
+    "comments": "No deletions or encoding issues found",
+    "final": "gpt-5.6-luna reviewed final source, source hashes, cancellation setup correction and verification trail; no concrete finding; full final-source CI and task acceptance remain pending"
+  },
+  "compatibility": {
+    "schema": "1.0 pre-freeze narrowing of invalid input; no JSON shape change",
+    "preserved": "All full/minimal fixtures; public EvidenceOrigin unit variant; all five ApprovalState variants; valid historical/equal timestamps; optional expiry",
+    "rust_api_changes": [
+      "Approval::new returns Result",
+      "GoalContract::with_constraint returns Result",
+      "GoalContract::with_authorized_account returns Result"
+    ]
+  },
+  "limits": [
+    "Record-local validity does not authorize execution or validate references against live state",
+    "Direct typed imports still require document admission budgets at external boundaries",
+    "Collection bound is logical entry count, not an aggregate process memory limit",
+    "Cross-platform CI qualification and independent whole-task acceptance remain separate"
+  ],
+  "initial_linux_source_git_blobs": {
+    "crates/intent-contracts/src/lib.rs": "254428d3236ff588ca85d0986541579cc72e2400",
+    "crates/intent-contracts/src/records.rs": "155d96cb2d6eb080e0ee0493d0f94bf9d938c217",
+    "crates/intent-contracts/src/records/collection.rs": "ccf16c63195c25ae7502ba575fc86c414c6d944a",
+    "crates/intent-contracts/src/records/proposal_validation.rs": "217484603ce16471e6062cd29e77ad9d8cfca4d4",
+    "crates/intent-contracts/src/records/state_accessors.rs": "16bb2fd8214cf15c33f085b169e6a687b8662676",
+    "crates/intent-contracts/src/records/validation.rs": "0f277629957112330aca6a7f042be604731e0edd",
+    "crates/intent-contracts/tests/action_binding.rs": "fadedae792cd721ed485cdfe3fef06b0da6d7647",
+    "crates/intent-contracts/tests/record_invariants.rs": "c21d7e535b6ae29777ed513000cd908466dd8039",
+    "crates/intent-fixture-worker/tests/cancellation_stall.rs": "6bde876d0d5984c83b5d1f4c3b184c695a8d7248",
+    "crates/intent-ipc/tests/record_invariants.rs": "1c5056f614596dcac5a7b6a3d3333910796765fe",
+    "crates/intent-state/src/authorized_dispatch.rs": "13d592396f52f821e3218775bd94f94096d38dd6",
+    "crates/intent-state/src/authorized_dispatch/tests/rejection_regressions.rs": "f9001c55f05d3e62fac37ac94d764770ea1b1164"
+  },
+  "setup_timeout_investigation": {
+    "parent_before_ms": 8000,
+    "database_created_ms": 104,
+    "worker_child_seen_ms": 11108,
+    "cancel_ready_ms": 11439,
+    "parent_after_ms": 30000,
+    "cancellation_entry_deadline_ms": 3000,
+    "blocked_writer_deadline_ms": 3000,
+    "scope": "The aggregate setup watchdog expired before worker preparation completed; runtime cancellation behavior and assertions were unchanged."
+  }
+}

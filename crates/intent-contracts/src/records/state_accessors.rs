@@ -16,12 +16,12 @@ impl GoalContract {
 
     #[must_use]
     pub fn constraints(&self) -> &[GoalConstraint] {
-        &self.clarified_constraints
+        self.clarified_constraints.as_slice()
     }
 
     #[must_use]
     pub fn authorized_accounts(&self) -> &[AccountId] {
-        &self.authorized_accounts
+        self.authorized_accounts.as_slice()
     }
 }
 

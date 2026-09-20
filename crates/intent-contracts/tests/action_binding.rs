@@ -41,7 +41,7 @@ fn proposal_and_approval_preserve_the_complete_material_binding() -> Result<(), 
             approved_at: UnixTimestampMicros::try_new(100)?,
             expires_at: None,
         },
-    );
+    )?;
     let decoded: ActionProposal = serde_json::from_slice(&serde_json::to_vec(&proposal)?)?;
     let decoded_approval: Approval = serde_json::from_slice(&serde_json::to_vec(&approval)?)?;
     assert_eq!(decoded, proposal);
@@ -92,7 +92,7 @@ fn approval_import_rejects_a_digest_inconsistent_with_its_binding() -> Result<()
         "018f47f7-5a86-7c00-8000-000000000402".parse()?,
         &proposal,
         ApprovalState::Pending,
-    );
+    )?;
     let mut wire = serde_json::to_value(approval)?;
     wire["exact_arguments_hash"] = serde_json::to_value(ContentHash::from_bytes([3; 32]))?;
     assert!(serde_json::from_value::<Approval>(wire).is_err());
