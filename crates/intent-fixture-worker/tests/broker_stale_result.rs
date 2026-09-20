@@ -3,9 +3,8 @@
 
 use intent_broker::RuntimeBroker;
 use intent_contracts::{
-    AccountId, ActionProposalId, BoundedText, CapabilityId, ContentHash, OperationId,
-    OutboxMessageId, SchemaVersion, Task, TaskId, UnixTimestampMicros, WorkerInstanceId, Workspace,
-    WorkspaceId,
+    ActionProposalId, BoundedText, CapabilityId, ContentHash, OperationId, OutboxMessageId,
+    SchemaVersion, Task, TaskId, UnixTimestampMicros, WorkerInstanceId, Workspace, WorkspaceId,
 };
 use intent_local_transport::WorkerRole;
 use intent_recovery::RecoveryEffect;
