@@ -234,6 +234,35 @@ fn read_completion_cannot_be_compensated() -> Result {
 }
 
 #[test]
+fn read_completion_cannot_serve_as_compensation_evidence() -> Result {
+    let mut data = sent()?;
+    data.stage = ExecutionStage::Compensated;
+    data.evidence = Some(evidence(ExecutionOutcome::ExternalCommitted {
+        receipt: ContentHash::from_bytes([23; 32]),
+    })?);
+    let compensation_attempt = ExecutionAttempt {
+        id: OperationAttemptId::from_uuid(Uuid::from_u128(24)),
+        started_at: Some(UnixTimestampMicros::try_new(130)?),
+    };
+    data.compensation = Some(VerifiedCompensation {
+        operation_id: OperationId::from_uuid(Uuid::from_u128(25)),
+        attempt: compensation_attempt,
+        evidence: ExecutionEvidence {
+            evidence_id: EvidenceId::from_uuid(Uuid::from_u128(26)),
+            attempt_id: compensation_attempt.id,
+            payload_hash: ContentHash::from_bytes([27; 32]),
+            observed_at: UnixTimestampMicros::try_new(140)?,
+            recorded_at: UnixTimestampMicros::try_new(150)?,
+            outcome: ExecutionOutcome::ReadCompleted {
+                capture: ContentHash::from_bytes([28; 32]),
+            },
+        },
+    });
+    assert!(record(data).is_err());
+    Ok(())
+}
+
+#[test]
 fn legacy_operation_keeps_its_key_and_missing_key_still_fails() -> Result {
     let legacy = Operation::new(
         OperationId::from_uuid(Uuid::from_u128(4)),
