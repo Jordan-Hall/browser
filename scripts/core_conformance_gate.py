@@ -8,7 +8,7 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 MANIFEST = Path("docs/core-01-conformance.json")
@@ -26,9 +26,24 @@ def _bounded(message: str) -> str:
     return message[:MAX_ERROR]
 
 
-def _rust_function_exists(path: Path, name: str) -> bool:
+def _rust_function_attributes(path: Path, name: str) -> str | None:
     source = path.read_text(encoding="utf-8")
-    return re.search(rf"\bfn\s+{re.escape(name)}\s*(?:<[^>]*>)?\s*\(", source) is not None
+    match = re.search(
+        rf"(?P<attrs>(?:^[ \t]*#\[[^\n]+\][ \t]*\n)*)^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*(?:<[^>]*>)?[ \t]*\(",
+        source,
+        re.MULTILINE,
+    )
+    return None if match is None else match.group("attrs")
+
+
+def _repo_file(root: Path, relative: str, evidence_id: str) -> Path:
+    candidate = PurePosixPath(relative)
+    if candidate.is_absolute() or ".." in candidate.parts or not candidate.parts:
+        raise GateError(f"{evidence_id} path escapes repository: {relative}")
+    path = root.joinpath(*candidate.parts)
+    if not path.is_file():
+        raise GateError(f"{evidence_id} file does not exist: {relative}")
+    return path
 
 
 def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, Any]]:
@@ -55,8 +70,14 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, An
         required_evidence = invariant.get("required_evidence_ids")
         if not isinstance(evidence, list) or not evidence:
             raise GateError(f"{invariant_id} has no evidence")
-        if not isinstance(required_evidence, list) or not required_evidence:
-            raise GateError(f"{invariant_id} has no required_evidence_ids")
+        if (
+            not isinstance(required_evidence, list)
+            or not required_evidence
+            or not all(isinstance(item, str) and item for item in required_evidence)
+        ):
+            raise GateError(f"{invariant_id} has invalid required_evidence_ids")
+        if len(required_evidence) != len(set(required_evidence)):
+            raise GateError(f"{invariant_id} contains duplicate required_evidence_ids")
         evidence_ids: list[str] = []
         for item in evidence:
             if not isinstance(item, dict):
@@ -78,14 +99,20 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, An
                 raise GateError(f"{evidence_id} must name a test_file and test_name")
             if not isinstance(targets, list) or not targets or not all(isinstance(x, str) for x in targets):
                 raise GateError(f"{evidence_id} must name supported_targets")
-            file_path = root / test_file
-            if not file_path.is_file():
-                raise GateError(f"{evidence_id} test file does not exist: {test_file}")
-            if not _rust_function_exists(file_path, test_name):
+            file_path = _repo_file(root, test_file, evidence_id)
+            attributes = _rust_function_attributes(file_path, test_name)
+            if attributes is None:
                 raise GateError(f"{evidence_id} test function does not exist: {test_name}")
+            if evidence_class in {"unit", "subprocess"}:
+                if re.search(r"#\[test\]", attributes) is None:
+                    raise GateError(f"{evidence_id} does not reference a #[test] function")
+                if re.search(r"#\[ignore(?:\([^]]*\))?\]", attributes) is not None:
+                    raise GateError(f"{evidence_id} references an ignored test")
             fixture = item.get("fixture")
-            if fixture is not None and (not isinstance(fixture, str) or not (root / fixture).is_file()):
-                raise GateError(f"{evidence_id} fixture does not exist: {fixture}")
+            if fixture is not None:
+                if not isinstance(fixture, str):
+                    raise GateError(f"{evidence_id} has invalid fixture path")
+                _repo_file(root, fixture, evidence_id)
             definition = (evidence_class, step, test_file, test_name, fixture, tuple(targets))
             previous = evidence_definitions.get(evidence_id)
             if previous is not None and previous != definition:
@@ -134,8 +161,10 @@ def build_report(
         applicable = [item for item in evidence_results if item["result"] != "unsupported"]
         required_ids = set(invariant["required_evidence_ids"])
         applicable_required = {item["id"] for item in applicable if item["id"] in required_ids}
-        invariant_passed = bool(applicable) and applicable_required == required_ids and all(
-            item["passed"] for item in applicable if item["id"] in required_ids
+        invariant_passed = (
+            bool(applicable)
+            and applicable_required == required_ids
+            and all(item["passed"] for item in applicable)
         )
         overall &= invariant_passed
         results.append(
