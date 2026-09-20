@@ -311,7 +311,18 @@ fn load_evidence(
     )?;
     let rows = stmt.query_map(
         params![op.operation_id().to_string(), attempt.id.to_string()],
-        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?)),
+        |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+            ))
+        },
     )?;
     for row in rows {
         let candidate = decode_evidence_row(op, attempt, effect, source, row?)?;
