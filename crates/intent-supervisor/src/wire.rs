@@ -208,6 +208,7 @@ pub(crate) struct FramedSocket {
     length: usize,
     outgoing: Option<Outgoing>,
     reserved_outgoing: Option<Outgoing>,
+    reserve_next: bool,
 }
 impl FramedSocket {
     pub(crate) fn new(stream: UnixStream) -> io::Result<Self> {
@@ -220,6 +221,7 @@ impl FramedSocket {
             length: 0,
             outgoing: None,
             reserved_outgoing: None,
+            reserve_next: false,
         })
     }
     pub(crate) fn read_one(
@@ -259,35 +261,24 @@ impl FramedSocket {
         }
     }
     pub(crate) fn queue(&mut self, bytes: Vec<u8>) -> Result<(), SupervisorError> {
-        if self.outgoing.is_some() {
-            return Err(SupervisorError::QueueFull);
-        }
         if bytes.len() > MAX_PACKET_BYTES + 5 {
             return Err(SupervisorError::Protocol);
+        }
+        if self.outgoing.is_some() {
+            if self.reserve_next && self.reserved_outgoing.is_none() {
+                self.reserved_outgoing = Some(Outgoing { bytes, offset: 0 });
+                self.reserve_next = false;
+                return Ok(());
+            }
+            return Err(SupervisorError::QueueFull);
         }
         self.outgoing = Some(Outgoing { bytes, offset: 0 });
-        Ok(())
-    }
-    /// Reserve one bounded control message behind the frame already being written.
-    /// This never splices bytes into a partial frame; it only guarantees that a
-    /// cancellation notification cannot be rejected merely because application
-    /// control traffic currently occupies the normal slot.
-    pub(crate) fn queue_reserved(&mut self, bytes: Vec<u8>) -> Result<(), SupervisorError> {
-        if bytes.len() > MAX_PACKET_BYTES + 5 {
-            return Err(SupervisorError::Protocol);
-        }
-        if self.outgoing.is_none() {
-            self.outgoing = Some(Outgoing { bytes, offset: 0 });
-            return Ok(());
-        }
-        if self.reserved_outgoing.is_some() {
-            return Err(SupervisorError::QueueFull);
-        }
-        self.reserved_outgoing = Some(Outgoing { bytes, offset: 0 });
+        self.reserve_next = false;
         Ok(())
     }
     pub(crate) fn idle(&self) -> bool {
-        self.outgoing.is_none() && self.reserved_outgoing.is_none()
+        (self.outgoing.is_none() && self.reserved_outgoing.is_none())
+            || (self.reserve_next && self.reserved_outgoing.is_none())
     }
     pub(crate) fn flush(&mut self, budget: usize) -> io::Result<()> {
         let mut remaining = budget;
@@ -335,9 +326,14 @@ impl FramedSocket {
             .as_ref()
             .is_some_and(|message| message.offset != 0)
         {
+            // A partially written frame cannot be spliced or discarded. Mark the
+            // next queue operation as the one bounded reserved control slot so
+            // stop/cancel can be scheduled immediately behind those bytes.
+            self.reserve_next = true;
             return false;
         }
         self.outgoing = None;
+        self.reserve_next = false;
         true
     }
 }
@@ -381,6 +377,7 @@ impl std::fmt::Debug for FramedSocket {
                     .as_ref()
                     .map(|m| m.bytes.len().saturating_sub(m.offset)),
             )
+            .field("reserve_next", &self.reserve_next)
             .finish_non_exhaustive()
     }
 }
@@ -428,10 +425,12 @@ mod tests {
 
         sender.queue(first)?;
         sender.flush(4096)?;
+        assert!(!sender.discard_unstarted());
+        assert!(sender.idle());
+        sender.queue(reserved)?;
         assert!(!sender.idle());
-        sender.queue_reserved(reserved)?;
         assert!(matches!(
-            sender.queue_reserved(duplicate),
+            sender.queue(duplicate),
             Err(SupervisorError::QueueFull)
         ));
         sender.flush(4096)?;
