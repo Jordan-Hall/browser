@@ -9,7 +9,7 @@
     },
     "crates/intent-local-transport/src/auth.rs": {
       "git_blob": "e307319ee1f82d1fe0c5cf4b87669c141c0d8ca3",
-      "tested_file_sha256": "02fad4ee995926f9fdf044517633b72b1b24442e1e450e29bfd4b639238e6b01"
+      "tested_file_sha256": "76b7b7a3e9d0c7fcf1954637182d4a83268cadc4312f7f099bc5e8b5cbcf6415"
     }
   },
   "checks": [
