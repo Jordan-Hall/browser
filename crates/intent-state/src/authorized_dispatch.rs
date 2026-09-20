@@ -355,7 +355,7 @@ mod tests {
             ApprovalId::from_str("018f47f7-5a86-7c00-8000-000000000a09")?,
             &proposal()?,
             state,
-        ))
+        )?)
     }
 
     fn new_operation() -> Result<NewDurableOperation, Box<dyn Error>> {

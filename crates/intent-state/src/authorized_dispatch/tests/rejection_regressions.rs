@@ -448,7 +448,7 @@ fn identical_payload_cannot_move_between_bound_provider_targets() -> Result<(), 
             approved_at: UnixTimestampMicros::try_new(111)?,
             expires_at: Some(UnixTimestampMicros::try_new(200)?),
         },
-    );
+    )?;
     let mut store = StateStore::open_in_memory_for_tests()?;
     let operation = store.create_operation(NewDurableOperation {
         binding: original.binding(),

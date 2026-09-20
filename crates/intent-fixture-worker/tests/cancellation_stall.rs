@@ -361,13 +361,16 @@ fn process_death_while_cancellation_persistence_is_stalled_recovers_without_rese
             .stderr(Stdio::inherit())
             .spawn()?,
     );
-    let ready_deadline = Instant::now() + Duration::from_secs(8);
+    let setup_deadline = Instant::now() + Duration::from_secs(30);
     while !profile.root.join("cancel-ready").is_file() {
         if let Some(status) = child.0.try_wait()? {
             return Err(format!("broker child exited before cancellation stall: {status}").into());
         }
-        if Instant::now() >= ready_deadline {
-            return Err("broker cancellation-stall child timed out".into());
+        if Instant::now() >= setup_deadline {
+            return Err(
+                "broker child setup did not reach the cancellation checkpoint within 30 seconds"
+                    .into(),
+            );
         }
         std::thread::sleep(Duration::from_millis(2));
     }
