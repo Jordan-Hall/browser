@@ -1,5 +1,11 @@
 # CORE native implementation checkpoint
 
+## 2026-09-20 broker crash setup deadline
+
+Latest main through PR #839 is merged at `f258485`. The broker crash test now waits for actual worker readiness before starting its existing eight-second crash-phase deadline. Setup has a separate thirty-second bound. A nine-second setup delay passes both crash phases; the same delay after the parent start still fails the crash-phase deadline. The independent effect and recovery assertions are unchanged.
+
+Formatting, strict Clippy and all 16 broker tests passed on the merged code. The broader four-thread run finished with 73 passing tests and two failures in the newly merged blocked-progress and stale-result fixtures. Those failures remain open; this is not a green full-suite result. Exact source and log hashes are in [the verification report](verification/core-broker-startup-deadline-20260920.json). No task acceptance changed.
+
 ## 2026-09-19 measured cancellation backpressure
 
 Local fixture and regression changes build on main `ce06a3aa0364b65b2c1fe4e4d8a05f0721abb09e`, including merged PR #824. A parent-controlled start lets two real cooperative workers fill their progress sockets without supervisor reads. Each reports repeated refused progress admissions and its admitted frame count. The test requires cancellation acknowledgements before that measured backlog drains, immediate lease revocation, successful exit without escalation, and a completed request through an independent worker.
