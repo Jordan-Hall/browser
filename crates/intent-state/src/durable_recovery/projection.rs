@@ -413,17 +413,13 @@ mod origin_evidence_tests {
             None
         );
         assert_eq!(
-            compensation_origin_receipt(ExecutionOutcome::ProvenNotCommitted {
-                observation: read
-            }),
+            compensation_origin_receipt(ExecutionOutcome::ProvenNotCommitted { observation: read }),
             None
         );
 
         let external = ContentHash::from_bytes([2; 32]);
         assert_eq!(
-            compensation_origin_receipt(ExecutionOutcome::ExternalCommitted {
-                receipt: external
-            }),
+            compensation_origin_receipt(ExecutionOutcome::ExternalCommitted { receipt: external }),
             Some(external)
         );
 
