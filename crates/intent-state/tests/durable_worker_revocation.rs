@@ -100,8 +100,9 @@ fn worker(n: u64) -> Result<WorkerRegistration> {
 }
 fn action(n: u64) -> Result<RecoverableAction> {
     let payload = b"exact approved action".to_vec();
-    Ok(RecoverableAction {
+    let mut action = RecoverableAction {
         operation: NewDurableOperation {
+            binding: None,
             operation_id: id(n)?,
             task_id: id(2)?,
             action_proposal_id: ActionProposalId::from_uuid(Uuid::new_v4()),
@@ -113,13 +114,33 @@ fn action(n: u64) -> Result<RecoverableAction> {
         },
         scope: scope()?,
         effect: RecoveryEffect::ExternalWrite,
-        source_revision: digest(b"source-v1"),
+
         destination: BoundedText::try_new("fixture://external")?,
         message_kind: BoundedText::try_new("create")?,
         payload,
         deadline: t(900_000)?,
         compensation: None,
-    })
+    };
+    action.operation.binding = Some(intent_contracts::ActionBinding {
+        task_id: action.operation.task_id,
+        account_id: action.operation.account_id,
+        capability_id: action.operation.capability_id,
+        target_resource: None,
+        canonical_arguments: intent_contracts::ArtifactReference::new(
+            intent_contracts::ArtifactId::from_uuid(action.operation.action_proposal_id.as_uuid()),
+            action.operation.arguments_hash,
+            intent_contracts::ByteSize::from_bytes(action.payload.len() as u64),
+            BoundedText::try_new("application/octet-stream")?,
+        ),
+        context: intent_contracts::ActionContext {
+            source_revision: digest(b"source-v1"),
+            canonicalization: intent_contracts::CanonicalizationVersion::ExactBytesV1,
+        },
+        effect_class: intent_contracts::CapabilityEffectClass::IrreversibleOrUncertain,
+        approval_requirement: intent_contracts::ApprovalRequirement::Always,
+        expires_at: Some(action.deadline),
+    });
+    Ok(action)
 }
 fn pending(owner: &mut RuntimeOwner, n: u64) -> Result<OutboxMessageId> {
     owner.prepare_action(action(n)?)?;

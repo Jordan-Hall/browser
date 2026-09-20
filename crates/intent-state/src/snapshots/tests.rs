@@ -649,7 +649,7 @@ fn authenticated_version_seven_snapshot_upgrades_only_the_private_restore_candid
         SnapshotLimits::default(),
     )?;
     assert_eq!(restored.source_schema_version, 7);
-    assert_eq!(restored.schema_version, 11);
+    assert_eq!(restored.schema_version, 12);
     assert_ne!(restored.runtime_epoch, epoch);
     let copy = StateStore::open(f.restored().join("state.sqlite3"))?;
     assert!(!copy.dispatch_status()?.enabled);

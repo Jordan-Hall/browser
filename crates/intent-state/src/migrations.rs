@@ -296,6 +296,28 @@ const MIGRATION_010: &str = include_str!("durable_recovery/migration.sql");
 
 const MIGRATION_011: &str = include_str!("provider_recovery/migration.sql");
 
+const MIGRATION_012: &str = r#"
+ALTER TABLE durable_operations ADD COLUMN binding_required INTEGER NOT NULL DEFAULT 0 CHECK(binding_required IN (0,1));
+CREATE TRIGGER durable_operation_binding_requirement_immutable BEFORE UPDATE OF binding_required ON durable_operations BEGIN
+    SELECT RAISE(ABORT, 'action binding requirement is immutable');
+END;
+CREATE TABLE durable_operation_bindings (
+    operation_id TEXT PRIMARY KEY NOT NULL REFERENCES durable_operations(operation_id),
+    binding_json TEXT NOT NULL CHECK(length(CAST(binding_json AS BLOB)) BETWEEN 1 AND 16384)
+) STRICT;
+CREATE TRIGGER durable_operation_binding_creation_only BEFORE INSERT ON durable_operation_bindings
+WHEN EXISTS (SELECT 1 FROM durable_operation_bindings WHERE operation_id=NEW.operation_id)
+OR NOT EXISTS (SELECT 1 FROM durable_operations WHERE operation_id=NEW.operation_id AND binding_required=1 AND state='prepared' AND revision=0) BEGIN
+    SELECT RAISE(ABORT, 'action binding requires a new bound operation');
+END;
+CREATE TRIGGER durable_operation_binding_immutable BEFORE UPDATE ON durable_operation_bindings BEGIN
+    SELECT RAISE(ABORT, 'action binding is immutable');
+END;
+CREATE TRIGGER durable_operation_binding_no_delete BEFORE DELETE ON durable_operation_bindings BEGIN
+    SELECT RAISE(ABORT, 'action binding cannot be deleted');
+END;
+"#;
+
 pub(crate) const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -351,6 +373,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 11,
         name: "durable_provider_recovery_attempts",
         sql: MIGRATION_011,
+    },
+    Migration {
+        version: 12,
+        name: "immutable_action_authorization_bindings",
+        sql: MIGRATION_012,
     },
 ];
 

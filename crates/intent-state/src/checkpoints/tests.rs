@@ -62,6 +62,7 @@ fn checkpoint_commits_graph_cursor_operation_and_exact_artifact_then_reopens() -
     let mut store = StateStore::open(profile.database())?;
     let meta = artifact(&mut store, &profile.artifacts(), 1, &scope()?)?;
     store.create_operation(NewDurableOperation {
+        binding: None,
         operation_id: id(60)?,
         task_id: id(30)?,
         action_proposal_id: id(61)?,
@@ -118,6 +119,7 @@ fn identical_retry_is_stable_after_newer_operation_state_but_changed_input_confl
     let new = request(101, vec![])?;
     let saved = store.save_task_checkpoint(&profile.artifacts(), new.clone())?;
     store.create_operation(NewDurableOperation {
+        binding: None,
         operation_id: id(60)?,
         task_id: id(30)?,
         action_proposal_id: id(61)?,
@@ -433,6 +435,7 @@ fn historical_uncertainty_is_not_rewritten_or_reexecuted_by_loading_a_checkpoint
     let profile = Profile::new()?;
     let mut store = StateStore::open(profile.database())?;
     let operation = store.create_operation(NewDurableOperation {
+        binding: None,
         operation_id: id(60)?,
         task_id: id(30)?,
         action_proposal_id: id(61)?,
@@ -646,8 +649,8 @@ fn authenticated_profile_restore_preserves_checkpoint_graph_pins_and_dispatch_ba
         restored.artifact_reference_count(meta.artifact_id(), &scope()?)?,
         1
     );
-    assert_eq!(receipt.schema_version, 11);
-    assert_eq!(receipt.source_schema_version, 11);
+    assert_eq!(receipt.schema_version, 12);
+    assert_eq!(receipt.source_schema_version, 12);
     assert!(!restored.dispatch_status()?.enabled);
     Ok(())
 }
@@ -657,6 +660,7 @@ fn rehashed_payload_cannot_omit_an_operation_at_the_checkpoint_watermark() -> Te
     let profile = Profile::new()?;
     let mut store = StateStore::open(profile.database())?;
     store.create_operation(NewDurableOperation {
+        binding: None,
         operation_id: id(60)?,
         task_id: id(30)?,
         action_proposal_id: id(61)?,

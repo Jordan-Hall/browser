@@ -50,6 +50,7 @@ pub fn time(value: i64) -> TestResult<UnixTimestampMicros> {
 
 pub fn approved(store: &mut StateStore, number: u64) -> TestResult<DurableOperation> {
     let operation = store.create_operation(NewDurableOperation {
+        binding: None,
         operation_id: id(number)?,
         task_id: id(number + 1000)?,
         action_proposal_id: id(number + 2000)?,
