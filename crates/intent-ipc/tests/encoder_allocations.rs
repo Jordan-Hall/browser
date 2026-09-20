@@ -14,6 +14,7 @@ static ALLOCATOR: allocation_meter::CountingSystem = allocation_meter::CountingS
 const ELEMENTS: usize = 1_048_576;
 const LIMITS: [usize; 3] = [1_024, 16_384, 65_536];
 const ALLOWANCE: usize = 4_096;
+const MIN_TRAVERSAL_DIVISOR: usize = 4;
 
 struct FiniteZeros<'a>(&'a Cell<usize>);
 
@@ -86,7 +87,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         assert_eq!(error, Some(WireErrorCode::FrameTooLarge));
         assert!(measurement.peak_live_bytes <= limit + ALLOWANCE);
         assert!(measurement.peak_realloc_overlap_bytes <= 2 * limit + ALLOWANCE);
-        assert!(attempted.get() > 0 && attempted.get() < ELEMENTS);
+        assert!(attempted.get() < ELEMENTS);
+        assert!(
+            attempted.get() >= limit / MIN_TRAVERSAL_DIVISOR,
+            "bounded encoder stopped before traversing a limit-scaled prefix: limit={limit}, attempted={}",
+            attempted.get()
+        );
         assert!(attempted.get() <= limit + 1);
     }
 
