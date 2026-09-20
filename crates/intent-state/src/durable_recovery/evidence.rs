@@ -330,6 +330,11 @@ impl RuntimeOwner {
         if verdict == "committed" {
             let origin:Option<(String,String,String)>=tx.query_row("SELECT original_operation_id,original_attempt_id,original_receipt FROM recovery_actions WHERE operation_id=?1 AND original_operation_id IS NOT NULL",[op.operation_id().to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
             if let Some((original, attempt, receipt)) = origin {
+                if matches!(value.verdict, ReconciliationVerdict::ReadCompleted { .. }) {
+                    return Err(RecoveryError::Denied(
+                        "compensation requires committed write evidence",
+                    ));
+                }
                 let original = load(&tx, parse(&original)?)?;
                 if !matches!(
                     original.state(),
