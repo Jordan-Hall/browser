@@ -27,6 +27,7 @@ fn invalid(task: TaskId) { requires_account(task); }
 ```
 "#]
 
+mod action_binding;
 mod byte_size;
 mod decimal_i128;
 mod ids;
@@ -35,6 +36,7 @@ mod records;
 mod values;
 mod version;
 
+pub use action_binding::{ActionBinding, ActionContext, CanonicalizationVersion};
 pub use ids::{
     AccountId, ActionProposalId, ApprovalId, ArtifactId, CancellationId, CapabilityId,
     CheckpointId, ConnectorId, EvidenceId, GoalContractId, MemoryRecordId, ObservationId,

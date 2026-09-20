@@ -73,6 +73,9 @@ fn approval_identity_hash_and_state_must_match() -> Result<(), Box<dyn Error>> {
         } else {
             serde_json::to_value(ContentHash::from_bytes([0xff; 32]))?
         };
+        if field == "exact_arguments_hash" {
+            value["exact_binding"]["canonical_arguments"]["content_hash"] = value[field].clone();
+        }
         values.push(serde_json::from_value::<Approval>(value)?);
     }
     for state in [
@@ -295,5 +298,213 @@ fn staging_cannot_predate_the_durable_approval_transition() -> Result<(), Box<dy
             .is_err()
     );
     assert_unstaged(&store)?;
+    Ok(())
+}
+#[test]
+fn material_binding_changes_leave_no_outbox_or_journal_residue() -> Result<(), Box<dyn Error>> {
+    let original = proposal()?;
+    let mut variants = Vec::new();
+    let mut changed = serde_json::to_value(&original)?;
+    changed["context"]["source_revision"] = serde_json::to_value(ContentHash::from_bytes([9; 32]))?;
+    variants.push(changed);
+    let mut changed = serde_json::to_value(&original)?;
+    changed["expires_at"] = json!(500);
+    variants.push(changed);
+    let mut changed = serde_json::to_value(&original)?;
+    changed["effect_class"] = json!("read_only");
+    variants.push(changed);
+    let mut changed = serde_json::to_value(&original)?;
+    changed["approval_requirement"] = json!("risk_based");
+    variants.push(changed);
+    let mut changed = serde_json::to_value(&original)?;
+    changed
+        .as_object_mut()
+        .ok_or("proposal object")?
+        .remove("context");
+    variants.push(changed);
+    for changed in variants {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        let rebound: ActionProposal = serde_json::from_value(changed)?;
+        let error = store
+            .stage_record_bound_outbox(
+                &rebound,
+                &approved_record()?,
+                message()?,
+                1,
+                UnixTimestampMicros::try_new(120)?,
+            )
+            .err()
+            .ok_or("changed material binding was staged")?;
+        assert!(matches!(error, AuthorizedDispatchError::BindingMismatch(_)));
+        assert_unstaged(&store)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn imported_approval_cannot_drop_or_replace_its_exact_binding() -> Result<(), Box<dyn Error>> {
+    for remove in [false, true] {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        let mut record = serde_json::to_value(approved_record()?)?;
+        if remove {
+            record
+                .as_object_mut()
+                .ok_or("approval object")?
+                .remove("exact_binding");
+        } else {
+            record["exact_binding"]["context"]["source_revision"] =
+                serde_json::to_value(ContentHash::from_bytes([8; 32]))?;
+        }
+        let rebound: Approval = serde_json::from_value(record)?;
+        assert!(
+            store
+                .stage_record_bound_outbox(
+                    &proposal()?,
+                    &rebound,
+                    message()?,
+                    1,
+                    UnixTimestampMicros::try_new(120)?,
+                )
+                .is_err()
+        );
+        assert_unstaged(&store)?;
+    }
+    Ok(())
+}
+#[test]
+fn corrupt_stored_binding_identity_or_version_is_not_loaded() -> Result<(), Box<dyn Error>> {
+    for mutation in 0..3 {
+        let mut store = StateStore::open_in_memory_for_tests()?;
+        approved_operation(&mut store)?;
+        let raw: String = store.connection.query_row(
+            "SELECT binding_json FROM durable_operation_bindings WHERE operation_id=?1",
+            [operation_id()?.to_string()],
+            |row| row.get(0),
+        )?;
+        let mut value: serde_json::Value = serde_json::from_str(&raw)?;
+        match mutation {
+            0 => value["binding"]["account_id"] = json!("018f47f7-5a86-7c00-8000-000000000aff"),
+            1 => value["schema"] = json!("v2"),
+            _ => value["binding"]["context"]["canonicalization"] = json!("exact_bytes_v2"),
+        }
+        store
+            .connection
+            .execute_batch("DROP TRIGGER durable_operation_binding_immutable;")?;
+        store.connection.execute(
+            "UPDATE durable_operation_bindings SET binding_json=?1 WHERE operation_id=?2",
+            rusqlite::params![serde_json::to_string(&value)?, operation_id()?.to_string()],
+        )?;
+        assert!(store.load_operation(operation_id()?).is_err());
+        assert!(
+            store
+                .stage_record_bound_outbox(
+                    &proposal()?,
+                    &approved_record()?,
+                    message()?,
+                    1,
+                    UnixTimestampMicros::try_new(120)?,
+                )
+                .is_err()
+        );
+        assert!(store.load_outbox(outbox_id()?)?.is_none());
+        assert_eq!(store.operation_journal(operation_id()?)?.len(), 2);
+    }
+    Ok(())
+}
+
+#[test]
+fn stored_binding_and_creation_requirement_are_immutable() -> Result<(), Box<dyn Error>> {
+    let mut store = StateStore::open_in_memory_for_tests()?;
+    store.create_operation(new_operation()?)?;
+    for sql in [
+        "UPDATE durable_operations SET binding_required=0",
+        "UPDATE durable_operation_bindings SET binding_json='{}'",
+        "DELETE FROM durable_operation_bindings",
+        "INSERT OR REPLACE INTO durable_operation_bindings SELECT operation_id,binding_json FROM durable_operation_bindings",
+    ] {
+        assert!(store.connection.execute(sql, []).is_err());
+    }
+    assert_eq!(
+        store
+            .load_operation(operation_id()?)?
+            .ok_or("operation")?
+            .binding(),
+        proposal()?.binding().as_ref()
+    );
+    Ok(())
+}
+#[test]
+fn identical_payload_cannot_move_between_bound_provider_targets() -> Result<(), Box<dyn Error>> {
+    let mut value = serde_json::to_value(proposal()?)?;
+    value["target_resource"] =
+        json!({"provider":"shop", "account":"account-a", "resource":"cart/17"});
+    let original: ActionProposal = serde_json::from_value(value.clone())?;
+    let approval = Approval::new(
+        "018f47f7-5a86-7c00-8000-000000000a09".parse()?,
+        &original,
+        ApprovalState::Approved {
+            approved_at: UnixTimestampMicros::try_new(111)?,
+            expires_at: Some(UnixTimestampMicros::try_new(200)?),
+        },
+    );
+    let mut store = StateStore::open_in_memory_for_tests()?;
+    let operation = store.create_operation(NewDurableOperation {
+        binding: original.binding(),
+        operation_id: operation_id()?,
+        task_id: task_id()?,
+        action_proposal_id: proposal_id()?,
+        account_id: account_id()?,
+        capability_id: capability_id()?,
+        arguments_hash: arguments_hash(),
+        source_schema: SchemaVersion::V1,
+        created_at: UnixTimestampMicros::try_new(100)?,
+    })?;
+    store.transition_operation(
+        operation.operation_id(),
+        OperationTransition {
+            expected_revision: 0,
+            next_state: DurableOperationState::Approved,
+            state_detail: None,
+            attempt_identity: None,
+            occurred_at: UnixTimestampMicros::try_new(110)?,
+        },
+    )?;
+    for (field, replacement) in [
+        ("provider", "other-shop"),
+        ("account", "account-b"),
+        ("resource", "cart/18"),
+    ] {
+        let mut changed = value.clone();
+        changed["target_resource"][field] = json!(replacement);
+        let rebound: ActionProposal = serde_json::from_value(changed)?;
+        assert!(
+            store
+                .stage_record_bound_outbox(
+                    &rebound,
+                    &approval,
+                    message()?,
+                    1,
+                    UnixTimestampMicros::try_new(120)?
+                )
+                .is_err()
+        );
+        assert_unstaged(&store)?;
+    }
+    store.stage_record_bound_outbox(
+        &original,
+        &approval,
+        message()?,
+        1,
+        UnixTimestampMicros::try_new(120)?,
+    )?;
+    assert_eq!(
+        store
+            .load_outbox(outbox_id()?)?
+            .ok_or("bound outbox")?
+            .payload(),
+        ARGUMENTS
+    );
     Ok(())
 }

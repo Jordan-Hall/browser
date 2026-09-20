@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "scope": "Combined action authorization binding and cancellation stack verification",
+  "source_commit": "03236325e705684decb3f4fa55bc47f56a47e920",
+  "action_binding_commit": "3afc7fa",
+  "base_pr": 843,
+  "base_commit": "04901decbe0767ca5ef610d6f6b58397da45300c",
+  "main_commit": "c11a600636a9f08b24d2de8460a5f0ff0320c231",
+  "environment": "Linux Docker rust:1.98.1-slim; rustc 1.98.1; locked offline dependencies",
+  "log": {
+    "path": "target/action-binding-combined-stack.log",
+    "sha256": "cec68518133fd0173f3005e619793c7188d45623a0fd7d445aa058dbd1741e29",
+    "exit_code": 0
+  },
+  "checks": [
+    "cargo fmt --all --check",
+    "cargo clippy --offline --locked --workspace --all-targets --all-features -- -D warnings",
+    "cargo test --offline --locked --workspace --all-targets --no-fail-fast -- --test-threads=1",
+    "cargo test --offline --locked --workspace --doc --no-fail-fast",
+    "cargo run --offline --locked -p intent-xtask -- arch-check",
+    "cargo run --offline --locked -p intent-conformance --quiet"
+  ],
+  "results": {
+    "all_checks_passed": true,
+    "passing_tests_including_doctests": 450,
+    "ignored_tests": 1
+  },
+  "earlier_evidence": "docs/verification/core-action-binding-20260920.json",
+  "limitations": [
+    "Local Linux verification; publication CI evidence remains separate",
+    "No CORE task acceptance; provider-target execution and wire outcome alignment remain unfinished",
+    "Earlier main-only ACK race failure and intermediate failures remain in the earlier evidence report"
+  ]
+}

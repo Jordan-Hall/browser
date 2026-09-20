@@ -20,7 +20,6 @@ pub enum AuthorizedDispatchError {
     ApprovalNotYetEffective,
     ApprovalExpired,
     ProposalExpired,
-    TargetBindingUnsupported,
 }
 
 impl fmt::Display for AuthorizedDispatchError {
@@ -43,9 +42,6 @@ impl fmt::Display for AuthorizedDispatchError {
             }
             Self::ApprovalExpired => formatter.write_str("approval record has expired"),
             Self::ProposalExpired => formatter.write_str("action proposal has expired"),
-            Self::TargetBindingUnsupported => formatter.write_str(
-                "targeted action staging is blocked until the target binding is durable",
-            ),
         }
     }
 }
@@ -203,9 +199,6 @@ impl StateStore {
         if payload_hash != proposal.arguments_hash() {
             return Err(AuthorizedDispatchError::BindingMismatch("payload hash"));
         }
-        if proposal.target_resource().is_some() {
-            return Err(AuthorizedDispatchError::TargetBindingUnsupported);
-        }
         if approval.action_proposal_id() != proposal.action_proposal_id() {
             return Err(AuthorizedDispatchError::BindingMismatch(
                 "approval proposal id",
@@ -237,6 +230,12 @@ impl StateStore {
             _ => return Err(AuthorizedDispatchError::ApprovalNotActive),
         }
 
+        let binding = proposal
+            .binding()
+            .ok_or(AuthorizedDispatchError::BindingMismatch("unbound proposal"))?;
+        if operation.binding() != Some(&binding) || approval.exact_binding() != Some(&binding) {
+            return Err(AuthorizedDispatchError::BindingMismatch("action binding"));
+        }
         let staged = StagedOutbox {
             outbox_id: new.outbox_id,
             operation_id: new.operation_id,
@@ -333,6 +332,12 @@ mod tests {
             capability_id()?,
             account_id()?,
             ActionProposalDescriptor {
+                context: intent_contracts::ActionContext {
+                    source_revision: ContentHash::from_bytes([7; 32]),
+                    canonicalization: intent_contracts::CanonicalizationVersion::ExactBytesV1,
+                },
+                target_resource: None,
+                expires_at: None,
                 canonical_arguments: ArtifactReference::new(
                     "018f47f7-5a86-7c00-8000-000000000a08".parse()?,
                     arguments_hash(),
@@ -348,14 +353,14 @@ mod tests {
     fn approval(state: ApprovalState) -> Result<Approval, Box<dyn Error>> {
         Ok(Approval::new(
             ApprovalId::from_str("018f47f7-5a86-7c00-8000-000000000a09")?,
-            proposal_id()?,
-            arguments_hash(),
+            &proposal()?,
             state,
         ))
     }
 
-    fn approved_operation(store: &mut StateStore) -> Result<(), Box<dyn Error>> {
-        let operation = store.create_operation(NewDurableOperation {
+    fn new_operation() -> Result<NewDurableOperation, Box<dyn Error>> {
+        Ok(NewDurableOperation {
+            binding: proposal()?.binding(),
             operation_id: operation_id()?,
             task_id: task_id()?,
             action_proposal_id: proposal_id()?,
@@ -364,7 +369,11 @@ mod tests {
             arguments_hash: arguments_hash(),
             source_schema: SchemaVersion::V1,
             created_at: UnixTimestampMicros::try_new(100)?,
-        })?;
+        })
+    }
+
+    fn approved_operation(store: &mut StateStore) -> Result<(), Box<dyn Error>> {
+        let operation = store.create_operation(new_operation()?)?;
         store.transition_operation(
             operation.operation_id(),
             OperationTransition {
@@ -507,7 +516,8 @@ mod tests {
     }
 
     #[test]
-    fn targeted_proposal_fails_closed_until_target_is_durable() -> Result<(), Box<dyn Error>> {
+    fn rebound_target_fails_closed_when_durable_binding_is_untargeted() -> Result<(), Box<dyn Error>>
+    {
         let mut store = StateStore::open_in_memory_for_tests()?;
         approved_operation(&mut store)?;
         let mut value = serde_json::to_value(proposal()?)?;
@@ -530,7 +540,7 @@ mod tests {
         };
         assert!(matches!(
             error,
-            AuthorizedDispatchError::TargetBindingUnsupported
+            AuthorizedDispatchError::BindingMismatch("action binding")
         ));
         assert_unstaged(&store)?;
         Ok(())

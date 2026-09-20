@@ -62,6 +62,7 @@ impl DurableOperationState {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DurableOperation {
+    binding: Option<intent_contracts::ActionBinding>,
     operation_id: OperationId,
     task_id: TaskId,
     action_proposal_id: ActionProposalId,
@@ -78,6 +79,11 @@ pub struct DurableOperation {
 }
 
 impl DurableOperation {
+    #[must_use]
+    pub fn binding(&self) -> Option<&intent_contracts::ActionBinding> {
+        self.binding.as_ref()
+    }
+
     #[must_use]
     pub const fn operation_id(&self) -> OperationId {
         self.operation_id
@@ -146,6 +152,7 @@ impl DurableOperation {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NewDurableOperation {
+    pub binding: Option<intent_contracts::ActionBinding>,
     pub operation_id: OperationId,
     pub task_id: TaskId,
     pub action_proposal_id: ActionProposalId,
@@ -243,8 +250,8 @@ impl StateStore {
             INSERT INTO durable_operations(
                 operation_id, task_id, action_proposal_id, account_id, capability_id,
                 arguments_hash, source_schema_major, source_schema_minor, state,
-                state_detail, attempt_identity, revision, created_at_micros, updated_at_micros
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'prepared', NULL, NULL, 0, ?9, ?9)
+                state_detail, attempt_identity, revision, created_at_micros, updated_at_micros, binding_required
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'prepared', NULL, NULL, 0, ?9, ?9, ?10)
             "#,
             params![
                 new.operation_id.to_string(),
@@ -256,9 +263,11 @@ impl StateStore {
                 i64::from(new.source_schema.major()),
                 i64::from(new.source_schema.minor()),
                 new.created_at.get(),
+                new.binding.is_some(),
             ],
         )?;
 
+        crate::operation_binding::insert_binding(&transaction, &new)?;
         append_journal(
             &transaction,
             JournalAppend {
@@ -482,7 +491,7 @@ pub(crate) fn load_operation_from_connection(
             r#"
             SELECT task_id, action_proposal_id, account_id, capability_id, arguments_hash,
                    source_schema_major, source_schema_minor, state, state_detail,
-                   attempt_identity, revision, created_at_micros, updated_at_micros
+                   attempt_identity, revision, created_at_micros, updated_at_micros, binding_required
             FROM durable_operations
             WHERE operation_id = ?1
             "#,
@@ -502,6 +511,7 @@ pub(crate) fn load_operation_from_connection(
                     row.get::<_, i64>(10)?,
                     row.get::<_, i64>(11)?,
                     row.get::<_, i64>(12)?,
+                    row.get::<_, bool>(13)?,
                 ))
             },
         )
@@ -521,12 +531,18 @@ pub(crate) fn load_operation_from_connection(
         revision,
         created_at,
         updated_at,
+        binding_required,
     )) = raw
     else {
         return Ok(None);
     };
 
-    Ok(Some(DurableOperation {
+    let operation = DurableOperation {
+        binding: crate::operation_binding::load_binding(
+            connection,
+            operation_id,
+            binding_required,
+        )?,
         operation_id,
         task_id: parse_id(&task_id, "task id")?,
         action_proposal_id: parse_id(&action_proposal_id, "action proposal id")?,
@@ -556,7 +572,17 @@ pub(crate) fn load_operation_from_connection(
         updated_at: UnixTimestampMicros::try_new(updated_at).map_err(|error| {
             StateError::InvalidStoredOperation(format!("invalid updated timestamp: {error}"))
         })?,
-    }))
+    };
+    if let Some(binding) = operation.binding() {
+        crate::operation_binding::validate_identity(
+            binding,
+            operation.task_id(),
+            operation.account_id(),
+            operation.capability_id(),
+            operation.arguments_hash(),
+        )?;
+    }
+    Ok(Some(operation))
 }
 
 fn validate_transition(
@@ -695,6 +721,7 @@ mod tests {
 
     fn operation() -> Result<NewDurableOperation, Box<dyn Error>> {
         Ok(NewDurableOperation {
+            binding: None,
             operation_id: OperationId::from_str("018f47f7-5a86-7c00-8000-000000000821")?,
             task_id: TaskId::from_str("018f47f7-5a86-7c00-8000-000000000822")?,
             action_proposal_id: ActionProposalId::from_str("018f47f7-5a86-7c00-8000-000000000823")?,

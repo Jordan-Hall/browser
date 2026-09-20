@@ -270,7 +270,9 @@ fn build_plan(
             };
         }
         let current:Option<(bool,String,i64)>=db.query_row("SELECT enabled,source_revision,valid_until_micros FROM recovery_authorities WHERE account_id=?1 AND capability_id=?2",params![op.account_id().to_string(),op.capability_id().to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
-        if let Some((enabled, revision, valid_until)) = current {
+        if let Some((enabled, revision, valid_until)) = current
+            && let Some(binding) = op.binding()
+        {
             authority = if !enabled {
                 CurrentAuthority::Revoked
             } else if valid_until <= now.get() {
@@ -278,7 +280,8 @@ fn build_plan(
             } else {
                 CurrentAuthority::Current
             };
-            source = if revision != expected {
+            source = if revision != expected || binding.context.source_revision.to_hex() != expected
+            {
                 SourcePrecondition::Conflict
             } else if valid_until <= now.get() {
                 SourcePrecondition::Stale
