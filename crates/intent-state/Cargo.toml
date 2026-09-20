@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+integration-test-hooks = []
+
 [dependencies]
 intent-recovery = { path = "../intent-recovery" }
 intent-contracts = { path = "../intent-contracts" }

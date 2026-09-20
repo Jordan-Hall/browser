@@ -145,6 +145,16 @@ impl StateStore {
         })
     }
 
+    #[cfg(feature = "integration-test-hooks")]
+    #[doc(hidden)]
+    pub fn install_busy_handler_for_integration_test(
+        &self,
+        callback: Option<fn(i32) -> bool>,
+    ) -> Result<(), StateError> {
+        self.connection.busy_handler(callback)?;
+        Ok(())
+    }
+
     #[doc(hidden)]
     pub fn open_in_memory_for_tests() -> Result<Self, StateError> {
         let mut connection = Connection::open_in_memory()?;
