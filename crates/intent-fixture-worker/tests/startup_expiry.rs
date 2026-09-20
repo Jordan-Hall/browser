@@ -21,6 +21,24 @@ use uuid::Uuid;
 type TestResult = Result<(), Box<dyn Error>>;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum StartupOutcome {
+    Admitted,
+    Expired,
+    Revoked,
+    Disconnected,
+}
+
+impl StartupOutcome {
+    fn failure(self) -> Option<WorkerFailure> {
+        match self {
+            Self::Admitted | Self::Revoked => None,
+            Self::Expired => Some(WorkerFailure::HandshakeTimeout),
+            Self::Disconnected => Some(WorkerFailure::ControlClosed),
+        }
+    }
+}
+
 struct Markers(PathBuf);
 impl Drop for Markers {
     fn drop(&mut self) {
@@ -28,7 +46,7 @@ impl Drop for Markers {
     }
 }
 
-fn gated_startup(gate_at: &str, late: bool) -> TestResult {
+fn gated_startup(gate_at: &str, expected: StartupOutcome) -> TestResult {
     let markers = Markers(std::env::temp_dir().join(format!("startup-{}", Uuid::new_v4())));
     DirBuilder::new().mode(0o700).create(&markers.0)?;
     let mut supervisor = Supervisor::new(
@@ -91,20 +109,25 @@ fn gated_startup(gate_at: &str, late: bool) -> TestResult {
         markers.0.join("progress-authenticated").try_exists()?,
         gate_at == "ready"
     );
-    if late {
+    if expected == StartupOutcome::Expired {
         let release_at = launched + HANDSHAKE_TIMEOUT + Duration::from_millis(30);
         std::thread::sleep(release_at.saturating_duration_since(Instant::now()));
     }
+    if expected == StartupOutcome::Revoked {
+        supervisor.cancel(id, CancellationId::from_uuid(Uuid::new_v4()))?;
+        assert_eq!(supervisor.snapshot(id)?.state, WorkerState::Draining);
+        assert!(supervisor.lease(id).is_err());
+    }
     std::fs::write(markers.0.join("release"), b"release")?;
     let sent_deadline = Instant::now() + Duration::from_secs(2);
-    while !markers.0.join("sent").try_exists()? {
+    while !markers.0.join("completed").try_exists()? {
         if Instant::now() >= sent_deadline {
-            return Err("fixture did not send gated message after release".into());
+            return Err("fixture did not complete gated step after release".into());
         }
         std::thread::sleep(Duration::from_millis(1));
     }
     supervisor.poll();
-    if !late {
+    if expected == StartupOutcome::Admitted {
         while supervisor.snapshot(id)?.state == WorkerState::Starting {
             if Instant::now() >= sent_deadline {
                 return Err("on-time worker did not become ready".into());
@@ -114,12 +137,8 @@ fn gated_startup(gate_at: &str, late: bool) -> TestResult {
         }
     }
     let snapshot = supervisor.snapshot(id)?;
-    if late {
-        assert_eq!(
-            snapshot.failure,
-            Some(WorkerFailure::HandshakeTimeout),
-            "{snapshot:?}"
-        );
+    if expected != StartupOutcome::Admitted {
+        assert_eq!(snapshot.failure, expected.failure(), "{snapshot:?}");
         assert_ne!(snapshot.state, WorkerState::Ready);
         assert!(supervisor.lease(id).is_err());
     } else {
@@ -136,10 +155,7 @@ fn gated_startup(gate_at: &str, late: bool) -> TestResult {
         assert_ne!(snapshot.state, WorkerState::Ready);
         assert!(supervisor.lease(id).is_err());
         if matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed) {
-            assert_eq!(
-                snapshot.failure,
-                late.then_some(WorkerFailure::HandshakeTimeout)
-            );
+            assert_eq!(snapshot.failure, expected.failure());
             break;
         }
         if Instant::now() >= cleanup_deadline {
@@ -153,23 +169,36 @@ fn gated_startup(gate_at: &str, late: bool) -> TestResult {
 
 #[test]
 fn ready_sent_after_startup_expiry_never_gains_a_lease() -> TestResult {
-    gated_startup("ready", true)
+    gated_startup("ready", StartupOutcome::Expired)
 }
 
 #[test]
 fn same_gated_worker_admitted_before_expiry_gets_a_revocable_lease() -> TestResult {
     for gate_at in ["control", "progress", "ready"] {
-        gated_startup(gate_at, false)?;
+        gated_startup(gate_at, StartupOutcome::Admitted)?;
     }
     Ok(())
 }
 
 #[test]
 fn first_hello_after_expiry_never_gains_a_lease() -> TestResult {
-    gated_startup("control", true)
+    gated_startup("control", StartupOutcome::Expired)
 }
 
 #[test]
 fn control_welcome_does_not_extend_the_progress_hello_deadline() -> TestResult {
-    gated_startup("progress", true)
+    gated_startup("progress", StartupOutcome::Expired)
+}
+
+#[test]
+fn revoked_startup_cannot_complete_with_valid_hello_or_ready() -> TestResult {
+    for gate_at in ["control", "progress", "ready"] {
+        gated_startup(gate_at, StartupOutcome::Revoked)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn disconnect_after_control_welcome_cannot_gain_authority() -> TestResult {
+    gated_startup("disconnect", StartupOutcome::Disconnected)
 }

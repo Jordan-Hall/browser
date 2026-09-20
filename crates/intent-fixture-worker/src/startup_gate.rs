@@ -44,12 +44,28 @@ fn await_release(directory: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn run(packet: BootstrapPacket, directory: &str, gate_at: &str) -> Result<(), Box<dyn Error>> {
-    if !matches!(gate_at, "control" | "progress" | "ready") {
+    if !matches!(gate_at, "control" | "progress" | "ready" | "disconnect") {
         return Err("unknown startup gate".into());
     }
     let directory = Path::new(directory);
     let generation = packet.control.identity.instance_id();
     let mut control = UnixStream::connect(packet.control_endpoint.as_str())?;
+    if gate_at == "disconnect" {
+        control.set_read_timeout(Some(Duration::from_secs(10)))?;
+        control.set_write_timeout(Some(Duration::from_secs(10)))?;
+        send(&mut control, ControlMessage::Hello(packet.control))?;
+        if !matches!(receive(&mut control)?.payload(), ControlMessage::Welcome { generation: id, selected }
+            if *id == generation && *selected == SchemaVersion::V1)
+        {
+            return Err("unexpected control welcome before disconnect".into());
+        }
+        std::fs::write(directory.join("control-authenticated"), b"authenticated")?;
+        await_release(directory)?;
+        drop(control);
+        std::fs::write(directory.join("completed"), b"closed")?;
+        std::thread::sleep(Duration::from_secs(5));
+        return Ok(());
+    }
     let mut progress = UnixStream::connect(packet.progress_endpoint.as_str())?;
     for (stage, stream, hello) in [
         ("control", &mut control, packet.control),
@@ -62,7 +78,7 @@ pub fn run(packet: BootstrapPacket, directory: &str, gate_at: &str) -> Result<()
         }
         send(stream, ControlMessage::Hello(hello))?;
         if stage == gate_at {
-            std::fs::write(directory.join("sent"), b"sent")?;
+            std::fs::write(directory.join("completed"), b"sent")?;
         }
         if !matches!(receive(stream)?.payload(), ControlMessage::Welcome { generation: id, selected }
             if *id == generation && *selected == SchemaVersion::V1)
@@ -79,7 +95,7 @@ pub fn run(packet: BootstrapPacket, directory: &str, gate_at: &str) -> Result<()
     }
     send(&mut control, ControlMessage::Ready { generation })?;
     if gate_at == "ready" {
-        std::fs::write(directory.join("sent"), b"sent")?;
+        std::fs::write(directory.join("completed"), b"sent")?;
     }
     let cancellation = receive(&mut control)?;
     if let ControlMessage::Cancel {

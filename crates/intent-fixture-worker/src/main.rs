@@ -63,9 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    if mode == "wrong-peer" {
+    if matches!(mode, "wrong-peer" | "wrong-peer-then-owner") {
         let bytes = intent_ipc::encode_control(
-            &Envelope::event(TraceId::from_uuid(Uuid::new_v4()), packet),
+            &Envelope::event(TraceId::from_uuid(Uuid::new_v4()), &packet),
             wire_limits(),
         )?
         .encode(wire_limits())?;
@@ -81,9 +81,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .take()
             .ok_or("no forwarding pipe")?
             .write_all(&bytes)?;
-        let _ = child.wait()?;
-        loop {
-            std::thread::sleep(Duration::from_millis(100));
+        if let Some(path) = args.get(1) {
+            std::fs::write(path, child.id().to_string())?;
+        }
+        let result = child.wait()?;
+        if result.success() {
+            return Err("foreign process unexpectedly completed bootstrap".into());
+        }
+        if mode == "wrong-peer" {
+            loop {
+                std::thread::sleep(Duration::from_millis(100));
+            }
         }
     }
     let packet = if matches!(mode, "wrong-token" | "wrong-role" | "wrong-generation") {
@@ -115,6 +123,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let scope = packet.scope;
     let mut client = WorkerClient::connect(packet)?;
+    if matches!(mode, "foreign-lifecycle" | "foreign-heartbeat") {
+        let generation = intent_contracts::WorkerInstanceId::from_uuid(Uuid::parse_str(
+            args.get(1).ok_or("missing foreign generation")?,
+        )?);
+        let message = if mode == "foreign-heartbeat" {
+            Envelope::event(
+                TraceId::from_uuid(Uuid::new_v4()),
+                ControlMessage::Heartbeat {
+                    generation,
+                    sequence: 1,
+                },
+            )
+        } else {
+            let cancellation_id = intent_contracts::CancellationId::from_uuid(Uuid::new_v4());
+            Envelope::event(
+                TraceId::from_uuid(Uuid::new_v4()),
+                ControlMessage::Cancel {
+                    generation,
+                    cancellation_id,
+                },
+            )
+            .with_cancellation_id(cancellation_id)
+        };
+        client.send(&message)?;
+    }
     if let Some(saved) = saved {
         client.send(&Envelope::event(
             TraceId::from_uuid(Uuid::new_v4()),
@@ -130,7 +163,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             x = std::hint::black_box(x.wrapping_mul(6364136223846793005).wrapping_add(1));
         }
     }
-    if mode == "silent-after-ready" {
+    if matches!(
+        mode,
+        "silent-after-ready" | "foreign-lifecycle" | "foreign-heartbeat"
+    ) {
         loop {
             std::thread::sleep(Duration::from_millis(100));
         }

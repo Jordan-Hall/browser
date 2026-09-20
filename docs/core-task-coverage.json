@@ -99,7 +99,7 @@
         849
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Record families, immutable action binding, checked execution outcomes and per-family invariants are implemented. Refreshed independent whole-task review approves combined source 3e2b499, including the latest projection corrections; its exact-source CI and fuzz checks passed. Merge PRs #847/#849 and verify the source on main before final acceptance.",
+      "remaining": "Record families, immutable action binding, checked execution outcomes and per-family invariants are implemented. Refreshed independent whole-task review approves combined source 3e2b499, including the latest projection corrections; its exact-source CI and fuzz checks passed. PR #847 is merged. Merge #849 and refresh exact-main qualification and review for the subsequent projection corrections before final acceptance.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -250,7 +250,7 @@
         852
       ],
       "status": "partially_implemented",
-      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Public low-level authentication hardening, secret disposal, revoked/disconnected/foreign-lifecycle cases, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Local actual-child cases now qualify revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Publication of these cases, public low-level authentication hardening, secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -291,6 +291,19 @@
           ],
           "scope": "Linux absolute startup-admission deadline shared by both channels and Ready; real-child expiry and on-time controls; no whole-task or platform acceptance.",
           "commit": "299be1e1fe75f56290c004a18ab444a61cbb1e18"
+        },
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-fixture-worker/src/main.rs",
+            "crates/intent-fixture-worker/src/startup_gate.rs"
+          ],
+          "test_files": [
+            "crates/intent-fixture-worker/tests/startup_expiry.rs",
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Linux actual-child authentication lifecycle cases with owner-preservation and foreign-heartbeat mutation controls; production supervisor unchanged; no whole-task acceptance.",
+          "verification_report": "docs/verification/core-authentication-lifecycle-20260920.json"
         }
       ]
     },

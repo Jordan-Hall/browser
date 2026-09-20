@@ -221,6 +221,95 @@ fn a_different_child_cannot_use_the_intended_childs_bootstrap() -> TestResult {
 }
 
 #[test]
+fn a_rejected_foreign_peer_does_not_consume_the_intended_childs_bootstrap() -> TestResult {
+    use std::os::unix::fs::DirBuilderExt;
+
+    let markers = Markers(std::env::temp_dir().join(format!("foreign-peer-{}", Uuid::new_v4())));
+    std::fs::DirBuilder::new().mode(0o700).create(&markers.0)?;
+    let foreign_pid_path = markers.0.join("foreign-pid");
+    let mut supervisor = supervisor(1)?;
+    let capability = cap();
+    let id = supervisor.launch(
+        image()?,
+        config(scope(), capability)?,
+        &[
+            "wrong-peer-then-owner".to_owned(),
+            foreign_pid_path
+                .to_str()
+                .ok_or("non-UTF8 marker path")?
+                .to_owned(),
+        ],
+    )?;
+    assert!(supervisor.lease(id).is_err());
+    let snapshot = ready(&mut supervisor, id)?;
+    let foreign_pid: u32 = std::fs::read_to_string(&foreign_pid_path)?.parse()?;
+    assert_ne!(foreign_pid, snapshot.process_id);
+    assert_ne!(snapshot.process_id, std::process::id());
+    assert!(snapshot.rejected_peers >= 1);
+    let lease = supervisor.lease(id)?;
+    let request = submit(&mut supervisor, id, capability, Duration::from_secs(2))?;
+    until(&mut supervisor, id, Duration::from_secs(3), |snapshot| {
+        snapshot.retained_observations == 1
+    })?;
+    let result = supervisor
+        .take_result(id, request)?
+        .ok_or("missing scoped result")?;
+    assert_eq!(result.generation, id);
+    assert_eq!(result.request_id, request);
+    supervisor.cancel(id, cancel_id())?;
+    assert!(lease.is_revoked());
+    terminal(&mut supervisor, id)?;
+    assert!(supervisor.retire(id)?.unresolved_requests.is_empty());
+    Ok(())
+}
+
+fn foreign_worker_message(mode: &str) -> TestResult {
+    let mut supervisor = supervisor(2)?;
+    let capability = cap();
+    let healthy = supervisor.launch(image()?, config(scope(), capability)?, &[])?;
+    ready(&mut supervisor, healthy)?;
+    let healthy_lease = supervisor.lease(healthy)?;
+    let hostile = supervisor.launch(
+        image()?,
+        config(scope(), cap())?,
+        &[mode.to_owned(), healthy.to_string()],
+    )?;
+    let failed = terminal(&mut supervisor, hostile)?;
+    assert_eq!(failed.failure, Some(WorkerFailure::ProtocolViolation));
+    assert!(supervisor.lease(hostile).is_err());
+    assert!(!healthy_lease.is_revoked());
+    assert_eq!(supervisor.snapshot(healthy)?.state, WorkerState::Ready);
+    let request = submit(&mut supervisor, healthy, capability, Duration::from_secs(2))?;
+    until(
+        &mut supervisor,
+        healthy,
+        Duration::from_secs(3),
+        |snapshot| snapshot.retained_observations == 1,
+    )?;
+    let result = supervisor
+        .take_result(healthy, request)?
+        .ok_or("missing healthy result")?;
+    assert_eq!(result.generation, healthy);
+    assert_eq!(result.request_id, request);
+    supervisor.cancel(healthy, cancel_id())?;
+    assert!(healthy_lease.is_revoked());
+    terminal(&mut supervisor, healthy)?;
+    assert!(supervisor.retire(hostile)?.unresolved_requests.is_empty());
+    assert!(supervisor.retire(healthy)?.unresolved_requests.is_empty());
+    Ok(())
+}
+
+#[test]
+fn a_worker_cannot_cancel_an_independent_generation() -> TestResult {
+    foreign_worker_message("foreign-lifecycle")
+}
+
+#[test]
+fn a_worker_cannot_send_a_heartbeat_for_an_independent_generation() -> TestResult {
+    foreign_worker_message("foreign-heartbeat")
+}
+
+#[test]
 fn executable_replacement_cannot_change_a_sealed_approved_launch() -> TestResult {
     let bytes = std::fs::read(env!("CARGO_BIN_EXE_intent-fixture-worker"))?;
     let path = std::env::temp_dir().join(format!("intent-image-{}", Uuid::new_v4()));
