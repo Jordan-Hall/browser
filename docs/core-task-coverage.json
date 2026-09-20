@@ -349,7 +349,11 @@
         },
         {
           "publication": "unpublished",
-          "scope": "Post-exec connected Unix peer primitive, including real child PID/UID/GID, foreign connector, credential mismatch and reuse. Native macOS verification pending; no platform supervisor claim.",
+            "scope": "Post-exec connected Unix peer primitive, including real child PID/UID/GID, foreign connector, credential mismatch and reuse. Native macOS verification pending; no platform supervisor claim.",
+            "source_files": [
+              "crates/intent-local-transport/src/auth.rs",
+              "crates/intent-local-transport/src/peer.rs"
+            ],
           "test_files": [
             "crates/intent-local-transport/tests/unix_spawned_peer.rs"
           ],
