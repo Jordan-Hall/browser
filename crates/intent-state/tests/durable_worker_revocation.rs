@@ -86,17 +86,17 @@ fn owner(profile: &Profile) -> Result<RuntimeOwner> {
         },
         t(100)?,
     )?;
-    owner.register_worker(
-        WorkerRegistration {
-            worker_id: id(20)?,
-            task_id: id(2)?,
-            account_id: id(12)?,
-            capabilities: vec![id(13)?],
-            expires_at: t(1_000_000)?,
-        },
-        t(100)?,
-    )?;
+    owner.register_worker(worker(20)?, t(100)?)?;
     Ok(owner)
+}
+fn worker(n: u64) -> Result<WorkerRegistration> {
+    Ok(WorkerRegistration {
+        worker_id: id(n)?,
+        task_id: id(2)?,
+        account_id: id(12)?,
+        capabilities: vec![id(13)?],
+        expires_at: t(1_000_000)?,
+    })
 }
 fn action(n: u64) -> Result<RecoverableAction> {
     let payload = b"exact approved action".to_vec();
@@ -164,6 +164,46 @@ fn worker_revocation_cancels_its_unstarted_claim_before_notification() -> Result
             .ok_or("operation")?
             .revision(),
         3
+    );
+    Ok(())
+}
+#[test]
+fn worker_revocation_only_cancels_operations_claimed_by_that_generation() -> Result {
+    let profile = Profile::new()?;
+    let mut owner = owner(&profile)?;
+    let unrelated = pending(&mut owner, 30)?;
+    let claimed = pending(&mut owner, 31)?;
+    let _lease = owner.claim_dispatch(claimed, id(20)?, t(200)?, t(100)?)?;
+
+    owner.revoke_worker(id(20)?, t(101)?)?;
+
+    assert_eq!(
+        owner
+            .state()
+            .load_operation(id::<OperationId>(30)?)?
+            .ok_or("unrelated operation")?
+            .state(),
+        DurableOperationState::DispatchPending
+    );
+    assert_eq!(
+        owner
+            .state()
+            .load_operation(id::<OperationId>(31)?)?
+            .ok_or("claimed operation")?
+            .state(),
+        DurableOperationState::Cancelled
+    );
+
+    owner.register_worker(worker(21)?, t(101)?)?;
+    let replacement = owner.claim_dispatch(unrelated, id(21)?, t(200)?, t(101)?)?;
+    let _attempt = owner.begin_authorized_dispatch(replacement, t(101)?)?;
+    assert_eq!(
+        owner
+            .state()
+            .load_operation(id::<OperationId>(30)?)?
+            .ok_or("unrelated operation")?
+            .state(),
+        DurableOperationState::Attempting
     );
     Ok(())
 }
