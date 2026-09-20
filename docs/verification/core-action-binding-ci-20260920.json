@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "scope": "Published PR846 action authorization binding verification; not whole-task acceptance",
+  "source_commit": "1ae673a207c6bbf83ca609d872e9d7e9c988f9cb",
+  "tested_merge_commit": "928ffd64d087398968719affbdb1cc2450626cd0",
+  "base_pr": 843,
+  "pull_request": "https://github.com/Jordan-Hall/browser/pull/846",
+  "ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35506306926",
+  "fuzz_run": "https://github.com/Jordan-Hall/browser/actions/runs/35506306918",
+  "checks": {
+    "rust_workspace": "success",
+    "native_ubuntu": "success",
+    "native_macos": "success",
+    "native_windows": "success",
+    "fuzz_control_envelope": "success",
+    "fuzz_frame_decoder": "success",
+    "fuzz_record_codec": "success"
+  },
+  "artifact": {
+    "id": 10604265899,
+    "name": "core-verification-35506306926-1",
+    "retained_local_directory": "target/action-binding-ci-35506306926",
+    "source_files_matched": 250,
+    "source_match": "Every archived Git blob matched the published source commit",
+    "source_archive_sha256": "2479a524e11b9d93cb6a73842e67c47c61c15d1f3d01350ecf7bdfff6fb1dc2f",
+    "verification_sha256": "9b628206e6d27f306f9609a4b24966c707e6e7ce400e70cfab138ab3c14398b4",
+    "workspace_lockfile_sha256": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+    "fuzz_lockfile_sha256": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641",
+    "actual_compiler": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "earlier_local_evidence": "docs/verification/core-action-binding-combined-20260920.json",
+  "limits": [
+    "No CORE task acceptance or production readiness claim",
+    "Provider-target execution and wire outcome alignment remain unfinished",
+    "Published CI does not erase earlier local intermediate or platform-limited failures"
+  ]
+}

@@ -128,8 +128,9 @@ fn from_owner(owner: RuntimeOwner) -> Result<RuntimeBroker> {
     )?)
 }
 fn action(n: u64) -> Result<RecoverableAction> {
-    Ok(RecoverableAction {
+    let mut action = RecoverableAction {
         operation: NewDurableOperation {
+            binding: None,
             operation_id: id(n)?,
             task_id: id(2)?,
             action_proposal_id: ActionProposalId::from_uuid(Uuid::new_v4()),
@@ -141,13 +142,33 @@ fn action(n: u64) -> Result<RecoverableAction> {
         },
         scope: ArtifactScope::try_new("broker-scope")?,
         effect: RecoveryEffect::ExternalWrite,
-        source_revision: hash(b"source-v1"),
+
         destination: BoundedText::try_new("fixture://external-ledger")?,
         message_kind: BoundedText::try_new("append")?,
         payload: PAYLOAD.to_vec(),
         deadline: future()?,
         compensation: None,
-    })
+    };
+    action.operation.binding = Some(intent_contracts::ActionBinding {
+        task_id: action.operation.task_id,
+        account_id: action.operation.account_id,
+        capability_id: action.operation.capability_id,
+        target_resource: None,
+        canonical_arguments: intent_contracts::ArtifactReference::new(
+            intent_contracts::ArtifactId::from_uuid(action.operation.action_proposal_id.as_uuid()),
+            action.operation.arguments_hash,
+            intent_contracts::ByteSize::from_bytes(action.payload.len() as u64),
+            BoundedText::try_new("application/octet-stream")?,
+        ),
+        context: intent_contracts::ActionContext {
+            source_revision: hash(b"source-v1"),
+            canonicalization: intent_contracts::CanonicalizationVersion::ExactBytesV1,
+        },
+        effect_class: intent_contracts::CapabilityEffectClass::IrreversibleOrUncertain,
+        approval_requirement: intent_contracts::ApprovalRequirement::Always,
+        expires_at: Some(action.deadline),
+    });
+    Ok(action)
 }
 fn stage(broker: &mut RuntimeBroker, n: u64) -> Result<OutboxMessageId> {
     let op = broker.prepare_action(action(n)?)?;
@@ -216,6 +237,24 @@ fn ready(broker: &mut RuntimeBroker, worker: WorkerInstanceId) -> Result {
         b.worker_snapshot(worker)
             .is_ok_and(|s| s.state == WorkerState::Ready)
     })
+}
+
+fn wait_for_child_marker(
+    child: &mut std::process::Child,
+    marker: &Path,
+    timeout: Duration,
+) -> Result {
+    let end = Instant::now() + timeout;
+    while !marker.is_file() {
+        if let Some(status) = child.try_wait()? {
+            return Err(format!("broker child exited early: {status}").into());
+        }
+        if Instant::now() >= end {
+            return Err(format!("broker child timed out waiting for {}", marker.display()).into());
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    Ok(())
 }
 fn state(b: &RuntimeBroker, n: u64) -> Result<DurableOperationState> {
     Ok(b.state()
@@ -492,6 +531,15 @@ fn broker_process_child() -> Result {
     let w = launch(&mut b, &p, "broker-effect-lost-ack", id(12)?, id(13)?)?;
     eprintln!("broker crash child: waiting for ready");
     ready(&mut b, w)?;
+    fs::write(p.root.join("ready-marker"), [])?;
+    let start_deadline = Instant::now() + Duration::from_secs(8);
+    while !p.root.join("start-marker").is_file() {
+        if Instant::now() >= start_deadline {
+            return Err("parent did not start the broker crash scenario".into());
+        }
+        b.poll()?;
+        std::thread::sleep(Duration::from_millis(1));
+    }
     eprintln!("broker crash child: staging action");
     let outbox = stage(&mut b, 30)?;
     if phase == "after-effect" {
@@ -532,16 +580,17 @@ fn actual_broker_process_death_preserves_unsent_and_accepted_unknown_boundaries(
                 .stderr(Stdio::inherit())
                 .spawn()?,
         );
-        let end = Instant::now() + Duration::from_secs(8);
-        while !p.root.join("kill-marker").is_file() {
-            if let Some(status) = child.0.try_wait()? {
-                return Err(format!("broker child exited early: {status}").into());
-            }
-            if Instant::now() >= end {
-                return Err("broker crash failpoint timed out".into());
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        }
+        wait_for_child_marker(
+            &mut child.0,
+            &p.root.join("ready-marker"),
+            Duration::from_secs(30),
+        )?;
+        fs::write(p.root.join("start-marker"), [])?;
+        wait_for_child_marker(
+            &mut child.0,
+            &p.root.join("kill-marker"),
+            Duration::from_secs(8),
+        )?;
         child.0.kill()?;
         child.0.wait()?;
         let mut b = from_owner(RuntimeOwner::open_profile(&p.root, now()?)?)?;

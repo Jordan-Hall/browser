@@ -16,12 +16,12 @@ impl GoalContract {
 
     #[must_use]
     pub fn constraints(&self) -> &[GoalConstraint] {
-        &self.clarified_constraints
+        self.clarified_constraints.as_slice()
     }
 
     #[must_use]
     pub fn authorized_accounts(&self) -> &[AccountId] {
-        &self.authorized_accounts
+        self.authorized_accounts.as_slice()
     }
 }
 
@@ -45,6 +45,21 @@ impl Task {
 }
 
 impl ActionProposal {
+    #[must_use]
+    pub fn binding(&self) -> Option<crate::ActionBinding> {
+        Some(crate::ActionBinding {
+            task_id: self.task_id,
+            account_id: self.account_id,
+            capability_id: self.capability_id,
+            target_resource: self.target_resource.clone(),
+            canonical_arguments: self.canonical_arguments.clone(),
+            context: self.context?,
+            effect_class: self.effect_class,
+            approval_requirement: self.approval_requirement,
+            expires_at: self.expires_at,
+        })
+    }
+
     #[must_use]
     pub const fn action_proposal_id(&self) -> ActionProposalId {
         self.id
@@ -87,6 +102,11 @@ impl ActionProposal {
 }
 
 impl Approval {
+    #[must_use]
+    pub fn exact_binding(&self) -> Option<&crate::ActionBinding> {
+        self.exact_binding.as_ref()
+    }
+
     #[must_use]
     pub const fn action_proposal_id(&self) -> ActionProposalId {
         self.action_proposal_id

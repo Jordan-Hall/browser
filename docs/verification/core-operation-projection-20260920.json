@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T03 checked operation execution projection; not whole-task acceptance",
+  "base_commit": "c9852232016d17b72aba4b84642927543cf2db51",
+  "source_git_blobs": {
+    "crates/intent-conformance/src/record_fixtures.rs": "70300475d8055378624735d6632af3656c3b17aa",
+    "crates/intent-contracts/src/execution.rs": "93ca87205fd6c573de15ab8a33a0e62b7b31c390",
+    "crates/intent-contracts/src/lib.rs": "208d8c6b1741cf4e8f7028e294704c027fd23bb2",
+    "crates/intent-contracts/src/records.rs": "b383cd2d2affc1c9f17a1bcba313b538afb81af4",
+    "crates/intent-contracts/tests/execution.rs": "f463e708c4b5f935b96578b00bbe42b9b45d2b11",
+    "crates/intent-ipc/tests/record_codec.rs": "048d7e217ae92553caf88ae3864ec85d376a9b78",
+    "crates/intent-state/src/durable_recovery/mod.rs": "36b319b4ed094d15500203ea7a8fac933a5bcd8c",
+    "crates/intent-state/src/durable_recovery/projection.rs": "bdaa5c76f9225283680cd8f0320aa913cf3ed2aa",
+    "crates/intent-state/src/durable_recovery/tests.rs": "e6ce4fcbfe328481cf16888b4ec4ab208a92b9f3",
+    "crates/intent-state/src/durable_recovery/tests/projection.rs": "465176b66b9b7e5c42946d93425422c3860036c8",
+    "fixtures/core/execution-records-v1.json": "889eb56ad0cdeb8abd74339ae61d24fcf76016ba"
+  },
+  "checks": [
+    {
+      "log": "target/operation-projection-contracts-first.log",
+      "exit_code": 0,
+      "scope": "Initial Windows contracts suite before new execution tests",
+      "sha256": "291269f840fb41e52f93578774a12cdf6d5adff6c2d1d577071e8bd33410fd7b",
+      "passing_test_results": 46,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-contracts-new.log",
+      "exit_code": 0,
+      "scope": "Four initial Windows execution contract tests before review corrections",
+      "sha256": "d05d160bc87df18c88abdefb55429613f442a4590a4db8f2e69f00494fda9f14",
+      "passing_test_results": 4,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-linux-first.log",
+      "exit_code": 101,
+      "scope": "Intermediate test compilation failure: recovery-control fixture used an obsolete call shape",
+      "sha256": "606396bba572ea9d770b79eea3ebd679238daa2173136f512915f4051bbb061c",
+      "passing_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-linux-second.log",
+      "exit_code": 0,
+      "scope": "Linux contracts/storage baseline before final review corrections",
+      "sha256": "4fb34cc0d2061a9bd1392163c49d696a681c14b9c9853c88ec17fc5ab9177e1f",
+      "passing_test_results": 229,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-contracts-review-fixes.log",
+      "exit_code": 0,
+      "scope": "Windows contract tests after key and timestamp review corrections",
+      "sha256": "25c36473b6783b1d299dd99bb504317156f95714fbca8ab2267bf56a7c76de6d",
+      "passing_test_results": 4,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-workspace-final.log",
+      "exit_code": 0,
+      "scope": "Broad Linux workspace snapshot before the shared origin-binding helper, canonical fixtures and latest main merge",
+      "sha256": "f737e691a6310d2c0b5803c64dde294264fb6241ecfd0b1bd22a9c71377c6be5",
+      "passing_test_results": 458,
+      "ignored_results": 1
+    },
+    {
+      "log": "target/operation-projection-windows-clippy.log",
+      "exit_code": 0,
+      "scope": "Windows contracts/storage Clippy before the final empty-variant correction",
+      "sha256": "edd350c9ddd1ed4594494f719fe5b6c69b59da3d1db2a3554dceb796159302b4",
+      "passing_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-legacy-reader.log",
+      "exit_code": 0,
+      "scope": "Actual earlier reader rejects all four execution fixtures and accepts both legacy operation fixtures",
+      "sha256": "d472386a60ff4d410c0b746778b59be4fdc0e96d03d48eb152d34740011eb630",
+      "passing_test_results": 0,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-final-targets.log",
+      "exit_code": 101,
+      "scope": "Canonical import regression exposed ignored extra fields in the original phase variant",
+      "sha256": "ae086360069d71db29f377a9563999b78dba6fb3b0bbb8a95244f6855b2bce9f",
+      "passing_test_results": 125,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-canonical-import-recheck.log",
+      "exit_code": 0,
+      "scope": "All nine Windows record-codec tests after empty variants became strict",
+      "sha256": "f220fc0047bf2936f3d0f85c7874bcf0fd27821e148b59b82fcb05bf48e28f26",
+      "passing_test_results": 9,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-final-targets-recheck.log",
+      "exit_code": 0,
+      "scope": "Final source: Linux workspace Clippy; contracts/IPC/storage tests and doctests; architecture and conformance",
+      "sha256": "f40c79ad6f3b98192721e52459cf3a852c4d7b7197b81aaeb9ef1773f7720867",
+      "passing_test_results": 320,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/operation-projection-windows-clippy-final.log",
+      "exit_code": 0,
+      "scope": "Final source: Windows contracts/storage strict Clippy",
+      "sha256": "a2103c02012786943f8b2f4537e8899dfdc0853710b7108f45731e17f020fc72",
+      "passing_test_results": 0,
+      "ignored_results": 0
+    }
+  ],
+  "broad_workspace_snapshot": {
+    "archive": "target/operation-projection-workspace-snapshot.tar",
+    "sha256": "78830244aecaa3f64755f05e755699ad519556c57618315472538f1a578c3604",
+    "passing_test_results_including_doctests": 458,
+    "ignored_results": 1,
+    "differences_from_final": "Before shared origin action-binding validation, new canonical import fixtures/empty-variant fix, and main money-boundary merge; final affected-package verification is separate"
+  },
+  "compatibility": {
+    "prior_reader_source_commit": "afd1d65b3da3d7f5a76af0b45a6ea3fb46064c32",
+    "prior_reader_result": "All four execution records rejected as InvalidRecord; both legacy full/minimal operations accepted",
+    "current_reader_result": "Legacy and execution fixtures pass canonical import/conformance; malformed key/evidence/unknown fields rejected",
+    "decision": "Pre-freeze schema-1.0 extension, explicitly fail-closed in older strict readers; not transparent backward compatibility"
+  },
+  "independent_review": {
+    "reviewer": "gpt-5.6-sol",
+    "design_crossjudge": "gpt-5.6-luna; corrected single execution representation from two candidates",
+    "resolved_findings": [
+      "Invented execution idempotency key",
+      "Compensation reconciliation time",
+      "Original action binding validation in direct compensation export"
+    ],
+    "final_source_and_compatibility_review": "No remaining concrete findings before canonical test exposed empty tagged variants; strict empty struct variants fixed that observed parser defect without changing the wire shape"
+  },
+  "limits": [
+    "No task acceptance or production-readiness claim",
+    "Imported execution records are descriptive and grant no authority",
+    "Legacy unbound/unmanaged execution and combined compensation without managed lineage are refused",
+    "Stored adapter evidence is inspected, not cryptographically re-authenticated with a current trust key",
+    "Provider-target execution and byte transformations remain downstream boundaries",
+    "Published exact-source CI and independent task-level acceptance remain separate"
+  ]
+}

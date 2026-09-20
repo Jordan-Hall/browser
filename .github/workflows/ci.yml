@@ -26,9 +26,11 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        id: checkout
         with:
           persist-credentials: false
       - name: Install and verify pinned Rust toolchain
+        id: toolchain
         run: |
           TOOLCHAIN="$(python scripts/rust_toolchain.py --channel)"
           rustup toolchain install "$TOOLCHAIN" --profile minimal --component clippy --component rustfmt
@@ -50,6 +52,31 @@ jobs:
         run: |
           cargo run --locked -p intent-xtask -- arch-check
           cargo run --locked -p intent-conformance --quiet
+      - name: Measure bounded encoder allocation
+        id: encoder_allocation
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.toolchain.outcome == 'success' }}
+        run: |
+          mkdir -p target/encoder-allocation
+          git rev-parse HEAD > target/encoder-allocation/revision.txt
+          rustc -Vv > target/encoder-allocation/rustc.txt
+          cargo -V > target/encoder-allocation/cargo.txt
+          git ls-tree -r HEAD -- Cargo.toml Cargo.lock rust-toolchain.toml crates/intent-contracts crates/intent-ipc .github/workflows/ci.yml > target/encoder-allocation/source-blobs.txt
+          set +e
+          cargo test --locked --quiet -p intent-ipc --test encoder_allocations > target/encoder-allocation/probe.stdout.log 2> target/encoder-allocation/probe.stderr.log
+          probe_status=$?
+          set -e
+          printf '%s\n' "$probe_status" > target/encoder-allocation/exit-code.txt
+          cat target/encoder-allocation/probe.stdout.log
+          cat target/encoder-allocation/probe.stderr.log
+          exit "$probe_status"
+      - name: Upload encoder allocation samples
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: encoder-allocation-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/encoder-allocation/
+          if-no-files-found: error
+          retention-days: 14
 
   rust:
     name: Rust checks

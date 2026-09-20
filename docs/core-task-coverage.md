@@ -2,16 +2,16 @@
 
 Programme #1; epic #13; requirements #2 #3 #4 #5; integration tracker #802.
 
-The current integration includes published checkpoint PR #806, supervisor PR #805, snapshot PR #803 and policy PR #804. Durable recovery is implemented in #807; #809 adds the real-worker cooperative inline broker bridge and process-kill/independent-effect regressions. A source contribution is not accepted implementation, and all 37 acceptance statuses remain open.
+The current integration includes published checkpoint PR #806, supervisor PR #805, snapshot PR #803 and policy PR #804. Durable recovery is implemented in #807; #809 adds the real-worker cooperative inline broker bridge and process-kill/independent-effect regressions. A source contribution is not accepted implementation, and acceptance is recorded only after task-level review. CORE-01.T01 and CORE-01.T02 are accepted; the other 35 task statuses remain open.
 
 The JSON ledger names every individual task. `python3 scripts/check_core_coverage.py --require-accepted` must continue to reject incomplete acceptance; neither a reference nor a generic green smoke run can substitute for task evidence.
 
 | Task | Issue | Source PRs | Status and remaining acceptance |
 |---|---|---|---|
-| `CORE-01.T01` — Bootstrap the Rust workspace and architectural checks | #121 | #785 | implemented_pending_acceptance: Initial host checks pass; independent review and merge remain. |
-| `CORE-01.T02` — Define typed identities and value objects | #122 | #786 | implemented_pending_acceptance: Wire representation and provider-resource validation require baseline sign-off. |
-| `CORE-01.T03` — Specify durable core record schemas | #123 | #787, #813 | implemented_pending_acceptance: Full/minimal v1 fixtures for all 13 families and nested unknown-field rejection are implemented in #813. Complete authority semantics, compatibility review and independent task acceptance remain. |
-| `CORE-01.T04` — Build bounded wire framing and errors | #124 | #788, #813 | implemented_pending_acceptance: #813 pins the existing JSON error spellings and adds bounded record imports with schema-first, duplicate-key and unknown-field checks. Extended parser qualification, compatibility review and independent task acceptance remain. |
+| `CORE-01.T01` — Bootstrap the Rust workspace and architectural checks | #121 | #785, #817, #822 | accepted: [Independent task review](https://github.com/Jordan-Hall/browser/issues/121#issuecomment-5748908212) and [exact-commit verification](verification/core-bootstrap-acceptance-20260920.json). |
+| `CORE-01.T02` — Define typed identities and value objects | #122 | #786, #819, #845 | accepted: [Whole-task acceptance audit](https://github.com/Jordan-Hall/browser/issues/122#issuecomment-5748987713), [exact-main verification](verification/core-typed-values-acceptance-20260920.json) and deterministic money-boundary evidence in #845. |
+| `CORE-01.T03` — Specify durable core record schemas | #123 | #787, #813, #846, #847, #849 | implemented_pending_acceptance: Full/minimal fixtures, immutable action binding, checked execution outcomes and per-family invariants are implemented. Independent whole-task review approved combined source 37c996f, and its exact-source CI passed. PRs #847 and #849 must merge before final main acceptance; trusted provider execution remains downstream work. |
+| `CORE-01.T04` — Build bounded wire framing and errors | #124 | #788, #813, #823, #824, #850, #851 | implemented_pending_acceptance: Framing, EOF/poisoning, aggregate read budgets, strict canonical parsing, measured encoder allocation and strict nested Event fields are implemented. Independent task review approved source 3c82332; exact-source workspace, native and fuzz CI passed. The prerequisite PR stack must merge before final main acceptance. |
 | `CORE-01.T05` — Authenticate locally launched worker channels | #125 | #789, #805 | implemented_pending_acceptance: Real post-spawn peer credentials, one-use bootstrap and role binding are tested locally. Independent threat-boundary review, hostile same-user isolation and platform qualification remain; the source is published in #805. |
 | `CORE-01.T06` — Implement version negotiation and schema evolution | #126 | #790, #805, #813 | implemented_pending_acceptance: #805 binds implemented v1 codecs to authenticated workers. #813 validates equal-version imports and every registered migration output. Only CORE schema 1.0 is implemented; legacy numeric-money migration, accepted import integration and independent compatibility review remain. |
 | `CORE-01.T07` — Wire cancellation, deadlines and backpressure | #127 | #791, #805 | implemented_pending_acceptance: Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; the source is published in #805. |
@@ -57,3 +57,7 @@ PR #813 adds exact schema validators, all 13 v1 record fixtures, explicit JSON e
 ## Branch consolidation
 
 Both task and workspace checkpoint implementations are retained. See `docs/branch-consolidation-20260918.md`. Merging unfinished work does not establish acceptance or production readiness.
+
+## Measured cancellation backpressure
+
+[PR #843](https://github.com/Jordan-Hall/browser/pull/843) verifies cancellation acknowledgement before measured progress backlogs drain in two real Linux workers. Its fixtures wait for parent-observed final messages before exit. The [CI report](verification/core-cancellation-ci-20260920.json) records successful remote native checks and parser fuzz jobs at the exact source head. Earlier local timing failures remain in their original reports. No whole-task acceptance follows from this increment.

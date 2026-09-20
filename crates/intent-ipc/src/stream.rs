@@ -3,7 +3,7 @@ use crate::{
     DeliveryClass, EnqueueError, PriorityQueue, QueueLimits,
 };
 use intent_contracts::{ArtifactReference, UnixTimestampMicros};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt;
 
@@ -46,11 +46,17 @@ impl<T> StreamEvent<T> {
 }
 
 #[derive(Debug)]
+enum LocalCancellation {
+    PendingSend,
+    AwaitingAck,
+}
+
+#[derive(Debug)]
 pub struct StreamEndpoint<T> {
     queue: PriorityQueue<StreamEvent<T>>,
     cancellations: CancellationRegistry,
     pending_cancel_acks: BTreeSet<CancellationRegistration>,
-    pending_local_cancel_acks: BTreeSet<CancellationRegistration>,
+    local_cancellations: BTreeMap<CancellationRegistration, LocalCancellation>,
 }
 
 impl<T> StreamEndpoint<T> {
@@ -60,7 +66,7 @@ impl<T> StreamEndpoint<T> {
             queue: PriorityQueue::new(queue_limits),
             cancellations: CancellationRegistry::new(max_cancellations),
             pending_cancel_acks: BTreeSet::new(),
-            pending_local_cancel_acks: BTreeSet::new(),
+            local_cancellations: BTreeMap::new(),
         }
     }
 
@@ -130,6 +136,9 @@ impl<T> StreamEndpoint<T> {
             .map_err(StreamError::Enqueue)
     }
 
+    /// Revoke local dispatch before attempting notification. If reserved capacity
+    /// is full, retry after draining control; failed notification never restores
+    /// activity, and retirement still requires the peer acknowledgement.
     pub fn enqueue_cancel(
         &mut self,
         registration: CancellationRegistration,
@@ -140,10 +149,16 @@ impl<T> StreamEndpoint<T> {
             .map_err(StreamError::Cancellation)?
         {
             CancellationState::Active => {}
-            CancellationState::Cancelled { .. } => {
+            CancellationState::Cancelled { .. }
+                if !self.local_cancellations.contains_key(&registration) =>
+            {
                 return Err(StreamError::CancellationInactive(registration));
             }
+            CancellationState::Cancelled { .. } => {}
         }
+        self.local_cancellations
+            .entry(registration)
+            .or_insert(LocalCancellation::PendingSend);
         if self.queue.has_reserved(|event| {
             matches!(
                 event,
@@ -152,7 +167,8 @@ impl<T> StreamEndpoint<T> {
                 } if *queued == registration
             )
         }) {
-            self.pending_local_cancel_acks.insert(registration);
+            self.local_cancellations
+                .insert(registration, LocalCancellation::AwaitingAck);
             return Ok(());
         }
         self.queue
@@ -160,8 +176,9 @@ impl<T> StreamEndpoint<T> {
                 DeliveryClass::ReservedControl,
                 StreamEvent::Cancel { registration },
             )
-            .map_err(StreamError::Enqueue)?;
-        self.pending_local_cancel_acks.insert(registration);
+            .map_err(StreamError::CancellationAppliedSendPending)?;
+        self.local_cancellations
+            .insert(registration, LocalCancellation::AwaitingAck);
         Ok(())
     }
 
@@ -179,12 +196,18 @@ impl<T> StreamEndpoint<T> {
             .cancellations
             .state(registration)
             .map_err(StreamError::Cancellation)?;
-        if self.pending_local_cancel_acks.contains(&registration) {
-            self.cancellations
-                .cancel(registration, at)
-                .map_err(StreamError::Cancellation)?;
-            self.pending_local_cancel_acks.remove(&registration);
-            return Ok(());
+        match self.local_cancellations.get(&registration) {
+            Some(LocalCancellation::PendingSend) => {
+                return Err(StreamError::UnexpectedCancellationAck(registration));
+            }
+            Some(LocalCancellation::AwaitingAck) => {
+                self.cancellations
+                    .cancel(registration, at)
+                    .map_err(StreamError::Cancellation)?;
+                self.local_cancellations.remove(&registration);
+                return Ok(());
+            }
+            None => {}
         }
         match state {
             CancellationState::Cancelled { .. } => Ok(()),
@@ -241,7 +264,7 @@ impl<T> StreamEndpoint<T> {
         if self.pending_cancel_acks.contains(&registration) {
             return Err(StreamError::CancellationAckPending(registration));
         }
-        if self.pending_local_cancel_acks.contains(&registration) {
+        if self.local_cancellations.contains_key(&registration) {
             return Err(StreamError::CancellationAckReceiptPending(registration));
         }
         if self
@@ -259,7 +282,7 @@ impl<T> StreamEndpoint<T> {
     /// predicate for a registered generation.
     #[must_use]
     pub fn is_active(&self, registration: CancellationRegistration) -> bool {
-        !self.pending_local_cancel_acks.contains(&registration)
+        !self.local_cancellations.contains_key(&registration)
             && self.cancellations.is_active(registration)
     }
 
@@ -291,7 +314,7 @@ impl<T> StreamEndpoint<T> {
             .cancellations
             .state(registration)
             .map_err(StreamError::Cancellation)?;
-        if self.pending_local_cancel_acks.contains(&registration) {
+        if self.local_cancellations.contains_key(&registration) {
             return Err(StreamError::CancellationInactive(registration));
         }
         match state {
@@ -308,6 +331,7 @@ pub enum StreamError<T> {
     Cancellation(CancellationError),
     Credit(crate::CreditError),
     Enqueue(EnqueueError<StreamEvent<T>>),
+    CancellationAppliedSendPending(EnqueueError<StreamEvent<T>>),
     CancellationAppliedAckPending(EnqueueError<StreamEvent<T>>),
     CancellationAckPending(CancellationRegistration),
     CancellationAckReceiptPending(CancellationRegistration),
@@ -322,6 +346,12 @@ impl<T> fmt::Display for StreamError<T> {
             Self::Cancellation(error) => write!(formatter, "cancellation error: {error}"),
             Self::Credit(error) => write!(formatter, "credit error: {error}"),
             Self::Enqueue(error) => write!(formatter, "enqueue error: {error}"),
+            Self::CancellationAppliedSendPending(error) => {
+                write!(
+                    formatter,
+                    "local cancellation applied; notification pending: {error}"
+                )
+            }
             Self::CancellationAppliedAckPending(error) => {
                 write!(
                     formatter,
@@ -401,6 +431,190 @@ mod tests {
             ByteSize::from_bytes(4),
             BoundedText::try_new("text/plain")?,
         ))
+    }
+
+    #[test]
+    fn outbound_cancel_revokes_work_before_reserved_capacity_is_available()
+    -> Result<(), Box<dyn Error>> {
+        let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(1, 1, 2, 2)?, 2);
+        let blocker = registration(cancellation_id()?, 0x401)?;
+        let target = registration(
+            CancellationId::from_str("018f47f7-5a86-7c00-8000-000000000712")?,
+            0x401,
+        )?;
+        let now = UnixTimestampMicros::try_new(123)?;
+        endpoint.register_cancellation(blocker)?;
+        endpoint.register_cancellation(target)?;
+        endpoint.grant_credits(2)?;
+        endpoint.enqueue_reliable(target, 7)?;
+        endpoint.enqueue_progress(target, 8)?;
+        endpoint.enqueue_artifact(target, artifact()?)?;
+        endpoint.enqueue_cancel(blocker)?;
+
+        match endpoint.enqueue_cancel(target) {
+            Err(StreamError::CancellationAppliedSendPending(error)) => {
+                assert_eq!(error.kind(), EnqueueErrorKind::ReservedQueueFull);
+                assert_eq!(
+                    error.into_item(),
+                    StreamEvent::Cancel {
+                        registration: target
+                    }
+                );
+            }
+            other => {
+                return Err(
+                    format!("expected latched cancellation under pressure, got {other:?}").into(),
+                );
+            }
+        }
+        assert!(
+            !endpoint.is_active(target),
+            "failed Cancel enqueue must revoke local dispatch"
+        );
+        assert!(matches!(
+            endpoint.enqueue_reliable(target, 9),
+            Err(StreamError::CancellationInactive(pending)) if pending == target
+        ));
+        assert!(matches!(
+            endpoint.accept_cancel_ack(target, now),
+            Err(StreamError::UnexpectedCancellationAck(pending)) if pending == target
+        ));
+        assert!(matches!(
+            endpoint.retire_cancellation(target),
+            Err(StreamError::CancellationAckReceiptPending(pending)) if pending == target
+        ));
+        assert_eq!(
+            endpoint.pop_next(),
+            Some((
+                DeliveryClass::ReservedControl,
+                StreamEvent::Cancel {
+                    registration: blocker
+                }
+            ))
+        );
+        assert_eq!(
+            endpoint.pop_next(),
+            None,
+            "cancelled payloads must not dispatch"
+        );
+
+        endpoint.enqueue_cancel(target)?;
+        assert_eq!(
+            endpoint.pop_next(),
+            Some((
+                DeliveryClass::ReservedControl,
+                StreamEvent::Cancel {
+                    registration: target
+                }
+            ))
+        );
+        assert!(matches!(
+            endpoint.retire_cancellation(target),
+            Err(StreamError::CancellationAckReceiptPending(pending)) if pending == target
+        ));
+        endpoint.accept_cancel_ack(target, now)?;
+        endpoint.retire_cancellation(target)?;
+        assert!(!endpoint.is_active(target));
+        Ok(())
+    }
+
+    #[test]
+    fn simultaneous_cancellation_retries_release_registry_capacity() -> Result<(), Box<dyn Error>> {
+        let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(1, 1, 1, 1)?, 2);
+        let now = UnixTimestampMicros::try_new(123)?;
+        for sequence in 0..8 {
+            let blocker = registration(cancellation_id()?, 0x500 + sequence)?;
+            let target = registration(
+                CancellationId::from_str("018f47f7-5a86-7c00-8000-000000000712")?,
+                0x500 + sequence,
+            )?;
+            endpoint.register_cancellation(blocker)?;
+            endpoint.register_cancellation(target)?;
+            endpoint.enqueue_cancel(blocker)?;
+            assert!(matches!(
+                endpoint.enqueue_cancel(target),
+                Err(StreamError::CancellationAppliedSendPending(_))
+            ));
+            assert!(matches!(
+                endpoint.accept_cancel(target, now),
+                Err(StreamError::CancellationAppliedAckPending(_))
+            ));
+            assert!(!endpoint.is_active(target));
+            assert!(
+                matches!(endpoint.accept_cancel_ack(target, now), Err(StreamError::UnexpectedCancellationAck(pending)) if pending == target)
+            );
+            assert_eq!(
+                endpoint.pop_next(),
+                Some((
+                    DeliveryClass::ReservedControl,
+                    StreamEvent::Cancel {
+                        registration: blocker
+                    }
+                ))
+            );
+            endpoint.accept_cancel_ack(blocker, now)?;
+            endpoint.retire_cancellation(blocker)?;
+
+            endpoint.accept_cancel(target, now)?;
+            assert_eq!(
+                endpoint.pop_next(),
+                Some((
+                    DeliveryClass::ReservedControl,
+                    StreamEvent::CancelAck {
+                        registration: target
+                    }
+                ))
+            );
+            assert!(
+                matches!(endpoint.retire_cancellation(target), Err(StreamError::CancellationAckReceiptPending(pending)) if pending == target)
+            );
+            endpoint.enqueue_cancel(target)?;
+            assert_eq!(
+                endpoint.pop_next(),
+                Some((
+                    DeliveryClass::ReservedControl,
+                    StreamEvent::Cancel {
+                        registration: target
+                    }
+                ))
+            );
+            endpoint.accept_cancel_ack(target, now)?;
+            endpoint.retire_cancellation(target)?;
+            assert_eq!(endpoint.pop_next(), None);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn failed_cancel_retransmission_still_accepts_the_first_transmissions_ack()
+    -> Result<(), Box<dyn Error>> {
+        let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(1, 1, 1, 1)?, 2);
+        let first = registration(cancellation_id()?, 0x601)?;
+        let second = registration(
+            CancellationId::from_str("018f47f7-5a86-7c00-8000-000000000712")?,
+            0x601,
+        )?;
+        endpoint.register_cancellation(first)?;
+        endpoint.register_cancellation(second)?;
+        endpoint.enqueue_cancel(first)?;
+        assert_eq!(
+            endpoint.pop_next(),
+            Some((
+                DeliveryClass::ReservedControl,
+                StreamEvent::Cancel {
+                    registration: first
+                }
+            ))
+        );
+        endpoint.enqueue_cancel(second)?;
+        assert!(matches!(
+            endpoint.enqueue_cancel(first),
+            Err(StreamError::CancellationAppliedSendPending(_))
+        ));
+        endpoint.accept_cancel_ack(first, UnixTimestampMicros::try_new(123)?)?;
+        endpoint.retire_cancellation(first)?;
+        assert!(!endpoint.is_active(first));
+        Ok(())
     }
 
     #[test]

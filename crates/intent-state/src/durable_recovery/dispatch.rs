@@ -46,6 +46,35 @@ impl RuntimeOwner {
         action: RecoverableAction,
     ) -> Result<OperationId, RecoveryError> {
         let new = &action.operation;
+        let binding = new
+            .binding
+            .as_ref()
+            .ok_or(RecoveryError::Denied("action binding is missing"))?;
+        if binding.target_resource.is_some() {
+            return Err(RecoveryError::Denied(
+                "provider target authority is not implemented",
+            ));
+        }
+        let expected_effect = match binding.effect_class {
+            intent_contracts::CapabilityEffectClass::ReadOnly => RecoveryEffect::ReadOnly,
+            intent_contracts::CapabilityEffectClass::LocalReversible => {
+                RecoveryEffect::LocalReversible
+            }
+            intent_contracts::CapabilityEffectClass::ExternalCompensatable
+            | intent_contracts::CapabilityEffectClass::IrreversibleOrUncertain => {
+                RecoveryEffect::ExternalWrite
+            }
+        };
+        if binding.canonical_arguments.byte_size().as_bytes() != action.payload.len() as u64
+            || action.effect != expected_effect
+            || binding
+                .expires_at
+                .is_some_and(|expiry| action.deadline > expiry)
+        {
+            return Err(RecoveryError::Integrity(
+                "action material differs from its binding",
+            ));
+        }
         if action.payload.len() > crate::MAX_OUTBOX_PAYLOAD_BYTES || action.payload.is_empty() {
             return Err(RecoveryError::Limit("action payload"));
         }
@@ -132,7 +161,8 @@ impl RuntimeOwner {
                 ));
             }
         }
-        tx.execute("INSERT INTO durable_operations(operation_id,task_id,action_proposal_id,account_id,capability_id,arguments_hash,source_schema_major,source_schema_minor,state,revision,created_at_micros,updated_at_micros) VALUES(?1,?2,?3,?4,?5,?6,1,0,'prepared',0,?7,?7)",params![new.operation_id.to_string(),new.task_id.to_string(),new.action_proposal_id.to_string(),new.account_id.to_string(),new.capability_id.to_string(),new.arguments_hash.to_hex(),new.created_at.get()])?;
+        tx.execute("INSERT INTO durable_operations(operation_id,task_id,action_proposal_id,account_id,capability_id,arguments_hash,source_schema_major,source_schema_minor,state,revision,created_at_micros,updated_at_micros,binding_required) VALUES(?1,?2,?3,?4,?5,?6,1,0,'prepared',0,?7,?7,1)",params![new.operation_id.to_string(),new.task_id.to_string(),new.action_proposal_id.to_string(),new.account_id.to_string(),new.capability_id.to_string(),new.arguments_hash.to_hex(),new.created_at.get()])?;
+        crate::operation_binding::insert_binding(&tx, new)?;
         tx.execute("INSERT INTO operation_journal(operation_id,revision,to_state,occurred_at_micros) VALUES(?1,0,'prepared',?2)",params![new.operation_id.to_string(),new.created_at.get()])?;
         let effect = match action.effect {
             RecoveryEffect::ReadOnly => "read_only",
@@ -146,7 +176,7 @@ impl RuntimeOwner {
                 new.operation_id.to_string(),
                 action.scope.as_str(),
                 effect,
-                action.source_revision.to_hex(),
+                binding.context.source_revision.to_hex(),
                 action.destination.as_str(),
                 action.message_kind.as_str(),
                 action.payload,
@@ -461,7 +491,10 @@ pub(super) fn valid_authority(
     op: &DurableOperation,
     now: UnixTimestampMicros,
 ) -> Result<i64, RecoveryError> {
-    let result:Option<i64>=db.query_row("SELECT a.revision FROM recovery_authorities a JOIN recovery_actions p ON p.operation_id=?1 WHERE a.account_id=?2 AND a.capability_id=?3 AND a.enabled=1 AND a.valid_until_micros>?4 AND a.source_revision=p.source_revision AND p.deadline_micros>?4 AND p.effect!='unknown' AND a.effect=p.effect AND (p.effect='read_only' OR (SELECT required FROM recovery_restore_fence WHERE singleton=1)=0) AND EXISTS(SELECT 1 FROM recovery_evidence_keys k WHERE k.account_id=a.account_id AND k.capability_id=a.capability_id AND k.key_id=a.evidence_key_id AND k.revoked=0) AND EXISTS(SELECT 1 FROM workspace_graph_tasks t JOIN workspace_graphs g ON g.workspace_id=t.workspace_id WHERE t.task_id=?5 AND t.active=1 AND g.privacy_scope=p.privacy_scope)",params![op.operation_id().to_string(),op.account_id().to_string(),op.capability_id().to_string(),now.get(),op.task_id().to_string()],|r|r.get(0)).optional()?;
+    let binding = op.binding().ok_or(RecoveryError::Denied(
+        "legacy action has no complete binding",
+    ))?;
+    let result:Option<i64>=db.query_row("SELECT a.revision FROM recovery_authorities a JOIN recovery_actions p ON p.operation_id=?1 WHERE a.account_id=?2 AND a.capability_id=?3 AND a.enabled=1 AND a.valid_until_micros>?4 AND a.source_revision=p.source_revision AND p.source_revision=?6 AND p.deadline_micros>?4 AND p.effect!='unknown' AND a.effect=p.effect AND (p.effect='read_only' OR (SELECT required FROM recovery_restore_fence WHERE singleton=1)=0) AND EXISTS(SELECT 1 FROM recovery_evidence_keys k WHERE k.account_id=a.account_id AND k.capability_id=a.capability_id AND k.key_id=a.evidence_key_id AND k.revoked=0) AND EXISTS(SELECT 1 FROM workspace_graph_tasks t JOIN workspace_graphs g ON g.workspace_id=t.workspace_id WHERE t.task_id=?5 AND t.active=1 AND g.privacy_scope=p.privacy_scope)",params![op.operation_id().to_string(),op.account_id().to_string(),op.capability_id().to_string(),now.get(),op.task_id().to_string(),binding.context.source_revision.to_hex()],|r|r.get(0)).optional()?;
     result.ok_or(RecoveryError::Denied(
         "authority, deadline, task scope or source precondition changed",
     ))

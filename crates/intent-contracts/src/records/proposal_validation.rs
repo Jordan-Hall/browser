@@ -8,6 +8,8 @@ impl<'de> Deserialize<'de> for ActionProposal {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct WireProposal {
+            #[serde(default)]
+            context: Option<ActionContext>,
             #[serde(deserialize_with = "deserialize_v1_schema")]
             schema_version: SchemaVersion,
             id: ActionProposalId,
@@ -31,6 +33,7 @@ impl<'de> Deserialize<'de> for ActionProposal {
             ));
         }
         Ok(Self {
+            context: wire.context,
             schema_version: wire.schema_version,
             id: wire.id,
             task_id: wire.task_id,
@@ -42,6 +45,43 @@ impl<'de> Deserialize<'de> for ActionProposal {
             effect_class: wire.effect_class,
             expires_at: wire.expires_at,
             approval_requirement: wire.approval_requirement,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Approval {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireApproval {
+            #[serde(deserialize_with = "deserialize_v1_schema")]
+            schema_version: SchemaVersion,
+            id: ApprovalId,
+            action_proposal_id: ActionProposalId,
+            exact_arguments_hash: ContentHash,
+            #[serde(default)]
+            exact_binding: Option<ActionBinding>,
+            state: ApprovalState,
+        }
+        let wire = WireApproval::deserialize(deserializer)?;
+        wire.state.validate().map_err(serde::de::Error::custom)?;
+        if wire.exact_binding.as_ref().is_some_and(|binding| {
+            binding.canonical_arguments.content_hash() != wire.exact_arguments_hash
+        }) {
+            return Err(serde::de::Error::custom(
+                "approval argument hash does not match its exact binding",
+            ));
+        }
+        Ok(Self {
+            schema_version: wire.schema_version,
+            id: wire.id,
+            action_proposal_id: wire.action_proposal_id,
+            exact_arguments_hash: wire.exact_arguments_hash,
+            exact_binding: wire.exact_binding,
+            state: wire.state,
         })
     }
 }

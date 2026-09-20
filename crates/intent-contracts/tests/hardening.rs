@@ -72,6 +72,12 @@ fn proposal() -> Result<ActionProposal, Box<dyn Error>> {
         id.parse()?,
         id.parse()?,
         ActionProposalDescriptor {
+            context: intent_contracts::ActionContext {
+                source_revision: ContentHash::from_bytes([7; 32]),
+                canonicalization: intent_contracts::CanonicalizationVersion::ExactBytesV1,
+            },
+            target_resource: None,
+            expires_at: None,
             canonical_arguments: ArtifactReference::new(
                 id.parse()?,
                 ContentHash::from_bytes([1; 32]),

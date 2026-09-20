@@ -30,6 +30,7 @@ mod tests {
 
     fn approved_operation(store: &mut StateStore) -> Result<(), Box<dyn Error>> {
         let operation = store.create_operation(NewDurableOperation {
+            binding: None,
             operation_id: operation_id()?,
             task_id: TaskId::from_str("018f47f7-5a86-7c00-8000-000000000834")?,
             action_proposal_id: ActionProposalId::from_str("018f47f7-5a86-7c00-8000-000000000835")?,

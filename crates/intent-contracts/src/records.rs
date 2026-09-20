@@ -8,9 +8,16 @@ use crate::values::{
     UnixTimestampMicros,
 };
 use crate::version::{SchemaVersion, deserialize_v1_schema};
+use crate::{ActionBinding, ActionContext};
 use serde::{Deserialize, Serialize};
 
+mod collection;
 mod proposal_validation;
+mod validation;
+
+pub use collection::MAX_RECORD_COLLECTION_ENTRIES;
+use collection::RecordList;
+pub use validation::RecordValidationError;
 mod state_accessors;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -100,9 +107,9 @@ pub struct GoalContract {
     id: GoalContractId,
     original_request: BoundedText<16384>,
     #[serde(default)]
-    clarified_constraints: Vec<GoalConstraint>,
+    clarified_constraints: RecordList<GoalConstraint>,
     #[serde(default)]
-    authorized_accounts: Vec<AccountId>,
+    authorized_accounts: RecordList<AccountId>,
     inference_mode: InferenceMode,
     #[serde(default)]
     budget: Option<Money>,
@@ -132,8 +139,8 @@ impl GoalContract {
             schema_version: SchemaVersion::V1,
             id,
             original_request,
-            clarified_constraints: Vec::new(),
-            authorized_accounts: Vec::new(),
+            clarified_constraints: RecordList::new(),
+            authorized_accounts: RecordList::new(),
             inference_mode,
             budget: None,
             deadline: None,
@@ -143,16 +150,20 @@ impl GoalContract {
         }
     }
 
-    #[must_use]
-    pub fn with_constraint(mut self, constraint: GoalConstraint) -> Self {
-        self.clarified_constraints.push(constraint);
-        self
+    pub fn with_constraint(
+        mut self,
+        constraint: GoalConstraint,
+    ) -> Result<Self, RecordValidationError> {
+        self.clarified_constraints.try_push(constraint)?;
+        Ok(self)
     }
 
-    #[must_use]
-    pub fn with_authorized_account(mut self, account: AccountId) -> Self {
-        self.authorized_accounts.push(account);
-        self
+    pub fn with_authorized_account(
+        mut self,
+        account: AccountId,
+    ) -> Result<Self, RecordValidationError> {
+        self.authorized_accounts.try_push(account)?;
+        Ok(self)
     }
 
     #[must_use]
@@ -181,8 +192,7 @@ pub enum WorkspaceState {
     Archived,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Workspace {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -246,8 +256,7 @@ pub enum TaskState {
     NeedsReconciliation,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Task {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
@@ -258,9 +267,9 @@ pub struct Task {
     state: TaskState,
     success_predicate: BoundedText<4096>,
     #[serde(default)]
-    required_capabilities: Vec<CapabilityId>,
+    required_capabilities: RecordList<CapabilityId>,
     #[serde(default)]
-    result_artifacts: Vec<ArtifactReference>,
+    result_artifacts: RecordList<ArtifactReference>,
     #[serde(default)]
     failure_detail: Option<BoundedText<4096>>,
     created_at: UnixTimestampMicros,
@@ -285,12 +294,12 @@ impl Task {
 
     #[must_use]
     pub fn result_artifacts(&self) -> &[ArtifactReference] {
-        &self.result_artifacts
+        self.result_artifacts.as_slice()
     }
 
     #[must_use]
     pub fn required_capabilities(&self) -> &[CapabilityId] {
-        &self.required_capabilities
+        self.required_capabilities.as_slice()
     }
 
     #[must_use]
@@ -307,8 +316,8 @@ impl Task {
             goal_contract_id: None,
             state: TaskState::Draft,
             success_predicate,
-            required_capabilities: Vec::new(),
-            result_artifacts: Vec::new(),
+            required_capabilities: RecordList::new(),
+            result_artifacts: RecordList::new(),
             failure_detail: None,
             created_at,
             updated_at: created_at,
@@ -443,8 +452,8 @@ pub enum EvidenceRelation {
     Unknown,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EvidenceOrigin {
     Deterministic,
     ModelDerived {
@@ -463,7 +472,7 @@ pub struct Evidence {
     workspace_id: WorkspaceId,
     claim: BoundedText<8192>,
     #[serde(default)]
-    source_observations: Vec<ObservationId>,
+    source_observations: RecordList<ObservationId>,
     relation: EvidenceRelation,
     origin: EvidenceOrigin,
 }
@@ -482,7 +491,7 @@ impl Evidence {
             id,
             workspace_id,
             claim,
-            source_observations: Vec::new(),
+            source_observations: RecordList::new(),
             relation,
             origin,
         }
@@ -491,6 +500,9 @@ impl Evidence {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActionProposalDescriptor {
+    pub context: ActionContext,
+    pub target_resource: Option<AccountQualifiedResourceId>,
+    pub expires_at: Option<UnixTimestampMicros>,
     pub canonical_arguments: ArtifactReference,
     pub effect_class: CapabilityEffectClass,
     pub approval_requirement: ApprovalRequirement,
@@ -498,6 +510,8 @@ pub struct ActionProposalDescriptor {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionProposal {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context: Option<ActionContext>,
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
     id: ActionProposalId,
@@ -525,16 +539,17 @@ impl ActionProposal {
     ) -> Self {
         let arguments_hash = descriptor.canonical_arguments.content_hash();
         Self {
+            context: Some(descriptor.context),
             schema_version: SchemaVersion::V1,
             id,
             task_id,
             capability_id,
             account_id,
-            target_resource: None,
+            target_resource: descriptor.target_resource,
             canonical_arguments: descriptor.canonical_arguments,
             arguments_hash,
             effect_class: descriptor.effect_class,
-            expires_at: None,
+            expires_at: descriptor.expires_at,
             approval_requirement: descriptor.approval_requirement,
         }
     }
@@ -565,9 +580,10 @@ pub enum ApprovalState {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Approval {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exact_binding: Option<ActionBinding>,
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
     id: ApprovalId,
@@ -577,20 +593,20 @@ pub struct Approval {
 }
 
 impl Approval {
-    #[must_use]
-    pub const fn new(
+    pub fn new(
         id: ApprovalId,
-        action_proposal_id: ActionProposalId,
-        exact_arguments_hash: ContentHash,
+        proposal: &ActionProposal,
         state: ApprovalState,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, RecordValidationError> {
+        state.validate()?;
+        Ok(Self {
             schema_version: SchemaVersion::V1,
             id,
-            action_proposal_id,
-            exact_arguments_hash,
+            action_proposal_id: proposal.action_proposal_id(),
+            exact_arguments_hash: proposal.arguments_hash(),
+            exact_binding: proposal.binding(),
             state,
-        }
+        })
     }
 }
 
@@ -602,6 +618,9 @@ impl Approval {
     deny_unknown_fields
 )]
 pub enum OperationState {
+    Execution {
+        observation: Box<crate::ExecutionObservation>,
+    },
     Prepared,
     Dispatching,
     NeedsReconciliation {
@@ -618,43 +637,124 @@ pub enum OperationState {
     Cancelled,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Operation {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
     id: OperationId,
     action_proposal_id: ActionProposalId,
     account_id: AccountId,
-    idempotency_key: BoundedText<256>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    idempotency_key: Option<BoundedText<256>>,
     state: OperationState,
     #[serde(default)]
     last_reconciled_at: Option<UnixTimestampMicros>,
 }
 
 impl Operation {
-    #[must_use]
-    pub const fn new(
+    pub fn new(
         id: OperationId,
         action_proposal_id: ActionProposalId,
         account_id: AccountId,
         idempotency_key: BoundedText<256>,
         state: OperationState,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, &'static str> {
+        let record = Self {
             schema_version: SchemaVersion::V1,
             id,
             action_proposal_id,
             account_id,
-            idempotency_key,
+            idempotency_key: Some(idempotency_key),
             state,
             last_reconciled_at: None,
-        }
+        };
+        record.validate()?;
+        Ok(record)
     }
 
     #[must_use]
     pub const fn state(&self) -> &OperationState {
         &self.state
+    }
+
+    pub fn from_execution(
+        id: OperationId,
+        action_proposal_id: ActionProposalId,
+        account_id: AccountId,
+        observation: crate::ExecutionObservation,
+    ) -> Result<Self, &'static str> {
+        observation.validate_operation(id)?;
+        let last_reconciled_at = observation.last_reconciled_at();
+        Ok(Self {
+            schema_version: SchemaVersion::V1,
+            id,
+            action_proposal_id,
+            account_id,
+            idempotency_key: None,
+            state: OperationState::Execution {
+                observation: Box::new(observation),
+            },
+            last_reconciled_at,
+        })
+    }
+
+    #[must_use]
+    pub fn execution(&self) -> Option<&crate::ExecutionObservation> {
+        match &self.state {
+            OperationState::Execution { observation } => Some(observation),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn idempotency_key(&self) -> Option<&BoundedText<256>> {
+        self.idempotency_key.as_ref()
+    }
+
+    fn validate(&self) -> Result<(), &'static str> {
+        if let Some(observation) = self.execution() {
+            if self.idempotency_key.is_some() {
+                return Err("execution observation has no recorded idempotency key");
+            }
+            observation.validate_operation(self.id)?;
+            if self.last_reconciled_at != observation.last_reconciled_at() {
+                return Err("operation reconciliation time contradicts execution evidence");
+            }
+        } else if self.idempotency_key.is_none() {
+            return Err("legacy operation requires its recorded idempotency key");
+        }
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for Operation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireOperation {
+            #[serde(deserialize_with = "deserialize_v1_schema")]
+            schema_version: SchemaVersion,
+            id: OperationId,
+            action_proposal_id: ActionProposalId,
+            account_id: AccountId,
+            #[serde(default)]
+            idempotency_key: Option<BoundedText<256>>,
+            state: OperationState,
+            #[serde(default)]
+            last_reconciled_at: Option<UnixTimestampMicros>,
+        }
+        let wire = WireOperation::deserialize(deserializer)?;
+        let record = Self {
+            schema_version: wire.schema_version,
+            id: wire.id,
+            action_proposal_id: wire.action_proposal_id,
+            account_id: wire.account_id,
+            idempotency_key: wire.idempotency_key,
+            state: wire.state,
+            last_reconciled_at: wire.last_reconciled_at,
+        };
+        record.validate().map_err(serde::de::Error::custom)?;
+        Ok(record)
     }
 }
 
@@ -678,7 +778,7 @@ pub struct Receipt {
     outcome: ReceiptOutcome,
     verified_at: UnixTimestampMicros,
     #[serde(default)]
-    evidence_ids: Vec<EvidenceId>,
+    evidence_ids: RecordList<EvidenceId>,
 }
 
 impl Receipt {
@@ -699,7 +799,7 @@ impl Receipt {
             provider_receipt_id,
             outcome,
             verified_at,
-            evidence_ids: Vec::new(),
+            evidence_ids: RecordList::new(),
         }
     }
 }
@@ -728,9 +828,9 @@ pub struct ViewDefinition {
     revision: u64,
     layout: ArtifactReference,
     #[serde(default)]
-    bindings: Vec<ViewBinding>,
+    bindings: RecordList<ViewBinding>,
     #[serde(default)]
-    action_capabilities: Vec<CapabilityId>,
+    action_capabilities: RecordList<CapabilityId>,
 }
 
 impl ViewDefinition {
@@ -747,8 +847,8 @@ impl ViewDefinition {
             workspace_id,
             revision,
             layout,
-            bindings: Vec::new(),
-            action_capabilities: Vec::new(),
+            bindings: RecordList::new(),
+            action_capabilities: RecordList::new(),
         }
     }
 }
@@ -774,8 +874,7 @@ pub enum MemoryKind {
     ApprovedPattern,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct MemoryRecord {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,

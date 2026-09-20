@@ -148,9 +148,7 @@ fn cancellation_notification_is_not_starved_by_an_occupied_control_slot() -> Tes
         std::thread::sleep(Duration::from_millis(1));
     }
 
-    let stopped = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
-        matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
-    })?;
+    let stopped = observe_cancellation_then_release(&mut supervisor, id, &marker)?;
     assert!(stopped.cancellation_acknowledged);
     assert!(!stopped.stop_escalated);
     assert_eq!(supervisor.retire(id)?.unresolved_requests, vec![request]);
@@ -212,9 +210,7 @@ fn cancellation_crosses_control_while_real_progress_transport_is_backpressured()
     let started = Instant::now();
     let receipt = supervisor.cancel(id, CancellationId::from_uuid(Uuid::new_v4()))?;
     assert!(receipt.newly_revoked);
-    let stopped = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
-        matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
-    })?;
+    let stopped = observe_cancellation_then_release(&mut supervisor, id, &marker)?;
     let elapsed = started.elapsed();
     assert!(stopped.cancellation_acknowledged);
     assert!(!stopped.stop_escalated);
@@ -321,13 +317,14 @@ fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
         assert!(receipts.iter().any(|receipt| receipt.generation == *id));
     }
 
+    supervisor.poll();
+    std::thread::sleep(Duration::from_millis(30));
     let mut terminal = Vec::new();
-    for (id, _, _) in &workers {
-        terminal.push(until(
+    for (id, _, marker) in &workers {
+        terminal.push(observe_cancellation_then_release(
             &mut supervisor,
             *id,
-            Duration::from_secs(5),
-            |snapshot| matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed),
+            marker,
         )?);
     }
     let elapsed = started.elapsed();
@@ -356,4 +353,25 @@ fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
         })
     );
     Ok(())
+}
+
+fn observe_cancellation_then_release(
+    supervisor: &mut Supervisor,
+    id: WorkerInstanceId,
+    marker: &Path,
+) -> Result<WorkerSnapshot, Box<dyn Error>> {
+    let observed = until(supervisor, id, Duration::from_secs(5), |snapshot| {
+        snapshot.cancellation_acknowledged
+            || matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+    })?;
+    if !observed.cancellation_acknowledged {
+        return Err(format!("worker exited before cancellation observation: {observed:?}").into());
+    }
+    let release = marker.with_extension("release");
+    std::fs::write(&release, [])?;
+    let stopped = until(supervisor, id, Duration::from_secs(5), |snapshot| {
+        matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+    });
+    std::fs::remove_file(release)?;
+    stopped
 }

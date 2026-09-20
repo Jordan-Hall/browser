@@ -94,8 +94,9 @@ fn worker(n: u64) -> Result<WorkerRegistration> {
     })
 }
 fn action(n: u64) -> Result<RecoverableAction> {
-    Ok(RecoverableAction {
+    let mut action = RecoverableAction {
         operation: NewDurableOperation {
+            binding: None,
             operation_id: id(n)?,
             task_id: id(2)?,
             action_proposal_id: ActionProposalId::from_uuid(Uuid::new_v4()),
@@ -107,13 +108,33 @@ fn action(n: u64) -> Result<RecoverableAction> {
         },
         scope: scope()?,
         effect: RecoveryEffect::ExternalWrite,
-        source_revision: digest(b"source-v1"),
+
         destination: BoundedText::try_new("fixture://external-ledger")?,
         message_kind: BoundedText::try_new("create")?,
         payload: b"exact approved secret action".to_vec(),
         deadline: t(900_000)?,
         compensation: None,
-    })
+    };
+    action.operation.binding = Some(intent_contracts::ActionBinding {
+        task_id: action.operation.task_id,
+        account_id: action.operation.account_id,
+        capability_id: action.operation.capability_id,
+        target_resource: None,
+        canonical_arguments: intent_contracts::ArtifactReference::new(
+            intent_contracts::ArtifactId::from_uuid(action.operation.action_proposal_id.as_uuid()),
+            action.operation.arguments_hash,
+            intent_contracts::ByteSize::from_bytes(action.payload.len() as u64),
+            BoundedText::try_new("application/octet-stream")?,
+        ),
+        context: intent_contracts::ActionContext {
+            source_revision: digest(b"source-v1"),
+            canonicalization: intent_contracts::CanonicalizationVersion::ExactBytesV1,
+        },
+        effect_class: intent_contracts::CapabilityEffectClass::IrreversibleOrUncertain,
+        approval_requirement: intent_contracts::ApprovalRequirement::Always,
+        expires_at: Some(action.deadline),
+    });
+    Ok(action)
 }
 fn pending(o: &mut RuntimeOwner, n: u64) -> Result<OutboxMessageId> {
     o.prepare_action(action(n)?)?;
@@ -564,6 +585,19 @@ fn compensation_has_its_own_approval_bytes_attempt_and_original_receipt() -> Res
     let mut compensation = action(31)?;
     compensation.payload = b"separate compensation bytes".to_vec();
     compensation.operation.arguments_hash = digest(&compensation.payload);
+    compensation
+        .operation
+        .binding
+        .as_mut()
+        .ok_or("binding")?
+        .canonical_arguments = intent_contracts::ArtifactReference::new(
+        intent_contracts::ArtifactId::from_uuid(
+            compensation.operation.action_proposal_id.as_uuid(),
+        ),
+        compensation.operation.arguments_hash,
+        intent_contracts::ByteSize::from_bytes(compensation.payload.len() as u64),
+        BoundedText::try_new("application/octet-stream")?,
+    );
     compensation.compensation = Some(CompensationOrigin {
         operation_id: id(30)?,
         attempt_id: original.attempt_id(),
@@ -970,6 +1004,13 @@ fn read_capture_and_local_versions_preserve_distinct_effect_semantics() -> Resul
         o.update_authority(authority, t(100)?)?;
         let mut a = action(30)?;
         a.effect = effect;
+        a.operation.binding.as_mut().ok_or("binding")?.effect_class = match effect {
+            RecoveryEffect::ReadOnly => intent_contracts::CapabilityEffectClass::ReadOnly,
+            RecoveryEffect::LocalReversible => {
+                intent_contracts::CapabilityEffectClass::LocalReversible
+            }
+            _ => return Err("unexpected test effect".into()),
+        };
         o.prepare_action(a)?;
         o.approve_action(id(30)?, 0, t(1000)?, t(100)?)?;
         let outbox = o.enqueue_action(id(30)?, 1, t(100)?)?;
@@ -1007,6 +1048,38 @@ fn read_capture_and_local_versions_preserve_distinct_effect_semantics() -> Resul
             )
         };
         o.reconcile(signed(&attestation(&attempt, verdict)?)?, 3, t(100)?)?;
+        let record = o.project_operation(id(30)?)?;
+        let observed = record
+            .execution()
+            .ok_or("execution")?
+            .data()
+            .evidence
+            .as_ref()
+            .ok_or("evidence")?;
+        match (verdict, observed.outcome) {
+            (
+                ReconciliationVerdict::ReadCompleted { capture },
+                intent_contracts::ExecutionOutcome::ReadCompleted { capture: exported },
+            ) => assert_eq!(capture, exported),
+            (
+                ReconciliationVerdict::LocalCommitted {
+                    before_revision,
+                    after_revision,
+                    revision,
+                    receipt,
+                },
+                intent_contracts::ExecutionOutcome::LocalCommitted {
+                    before_revision: before,
+                    after_revision: after,
+                    revision: exported,
+                    receipt: reference,
+                },
+            ) => assert_eq!(
+                (before_revision, after_revision, revision, receipt),
+                (before, after, exported, reference)
+            ),
+            _ => return Err("projection lost the effect domain".into()),
+        }
         assert_eq!(
             o.recovery_view(id(30)?, t(100)?)?.plan.decision.disposition,
             expected
@@ -1062,3 +1135,64 @@ fn authority_cas_and_failed_attempt_commit_leave_no_partial_dispatch() -> Result
     assert_eq!(o.state().operation_journal(id(30)?)?.len(), 3);
     Ok(())
 }
+#[test]
+fn incomplete_action_binding_rejects_preparation_without_durable_residue() -> Result {
+    for mismatch in 0..4 {
+        let p = Profile::new()?;
+        let mut o = owner(&p)?;
+        let mut a = action(30)?;
+        match mismatch {
+            0 => a.operation.binding = None,
+            1 => a.operation.binding.as_mut().ok_or("binding")?.account_id = id(99)?,
+            2 => a.operation.binding.as_mut().ok_or("binding")?.expires_at = Some(t(200)?),
+            _ => {
+                a.operation.binding.as_mut().ok_or("binding")?.effect_class =
+                    intent_contracts::CapabilityEffectClass::ReadOnly
+            }
+        }
+        assert!(o.prepare_action(a).is_err());
+        assert!(o.state().load_operation(id(30)?)?.is_none());
+        assert!(o.state().operation_journal(id(30)?)?.is_empty());
+        let actions: i64 =
+            o.store
+                .connection
+                .query_row("SELECT count(*) FROM recovery_actions", [], |row| {
+                    row.get(0)
+                })?;
+        let bindings: i64 = o.store.connection.query_row(
+            "SELECT count(*) FROM durable_operation_bindings",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!((actions, bindings), (0, 0));
+    }
+    Ok(())
+}
+
+#[test]
+fn source_change_after_bound_approval_cannot_stage_identical_bytes() -> Result {
+    let p = Profile::new()?;
+    let mut o = owner(&p)?;
+    o.prepare_action(action(30)?)?;
+    o.approve_action(id(30)?, 0, t(1000)?, t(100)?)?;
+    let before = o.state().operation_journal(id(30)?)?;
+    let mut changed = authority(1)?;
+    changed.source_revision = digest(b"source-v2");
+    o.update_authority(changed, t(100)?)?;
+    assert!(o.enqueue_action(id(30)?, 1, t(100)?).is_err());
+    assert_eq!(o.state().operation_journal(id(30)?)?, before);
+    assert_eq!(rev(&o, 30)?, 1);
+    let outbox: i64 =
+        o.store
+            .connection
+            .query_row("SELECT count(*) FROM outbox_messages", [], |row| row.get(0))?;
+    let attempts: i64 =
+        o.store
+            .connection
+            .query_row("SELECT count(*) FROM recovery_attempts", [], |row| {
+                row.get(0)
+            })?;
+    assert_eq!((outbox, attempts), (0, 0));
+    Ok(())
+}
+mod projection;

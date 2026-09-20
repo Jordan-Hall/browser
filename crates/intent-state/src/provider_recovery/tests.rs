@@ -368,7 +368,7 @@ fn migration_011_preserves_all_prior_migration_checksums() -> TestResult {
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?.collect()
     };
     let before = history(&connection)?;
-    crate::migrations::apply_migrations(&mut connection)?;
+    crate::migrations::apply_migrations_through(&mut connection, 11)?;
     assert_eq!(history(&connection)?, before);
     assert_eq!(
         connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,

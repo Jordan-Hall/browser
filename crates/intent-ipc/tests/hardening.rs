@@ -119,6 +119,66 @@ fn unknown_envelope_authority_fields_are_not_silently_ignored() -> Result<(), Bo
 }
 
 #[test]
+fn event_message_fields_cannot_silently_discard_correlation_or_authority()
+-> Result<(), Box<dyn Error>> {
+    let value = Envelope::event("018f47f7-5a86-7c00-8000-000000000501".parse()?, 7);
+    for (field, extra) in [
+        ("request_id", json!("018f47f7-5a86-7c00-8000-000000000502")),
+        ("override_deadline", json!(true)),
+    ] {
+        let mut wire = serde_json::to_value(&value)?;
+        wire["message"][field] = extra;
+        let frame = Frame::new(FrameLane::Control, serde_json::to_vec(&wire)?);
+        assert!(
+            matches!(decode_control::<u64>(&frame, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::InvalidEnvelope),
+            "event accepted unexpected message field {field}"
+        );
+        assert!(serde_json::from_value::<EnvelopeKind>(wire["message"].clone()).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn message_kind_json_stays_compatible_and_strict_for_every_variant() -> Result<(), Box<dyn Error>> {
+    let request_id: RequestId = "018f47f7-5a86-7c00-8000-000000000502".parse()?;
+    for (kind, wire) in [
+        (
+            EnvelopeKind::Request { request_id },
+            json!({"kind":"request","request_id":request_id}),
+        ),
+        (
+            EnvelopeKind::Response { request_id },
+            json!({"kind":"response","request_id":request_id}),
+        ),
+        (EnvelopeKind::Event, json!({"kind":"event"})),
+    ] {
+        assert_eq!(serde_json::to_value(kind)?, wire);
+        assert_eq!(serde_json::from_value::<EnvelopeKind>(wire.clone())?, kind);
+        let mut extended = wire;
+        extended["override_deadline"] = json!(true);
+        assert!(serde_json::from_value::<EnvelopeKind>(extended.clone()).is_err());
+        let envelope = json!({
+            "schema_version":{"major":1,"minor":0},
+            "trace_id":"018f47f7-5a86-7c00-8000-000000000501",
+            "message":serde_json::to_value(kind)?,
+            "payload":7
+        });
+        let frame = Frame::new(FrameLane::Control, serde_json::to_vec(&envelope)?);
+        let decoded = decode_control::<u64>(&frame, WireLimits::for_tests())?;
+        assert_eq!(decoded.message(), kind);
+        assert_eq!(decoded.deadline(), None);
+        assert_eq!(decoded.cancellation_id(), None);
+        let mut invalid = envelope;
+        invalid["message"] = extended;
+        let frame = Frame::new(FrameLane::Control, serde_json::to_vec(&invalid)?);
+        assert!(
+            matches!(decode_control::<u64>(&frame, WireLimits::for_tests()), Err(error) if error.code() == WireErrorCode::InvalidEnvelope)
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn full_money_domain_roundtrips_through_the_real_envelope_codec() -> Result<(), Box<dyn Error>> {
     for amount in [i128::MIN, -1, 0, 1, (1_i128 << 53) + 1, i128::MAX] {
         let money = Money::new(CurrencyCode::parse("USD")?, amount, CurrencyScale::Unknown);

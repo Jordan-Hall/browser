@@ -1,0 +1,647 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T04 finite oversized-encoder requested-allocation measurements; not whole-task acceptance",
+  "base_commit": "37c996fa28a9f04707817ddd0f17cae37b4d5b30",
+  "initial_runtime_base_commit": "11d0f523f64cb8188c86d6b06055e1dc06da7074",
+  "source_git_blobs": {
+    ".github/workflows/ci.yml": "cc8f12960218a4e7ba1dbe46d0814c71808c6e61",
+    "crates/intent-ipc/Cargo.toml": "62dc0e0577b6ba58c7046d1a543dde5738fa9834",
+    "crates/intent-ipc/tests/encoder_allocations.rs": "436581b26735d1cc2e99610a3fc8d27f2087be43",
+    "crates/intent-ipc/tests/support/allocation_meter.rs": "47047557d9c4db8d6713e07e1acec312963c9966"
+  },
+  "checks": [
+    {
+      "log": "target/encoder-allocation-windows-probe.log",
+      "exit_code": 0,
+      "scope": "Initial Windows probe on the pre-incoming-projection snapshot",
+      "sha256": "9387cac2bde70d8c09e9dc94fbe6cb3bb474e9c0edb8219f21d870634d13b8ef",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-windows-clippy.log",
+      "exit_code": 0,
+      "scope": "Initial Windows IPC strict Clippy, all targets and features",
+      "sha256": "4b75ae60ff8c149ea6a558a8da347a917ce5bdb8acd0f71eb013648efe87aa1d",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": []
+    },
+    {
+      "log": "target/encoder-allocation-windows-tests.log",
+      "exit_code": 0,
+      "scope": "Windows IPC all-target suite before only assertion reordering in the probe and incoming projection fixes",
+      "sha256": "86e4ffd3f5aae91e48b7af0e68c9b92fec33ac3d55882e2975648dd90ff512f7",
+      "passing_test_results": 89,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-linux.log",
+      "exit_code": 0,
+      "scope": "Linux IPC all-target suite and doctests plus strict Clippy, before assertion reordering and incoming projection fixes",
+      "sha256": "f4b0bc666724b25582661329c422b3be0e2a02b545c6eaf525e5c49337a382f5",
+      "passing_test_results": 93,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-mutation-setup-failure.log",
+      "exit_code": 1,
+      "scope": "Probe did not run: log redirection targeted the read-only source mount; production source restored by EXIT trap",
+      "sha256": "0d3b8fcf6bcbfb5d4385a9d43ba31a809f4c29726c19c9f3380f1c2baddcbea9",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": []
+    },
+    {
+      "log": "target/encoder-allocation-mutant.log",
+      "exit_code": 101,
+      "scope": "Expected allocation-bound failure after inserting a full serde_json::to_vec prebuffer; original source restored before final probes",
+      "sha256": "34f15500d626d4ff511ccabbbbeea0e03c1e0b048daf3ff4761e97c8dd3cdfb4",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 1049006,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4195513,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 24,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-linux-final.log",
+      "exit_code": 0,
+      "scope": "Mutation detected, restored production encoder passed probe and strict Clippy before incoming projection fixes",
+      "sha256": "c23843a4847fa10ca6bf0ecf1766f87cf0668b4c31cf95fb0346cda2ae253149",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-windows-final.log",
+      "exit_code": 0,
+      "scope": "Final probe assertion order passed on Windows with strict Clippy before incoming projection fixes",
+      "sha256": "5ac3977e47c905a16635572bf7e41647b16917ef3016cfe7b8ff06574974c78f",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-combined-linux.log",
+      "exit_code": 0,
+      "scope": "Final combined source: Linux probe and IPC strict Clippy passed",
+      "sha256": "9ebd6747f6b1738b016d3a742dd58239329c7103038755297141357e0b440f9a",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-combined-windows-tests.log",
+      "exit_code": 0,
+      "scope": "Final combined source: Windows contracts, IPC and state all-target tests passed, including the standalone probe",
+      "sha256": "d5954954d7e3e5c4309eab904a6d439581e7fae8156d0378c33272b1864c61d2",
+      "passing_test_results": 242,
+      "failed_test_results": 0,
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ]
+    },
+    {
+      "log": "target/encoder-allocation-evidence-validator-tests.log",
+      "exit_code": 0,
+      "scope": "Python evidence validators and ledger checks passed",
+      "sha256": "9009b4c68e77743cf00c146c7978b4aa14e6465919034ef4a3fc761fc6c32a5a",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "samples": []
+    }
+  ],
+  "toolchains": {
+    "windows": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8\ncargo 1.98.1 (797e8a9bc 2026-08-05)\n",
+    "linux": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.1\nLLVM version: 22.1.8\ncargo 1.98.1 (797e8a9bc 2026-08-05)\n"
+  },
+  "platforms": {
+    "windows": "local final combined source passed",
+    "linux": "local final combined source probe and strict Clippy passed; IPC suite on earlier snapshot passed",
+    "macos": "pending native CI"
+  },
+  "measurement_contract": {
+    "logical_elements": 1048576,
+    "frame_limits": [
+      1024,
+      16384,
+      65536
+    ],
+    "live_ceiling": "limit + 4096",
+    "conservative_realloc_overlap_ceiling": "2 * limit + 4096",
+    "positive_control": "materialize the same finite input, require full consumption and peak above largest bounded envelope",
+    "scope": "Rust requested allocation sizes during synchronous oversized encoding, not physical RSS or allocator-private overhead"
+  },
+  "review": {
+    "design": "Two candidates, gpt-5.6-luna judge; isolated process base with fixed-bound/accounting safeguards",
+    "implementation": "gpt-5.6-luna found no concrete allocator safety, measurement lifetime or workflow defect",
+    "comments": "No source deletions; clarified documentation to exclude intentional anomaly self-checks"
+  },
+  "limits": [
+    "No arbitrary serializer allocation containment claim",
+    "No successful-large-encode allocation claim",
+    "No production encoder changes",
+    "Native published CI and whole-task acceptance remain pending",
+    "Initial suite snapshots differ from final source by probe assertion ordering and incoming projection fixes; final combined gates are identified separately"
+  ]
+}

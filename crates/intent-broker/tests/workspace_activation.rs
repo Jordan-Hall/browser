@@ -336,6 +336,7 @@ fn activation_cannot_attach_existing_operation_history_to_imported_task() -> Res
         .owner
         .state_mut()
         .create_operation(NewDurableOperation {
+            binding: None,
             operation_id: id::<OperationId>(42)?,
             task_id,
             action_proposal_id: id::<ActionProposalId>(43)?,

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "scope": "Revoke local stream dispatch before a backpressured outbound cancellation notification",
+  "base_commit": "e999f472fedc518ded4beb113aadfef0c5fcaa0d",
+  "environment": {
+    "platform": "native Windows",
+    "rust": "1.98.1"
+  },
+  "checks": {
+    "regression_before": "failed Cancel enqueue must revoke local dispatch: left true, right false",
+    "regression_after": "passed, including retained event ownership and suppression of queued reliable/progress/artifact payloads",
+    "simultaneous_cancellation": "eight capacity reuse cycles passed after backpressured incoming and outgoing cancellation",
+    "retransmission": "failed repeat enqueue still accepts the first notification acknowledgement",
+    "ipc_all_targets": {
+      "passed": 85,
+      "failed": 0
+    },
+    "format": "passed",
+    "strict_clippy": "passed for intent-ipc, all targets and features"
+  },
+  "sha256": {
+    "crates/intent-ipc/src/stream.rs": "298426d49880435ae01e452bc837fd93617057d1e0d8f8615ed02cf13ef477f3",
+    "Cargo.lock": "0e91be48e5f30e41b1a2d0dde422ff1b941fde4eedc86deeccc559dc3feb861f",
+    "target/outbound-cancel-before.log": "075c1ae00335a26513f65d097841323fc1fd782ef3601054926e9370bd929ce0",
+    "target/outbound-cancel-after.log": "97be09efe4e1a148351144f04bace9e11bcd080ed498a23ad0713b39d3d7b451",
+    "target/outbound-cancel-clippy.log": "7472c40988bec8b345f6923c4ee90deef16d454dff7576ab9e26bcd411a93b84"
+  },
+  "review": "Independent source review found no blocking issue in the scoped state transition and regressions",
+  "limitations": [
+    "StreamEndpoint remains a queue API without a broker or supervisor runtime caller",
+    "No whole-task acceptance, provider cancellation, native Linux/macOS run or remote CI claimed",
+    "Re-registering an identical retired registration remains a separate lifecycle issue"
+  ]
+}
