@@ -331,3 +331,120 @@ fn projection_rejects_same_columns_with_different_local_commit_outcomes() -> Res
     assert!(o.project_operation(id(30)?).is_err());
     Ok(())
 }
+
+#[test]
+fn reconciliation_rejects_same_receipt_with_different_local_commit_metadata() -> Result {
+    let p = Profile::new()?;
+    let mut o = owner(&p)?;
+    let mut local_authority = authority(1)?;
+    local_authority.effect = RecoveryEffect::LocalReversible;
+    o.update_authority(local_authority, t(100)?)?;
+    o.register_worker(worker(21)?, t(100)?)?;
+
+    let mut local = action(30)?;
+    local.effect = RecoveryEffect::LocalReversible;
+    local
+        .operation
+        .binding
+        .as_mut()
+        .ok_or("binding")?
+        .effect_class = intent_contracts::CapabilityEffectClass::LocalReversible;
+    o.prepare_action(local)?;
+    o.approve_action(id(30)?, 0, t(800_000)?, t(100)?)?;
+    let outbox = o.enqueue_action(id(30)?, 1, t(100)?)?;
+    let lease = o.claim_dispatch(outbox, id(21)?, t(700_000)?, t(100)?)?;
+    let sent = o.begin_authorized_dispatch(lease, t(100)?)?;
+    let receipt = digest(b"local receipt");
+    let first = attestation(
+        &sent,
+        ReconciliationVerdict::LocalCommitted {
+            before_revision: digest(b"source-v1"),
+            after_revision: digest(b"after-one"),
+            revision: 1,
+            receipt,
+        },
+    )?;
+    o.reconcile(signed(&first)?, 3, t(100)?)?;
+    let before = projected(&o, 30)?;
+    let count_before: i64 = o.store.connection.query_row(
+        "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
+        [id::<OperationId>(30)?.to_string()],
+        |r| r.get(0),
+    )?;
+
+    let second = attestation(
+        &sent,
+        ReconciliationVerdict::LocalCommitted {
+            before_revision: digest(b"source-v1"),
+            after_revision: digest(b"after-two"),
+            revision: 2,
+            receipt,
+        },
+    )?;
+    assert!(
+        o.reconcile(signed(&second)?, rev(&o, 30)?, t(101)?)
+            .is_err()
+    );
+    let count_after: i64 = o.store.connection.query_row(
+        "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
+        [id::<OperationId>(30)?.to_string()],
+        |r| r.get(0),
+    )?;
+    assert_eq!(count_after, count_before);
+    assert_eq!(projected(&o, 30)?, before);
+    Ok(())
+}
+
+#[test]
+fn compensated_original_rejects_later_decisive_duplicate() -> Result {
+    let p = Profile::new()?;
+    let mut o = owner(&p)?;
+    let original = started(&mut o, 30)?;
+    let receipt = digest(b"original receipt");
+    let first = attestation(&original, ReconciliationVerdict::Committed { receipt })?;
+    o.reconcile(signed(&first)?, 3, t(100)?)?;
+
+    let mut compensation = action(31)?;
+    compensation.compensation = Some(CompensationOrigin {
+        operation_id: id(30)?,
+        attempt_id: original.attempt_id(),
+        receipt,
+    });
+    o.prepare_action(compensation)?;
+    o.approve_action(id(31)?, 0, t(1000)?, t(100)?)?;
+    let outbox = o.enqueue_action(id(31)?, 1, t(100)?)?;
+    let lease = o.claim_dispatch(outbox, id(20)?, t(200)?, t(100)?)?;
+    let compensation_attempt = o.begin_authorized_dispatch(lease, t(100)?)?;
+    let compensation_evidence = attestation(
+        &compensation_attempt,
+        ReconciliationVerdict::Committed {
+            receipt: digest(b"compensation receipt"),
+        },
+    )?;
+    o.reconcile(
+        signed(&compensation_evidence)?,
+        rev(&o, 31)?,
+        t(150)?,
+    )?;
+    let before = projected(&o, 30)?;
+    assert_eq!(before.stage, ExecutionStage::Compensated);
+    let count_before: i64 = o.store.connection.query_row(
+        "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
+        [id::<OperationId>(30)?.to_string()],
+        |r| r.get(0),
+    )?;
+
+    let late = attestation(&original, ReconciliationVerdict::Committed { receipt })?;
+    assert!(
+        o.reconcile(signed(&late)?, rev(&o, 30)?, t(151)?)
+            .is_err()
+    );
+    let count_after: i64 = o.store.connection.query_row(
+        "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
+        [id::<OperationId>(30)?.to_string()],
+        |r| r.get(0),
+    )?;
+    assert_eq!(count_after, count_before);
+    assert_eq!(projected(&o, 30)?, before);
+    Ok(())
+}
