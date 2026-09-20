@@ -136,9 +136,9 @@
       "Planner source consistency",
       "Versioned private storage codec"
     ],
-    "final_delta": "Approval import validation and compatibility documentation reviewed without findings; parent subsequently proved and fixed SQLite replacement bypass"
+    "final_delta": "Approval import and compatibility documentation reviewed; parent proved and fixed SQLite replacement bypass; independent final source and trail audit found no code defect and one corrected evidence description"
   },
-  "delivery": "Will stack on PR843 to include the independently verified cancellation fixture fix; combined-stack verification remains to be recorded",
+  "delivery": "Stacked on PR843; combined verification recorded separately in core-action-binding-combined-20260920.json",
   "limits": [
     "No whole-task acceptance or issue closure",
     "Targeted runtime execution remains refused without trusted provider mapping",
