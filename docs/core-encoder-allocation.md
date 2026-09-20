@@ -12,11 +12,19 @@ The input emits 1,048,576 zero elements lazily. It does not allocate a collectio
 of its own. Each oversized call must return `FrameTooLarge` and stop consumption
 early. At byte limits 1,024, 16,384 and 65,536, the fixed bounds are:
 
+- Attempted elements: at least `limit / 4` and no more than `limit + 1`.
 - Peak requested live bytes: limit + 4,096.
 - Conservative requested bytes including realloc overlap: 2 * limit + 4,096.
 
-The allowance covers the error objects and their text. It is fixed before
-measurement and is not calibrated upward from a sample. A materializing
+The traversal lower bound prevents a fixed-short-prefix implementation from
+passing merely because it reports `FrameTooLarge` with small allocations; the
+probe must make progress that scales with the configured byte limit. The upper
+bound still proves early termination before the million-element logical input is
+materialized. With one-digit elements and JSON separators the lower bound is
+intentionally conservative rather than an exact encoder-layout assertion.
+
+The allocation allowance covers the error objects and their text. It is fixed
+before measurement and is not calibrated upward from a sample. A materializing
 `serde_json::to_vec` positive control must consume the complete input, produce
 more than two MiB and exceed the largest bounded envelope.
 
@@ -24,10 +32,10 @@ A private test allocator forwards all requests unchanged to `System`. Its
 callbacks use nonpanicking atomic accounting. The executable checks allocation,
 zeroed allocation, reallocation, release and arithmetic anomaly detection before
 the encoder cases. Each encoder and positive-control sample must observe
-allocation, finish with zero live requested bytes and have no accounting anomaly. Inputs are borrowed from
-outside the window; results are reduced to copyable facts and dropped inside it.
-Assertions and JSON output run after accounting is disabled. Production code
-retains its unsafe-code prohibition.
+allocation, finish with zero live requested bytes and have no accounting anomaly.
+Inputs are borrowed from outside the window; results are reduced to copyable facts
+and dropped inside it. Assertions and JSON output run after accounting is disabled.
+Production code retains its unsafe-code prohibition.
 
 The process is dedicated to these synchronous cases and starts no other work.
 The measurement is not a general-purpose allocator profiler. It does not bound
