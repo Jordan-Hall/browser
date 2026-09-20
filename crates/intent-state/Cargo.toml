@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+integration-test-hooks = []
+
 [dependencies]
 intent-recovery = { path = "../intent-recovery" }
 intent-contracts = { path = "../intent-contracts" }
@@ -17,7 +20,7 @@ getrandom.workspace = true
 sha2.workspace = true
 uuid.workspace = true
 
-[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+[target.'cfg(unix)'.dependencies]
 nix.workspace = true
 
 [lints]

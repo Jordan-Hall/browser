@@ -1,6 +1,6 @@
 use super::{
     ActionProposal, Approval, ApprovalState, ArtifactReference, GoalConstraint, GoalContract, Task,
-    TaskState, Workspace,
+    TaskState, Workspace, WorkspaceState,
 };
 use crate::{
     AccountId, AccountQualifiedResourceId, ActionProposalId, CapabilityId, ContentHash,
@@ -29,6 +29,11 @@ impl Workspace {
     #[must_use]
     pub const fn revision(&self) -> u64 {
         self.revision
+    }
+
+    #[must_use]
+    pub const fn state(&self) -> WorkspaceState {
+        self.state
     }
 }
 

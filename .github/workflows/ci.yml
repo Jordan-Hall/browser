@@ -39,9 +39,9 @@ jobs:
           cargo fmt --all -- --check
           cargo clippy --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-conformance -p intent-xtask --all-targets --all-features -- -D warnings
       - name: Run native contract and policy tests
-        run: cargo test --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-supervisor -p intent-conformance -p intent-xtask --all-targets --no-fail-fast
+        run: cargo test --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-supervisor -p intent-broker -p intent-conformance -p intent-xtask --all-targets --no-fail-fast
       - name: Run native documentation tests
-        run: cargo test --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-conformance --doc --no-fail-fast
+        run: cargo test --locked -p intent-contracts -p intent-ipc -p intent-local-transport -p intent-recovery -p intent-state -p intent-broker -p intent-conformance --doc --no-fail-fast
       - name: Check acceptance evidence validation
         run: |
           python -m unittest discover -s scripts/tests -v

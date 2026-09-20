@@ -47,6 +47,7 @@ fn load_payload(store: &StateStore, id: OutboxMessageId) {
 ```
 "#]
 
+mod artifact_catalog;
 mod artifacts;
 mod authorized_dispatch;
 mod directory_sync;
@@ -92,6 +93,7 @@ pub use snapshots::{
     BackupKey, PlaintextExportConsent, SnapshotError, SnapshotLimits, SnapshotReceipt,
 };
 
+pub use artifact_catalog::{ArtifactCatalogEntry, MAX_ARTIFACT_METADATA_PAGE};
 pub use artifacts::{
     ArtifactError, ArtifactMetadata, ArtifactReferenceRegistration, ArtifactScope,
     MAX_ARTIFACT_BYTES, NewArtifact, VerifiedArtifact,
@@ -141,6 +143,16 @@ impl StateStore {
             connection,
             runtime_epoch: None,
         })
+    }
+
+    #[cfg(feature = "integration-test-hooks")]
+    #[doc(hidden)]
+    pub fn install_busy_handler_for_integration_test(
+        &self,
+        callback: Option<fn(i32) -> bool>,
+    ) -> Result<(), StateError> {
+        self.connection.busy_handler(callback)?;
+        Ok(())
     }
 
     #[doc(hidden)]

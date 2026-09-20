@@ -1,0 +1,359 @@
+#![cfg(target_os = "linux")]
+#![forbid(unsafe_code)]
+
+use intent_contracts::{
+    AccountId, BoundedText, CancellationId, CapabilityId, ContentHash, RequestId, TaskId,
+    WorkerInstanceId,
+};
+use intent_local_transport::{MessageFamily, WorkerRole};
+use intent_supervisor::{
+    AdmissionLimits, ExecutableImage, ExecutionBoundary, HealthPolicy, Priority, ProcessLimits,
+    RestartPolicy, SchedulerLimits, Supervisor, SupervisorError, WorkerConfig, WorkerScope,
+    WorkerSnapshot, WorkerState,
+};
+use sha2::{Digest, Sha256};
+use std::{
+    error::Error,
+    path::Path,
+    time::{Duration, Instant},
+};
+use uuid::Uuid;
+
+type TestResult = Result<(), Box<dyn Error>>;
+
+fn scope() -> WorkerScope {
+    WorkerScope {
+        account_id: AccountId::from_uuid(Uuid::new_v4()),
+        task_id: TaskId::from_uuid(Uuid::new_v4()),
+    }
+}
+
+fn capability() -> CapabilityId {
+    CapabilityId::from_uuid(Uuid::new_v4())
+}
+
+fn image() -> Result<ExecutableImage, Box<dyn Error>> {
+    let path = Path::new(env!("CARGO_BIN_EXE_intent-blocked-progress-worker"));
+    let hash = ContentHash::from_bytes(Sha256::digest(std::fs::read(path)?).into());
+    Ok(ExecutableImage::load(path, hash)?)
+}
+
+fn config(
+    scope: WorkerScope,
+    capability: CapabilityId,
+    health: HealthPolicy,
+) -> Result<WorkerConfig, SupervisorError> {
+    WorkerConfig::new(
+        scope,
+        WorkerRole::FixtureWorker,
+        [capability],
+        Priority::Background,
+        ProcessLimits::new(128 * 1024 * 1024, 10, 64, 100)?,
+        health,
+        Duration::from_secs(60),
+        RestartPolicy::never(),
+        ExecutionBoundary::CooperativeLocal,
+    )
+}
+
+fn supervisor() -> Result<Supervisor, SupervisorError> {
+    Supervisor::new(
+        &std::env::temp_dir(),
+        AdmissionLimits::new(1, 128 * 1024 * 1024, 100, [0; 2], [0; 2], [0; 2])?,
+        SchedulerLimits::default(),
+    )
+}
+
+fn two_worker_supervisor() -> Result<Supervisor, SupervisorError> {
+    Supervisor::new(
+        &std::env::temp_dir(),
+        AdmissionLimits::new(2, 256 * 1024 * 1024, 200, [0; 2], [0; 2], [0; 2])?,
+        SchedulerLimits::default(),
+    )
+}
+
+fn until(
+    supervisor: &mut Supervisor,
+    id: WorkerInstanceId,
+    timeout: Duration,
+    predicate: impl Fn(&WorkerSnapshot) -> bool,
+) -> Result<WorkerSnapshot, Box<dyn Error>> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        supervisor.poll();
+        let snapshot = supervisor.snapshot(id)?;
+        if predicate(&snapshot) {
+            return Ok(snapshot);
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("worker wait expired: {snapshot:?}").into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn cancellation_notification_is_not_starved_by_an_occupied_control_slot() -> TestResult {
+    let marker =
+        std::env::temp_dir().join(format!("intent-control-backpressure-{}", Uuid::new_v4()));
+    let health = HealthPolicy {
+        stop_grace: Duration::from_millis(750),
+        terminate_grace: Duration::from_millis(750),
+        ..HealthPolicy::default()
+    };
+    let scope = scope();
+    let capability = capability();
+    let mut supervisor = supervisor()?;
+    let id = supervisor.launch(
+        image()?,
+        config(scope, capability, health)?,
+        &[marker.to_string_lossy().into_owned()],
+    )?;
+    let ready = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+        matches!(snapshot.state, WorkerState::Ready | WorkerState::Failed)
+    })?;
+    if ready.state != WorkerState::Ready {
+        return Err(format!("worker did not become ready: {ready:?}").into());
+    }
+
+    let lease = supervisor.lease(id)?;
+    let request = RequestId::from_uuid(Uuid::new_v4());
+    let permit = lease.admit(
+        request,
+        lease.scope(),
+        capability,
+        MessageFamily::LifecycleControl,
+        Instant::now() + Duration::from_secs(5),
+    )?;
+    supervisor.submit_immediate(permit, BoundedText::try_new("x".repeat(4096))?)?;
+
+    let receipt = supervisor.cancel(id, CancellationId::from_uuid(Uuid::new_v4()))?;
+    assert!(receipt.newly_revoked);
+    supervisor.poll();
+
+    let marker_deadline = Instant::now() + Duration::from_millis(300);
+    loop {
+        match std::fs::read(&marker) {
+            Ok(contents) if contents == b"cancel received while progress backpressured" => break,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        if Instant::now() >= marker_deadline {
+            return Err(
+                "cancel notification remained behind the occupied control slot until another supervisor poll"
+                    .into(),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    let stopped = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+        matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+    })?;
+    assert!(stopped.cancellation_acknowledged);
+    assert!(!stopped.stop_escalated);
+    assert_eq!(supervisor.retire(id)?.unresolved_requests, vec![request]);
+    std::fs::remove_file(&marker)?;
+    Ok(())
+}
+
+#[test]
+fn cancellation_crosses_control_while_real_progress_transport_is_backpressured() -> TestResult {
+    let marker =
+        std::env::temp_dir().join(format!("intent-progress-backpressure-{}", Uuid::new_v4()));
+    let health = HealthPolicy {
+        stop_grace: Duration::from_millis(750),
+        terminate_grace: Duration::from_millis(750),
+        ..HealthPolicy::default()
+    };
+    let scope = scope();
+    let capability = capability();
+    let mut supervisor = supervisor()?;
+    let id = supervisor.launch(
+        image()?,
+        config(scope, capability, health)?,
+        &[marker.to_string_lossy().into_owned()],
+    )?;
+    let ready = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+        matches!(snapshot.state, WorkerState::Ready | WorkerState::Failed)
+    })?;
+    if ready.state != WorkerState::Ready {
+        return Err(format!("worker did not become ready: {ready:?}").into());
+    }
+
+    let lease = supervisor.lease(id)?;
+    let request = RequestId::from_uuid(Uuid::new_v4());
+    let permit = lease.admit(
+        request,
+        lease.scope(),
+        capability,
+        MessageFamily::LifecycleControl,
+        Instant::now() + Duration::from_secs(5),
+    )?;
+    supervisor.submit_immediate(permit, BoundedText::try_new("start progress flood")?)?;
+
+    let blocked_deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match std::fs::read(&marker) {
+            Ok(contents) if contents == b"progress transport backpressured" => break,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        if Instant::now() >= blocked_deadline {
+            return Err(
+                "worker progress socket marker did not publish complete backpressure state".into(),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    let started = Instant::now();
+    let receipt = supervisor.cancel(id, CancellationId::from_uuid(Uuid::new_v4()))?;
+    assert!(receipt.newly_revoked);
+    let stopped = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+        matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+    })?;
+    let elapsed = started.elapsed();
+    assert!(stopped.cancellation_acknowledged);
+    assert!(!stopped.stop_escalated);
+    assert!(elapsed < health.stop_grace);
+    assert_eq!(
+        std::fs::read(&marker)?,
+        b"cancel received while progress backpressured"
+    );
+    assert_eq!(supervisor.retire(id)?.unresolved_requests, vec![request]);
+    std::fs::remove_file(&marker)?;
+
+    println!(
+        "{}",
+        serde_json::json!({
+            "scenario": "real_progress_socket_backpressure_with_independent_control_cancel",
+            "cancel_to_reap_microseconds": elapsed.as_micros(),
+            "cancel_acknowledged": true,
+            "signal_escalation": false,
+            "production_latency_qualification": false
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn task_cancellation_crosses_two_real_busy_worker_boundaries() -> TestResult {
+    let health = HealthPolicy {
+        stop_grace: Duration::from_millis(750),
+        terminate_grace: Duration::from_millis(750),
+        ..HealthPolicy::default()
+    };
+    let scope = scope();
+    let capability = capability();
+    let mut supervisor = two_worker_supervisor()?;
+    let mut launched = Vec::new();
+
+    for _ in 0..2 {
+        let marker =
+            std::env::temp_dir().join(format!("intent-two-worker-cancel-{}", Uuid::new_v4()));
+        let id = supervisor.launch(
+            image()?,
+            config(scope, capability, health)?,
+            &[marker.to_string_lossy().into_owned()],
+        )?;
+        let ready = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+            matches!(snapshot.state, WorkerState::Ready | WorkerState::Failed)
+        })?;
+        if ready.state != WorkerState::Ready {
+            return Err(format!("worker did not become ready: {ready:?}").into());
+        }
+        launched.push((id, marker));
+    }
+
+    let request_deadline = Instant::now() + Duration::from_secs(30);
+    let mut workers = Vec::new();
+    for (id, marker) in launched {
+        let lease = supervisor.lease(id)?;
+        let request = RequestId::from_uuid(Uuid::new_v4());
+        let permit = lease.admit(
+            request,
+            lease.scope(),
+            capability,
+            MessageFamily::LifecycleControl,
+            request_deadline,
+        )?;
+        supervisor.submit_immediate(permit, BoundedText::try_new("start progress flood")?)?;
+        workers.push((id, request, marker));
+    }
+
+    // submit_immediate flushes both Execute frames. Stop polling after that: the fixture
+    // markers are historical, while leaving the supervisor idle keeps both real progress
+    // sockets saturated until cancellation is sent on their separate control sockets.
+    let blocked_deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let mut blocked = 0;
+        for (_, _, marker) in &workers {
+            match std::fs::read(marker) {
+                Ok(contents) if contents == b"progress transport backpressured" => blocked += 1,
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        if blocked == workers.len() {
+            break;
+        }
+        if Instant::now() >= blocked_deadline {
+            return Err("both workers did not reach real progress backpressure".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    let cancellation = CancellationId::from_uuid(Uuid::new_v4());
+    let started = Instant::now();
+    let receipts = supervisor.cancel_task(scope.task_id, cancellation);
+    assert_eq!(receipts.len(), 2);
+    assert!(receipts.iter().all(|receipt| receipt.newly_revoked));
+    assert!(
+        receipts
+            .iter()
+            .all(|receipt| receipt.previously_admitted_requests == 1)
+    );
+    for (id, _, _) in &workers {
+        assert!(receipts.iter().any(|receipt| receipt.generation == *id));
+    }
+
+    let mut terminal = Vec::new();
+    for (id, _, _) in &workers {
+        terminal.push(until(
+            &mut supervisor,
+            *id,
+            Duration::from_secs(5),
+            |snapshot| matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed),
+        )?);
+    }
+    let elapsed = started.elapsed();
+    assert!(elapsed < health.stop_grace);
+
+    for ((id, request, marker), stopped) in workers.into_iter().zip(terminal) {
+        assert!(stopped.cancellation_acknowledged);
+        assert!(!stopped.stop_escalated);
+        assert_eq!(
+            std::fs::read(&marker)?,
+            b"cancel received while progress backpressured"
+        );
+        assert_eq!(supervisor.retire(id)?.unresolved_requests, vec![request]);
+        std::fs::remove_file(marker)?;
+    }
+
+    println!(
+        "{}",
+        serde_json::json!({
+            "scenario": "task_cancel_across_two_real_backpressured_workers",
+            "worker_boundaries": 2,
+            "cancel_to_both_reaped_microseconds": elapsed.as_micros(),
+            "cancel_acknowledged": true,
+            "signal_escalation": false,
+            "production_latency_qualification": false
+        })
+    );
+    Ok(())
+}

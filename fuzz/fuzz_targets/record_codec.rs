@@ -3,7 +3,7 @@
 use intent_contracts::{MigrationRegistry, SchemaVersion};
 use intent_ipc::{
     CoreDocumentImport, CoreRecordKind, WireErrorCode, WireLimits, decode_core_record,
-    import_core_document,
+    import_core_document, migrate_legacy_numeric_money_goal_v1,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -34,6 +34,21 @@ fuzz_target!(|data: &[u8]| {
             }
         }
     }
+    if kind == CoreRecordKind::GoalContract
+        && let Ok(imported) = migrate_legacy_numeric_money_goal_v1(input, limits)
+    {
+        assert_eq!(imported.record().kind(), CoreRecordKind::GoalContract);
+        assert_eq!(
+            decode_core_record(
+                CoreRecordKind::GoalContract,
+                imported.canonical_bytes(),
+                limits
+            )
+            .as_ref(),
+            Ok(imported.record())
+        );
+    }
+
     if let Ok(record) = decode_core_record(kind, input, limits) {
         if let Ok(encoded) = record.encode(limits) {
             assert_eq!(

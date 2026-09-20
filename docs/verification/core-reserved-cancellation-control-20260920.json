@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T07 / CORE-03.T05 incremental reserved cancellation control; not task acceptance",
+  "pr": 837,
+  "base_commit": "1d39dc61e17c34fff4f07bed8aea866e406fbb8f",
+  "code_head": "10273419b9829fece6d445cfbbc8908df089aebe",
+  "tested_merge_commit": "620a98f3d8e951325f535859126d7bc4f2de9d42",
+  "changed_code": [
+    "crates/intent-supervisor/src/wire.rs",
+    "crates/intent-fixture-worker/tests/blocked_progress_cancellation.rs"
+  ],
+  "source_sha256": {
+    "crates/intent-supervisor/src/wire.rs": "09f3f391f509807be18ae78ebd35ae15a8f1169be0ad9ac8ec67aac66c249c8d",
+    "crates/intent-fixture-worker/tests/blocked_progress_cancellation.rs": "cf631a55c85220e3bcc9ebed40e663cbcf00c9dd132814e359834f65f270fccc",
+    "Cargo.lock": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "regression": {
+    "name": "cancellation_notification_is_not_starved_by_an_occupied_control_slot",
+    "before_fix": "failed after one supervisor poll because Cancel could not be queued behind a partially written Execute",
+    "after_fix": "passes without a second supervisor poll; cancellation is acknowledged without signal escalation and the unresolved request is retained"
+  },
+  "local": {
+    "toolchain": "1.98.1",
+    "locked": true,
+    "workspace_test_results": 413,
+    "ignored_owned_process_helpers": 1,
+    "doctests": 17,
+    "python_tests": 25,
+    "strict_clippy": "passed",
+    "format": "passed",
+    "fuzz_compilation": "passed",
+    "architecture": "passed",
+    "conformance": "passed",
+    "require_accepted": {
+      "exit_code": 1,
+      "unaccepted_tasks": 37
+    }
+  },
+  "ci": {
+    "run_id": 35491279021,
+    "conclusion": "success",
+    "jobs": {
+      "rust_checks": 106026562172,
+      "ubuntu_24_04": 106026562041,
+      "windows_2025": 106026561966,
+      "macos_15": 106026562089
+    },
+    "artifact_id": 10599545326,
+    "artifact_sha256": "9c54207e2279c4c30c2edccefacf556e27a0ea0549995fe0e1d14c09580665dd",
+    "retained_source_matches_changed_files": true
+  },
+  "review": {
+    "request_comment": 5747826012,
+    "response_comment": 5747836217,
+    "reviewed_commit": "10273419b9829fece6d445cfbbc8908df089aebe",
+    "major_findings": 0,
+    "inline_threads": 0,
+    "independent_task_acceptance": false
+  },
+  "fuzz": {
+    "execution": "not_run_for_this_changeset",
+    "compilation": "passed",
+    "reason": "The changed supervisor/fixture paths do not trigger the parser-fuzz workflow; no instrumented parser execution is claimed."
+  },
+  "remaining": [
+    "Filesystem-full and physical power-loss qualification are not established by this transport increment.",
+    "Production-provider cancellation and product latency targets remain separate qualification gates.",
+    "Independent whole-task acceptance remains required for #127 and #141."
+  ],
+  "accepted": false,
+  "production_ready": false
+}

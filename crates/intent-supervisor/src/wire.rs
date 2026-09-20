@@ -180,9 +180,6 @@ impl ReadBudget {
         self.remaining = self
             .remaining
             .saturating_sub(allowance.saturating_sub(local));
-        // A reduced allowance is not a scheduling block until it is exhausted
-        // without producing a frame. Buffered frames and WouldBlock with unused
-        // bytes must not extend a worker's health deadline.
         if allowance < socket_budget && local == 0 && matches!(&result, Ok(ReadOutcome::Pending)) {
             self.blocked_reads = self.blocked_reads.saturating_add(1);
         }
@@ -207,6 +204,9 @@ pub(crate) struct FramedSocket {
     offset: usize,
     length: usize,
     outgoing: Option<Outgoing>,
+    outgoing_reserved: bool,
+    reserved_outgoing: Option<Outgoing>,
+    reserve_next: bool,
 }
 impl FramedSocket {
     pub(crate) fn new(stream: UnixStream) -> io::Result<Self> {
@@ -218,6 +218,9 @@ impl FramedSocket {
             offset: 0,
             length: 0,
             outgoing: None,
+            outgoing_reserved: false,
+            reserved_outgoing: None,
+            reserve_next: false,
         })
     }
     pub(crate) fn read_one(
@@ -257,56 +260,98 @@ impl FramedSocket {
         }
     }
     pub(crate) fn queue(&mut self, bytes: Vec<u8>) -> Result<(), SupervisorError> {
-        if self.outgoing.is_some() {
-            return Err(SupervisorError::QueueFull);
-        }
         if bytes.len() > MAX_PACKET_BYTES + 5 {
             return Err(SupervisorError::Protocol);
         }
+        if self.outgoing.is_some() {
+            if self.reserve_next && self.reserved_outgoing.is_none() {
+                self.reserved_outgoing = Some(Outgoing { bytes, offset: 0 });
+                self.reserve_next = false;
+                return Ok(());
+            }
+            return Err(SupervisorError::QueueFull);
+        }
+        if self.reserved_outgoing.is_some() {
+            return Err(SupervisorError::QueueFull);
+        }
         self.outgoing = Some(Outgoing { bytes, offset: 0 });
+        self.outgoing_reserved = false;
+        self.reserve_next = false;
+        Ok(())
+    }
+    pub(crate) fn queue_reserved(&mut self, bytes: Vec<u8>) -> Result<(), SupervisorError> {
+        if bytes.len() > MAX_PACKET_BYTES + 5 {
+            return Err(SupervisorError::Protocol);
+        }
+        if self.outgoing_reserved || self.reserved_outgoing.is_some() {
+            return Err(SupervisorError::QueueFull);
+        }
+        if self.outgoing.is_none() {
+            self.outgoing = Some(Outgoing { bytes, offset: 0 });
+            self.outgoing_reserved = true;
+        } else {
+            self.reserved_outgoing = Some(Outgoing { bytes, offset: 0 });
+        }
+        self.reserve_next = false;
         Ok(())
     }
     pub(crate) fn idle(&self) -> bool {
-        self.outgoing.is_none()
+        (self.outgoing.is_none() && self.reserved_outgoing.is_none())
+            || (self.reserve_next && self.reserved_outgoing.is_none())
     }
     pub(crate) fn flush(&mut self, budget: usize) -> io::Result<()> {
-        let Some(outgoing) = self.outgoing.as_mut() else {
-            return Ok(());
-        };
-        let end = outgoing
-            .offset
-            .saturating_add(budget)
-            .min(outgoing.bytes.len());
-        match self.stream.write(&outgoing.bytes[outgoing.offset..end]) {
-            Ok(0) => Err(io::Error::from(io::ErrorKind::WriteZero)),
-            Ok(sent) => {
-                outgoing.offset += sent;
-                if outgoing.offset == outgoing.bytes.len() {
-                    self.outgoing = None;
+        let mut remaining = budget;
+        while remaining > 0 {
+            if self.outgoing.is_none() {
+                self.outgoing = self.reserved_outgoing.take();
+                if self.outgoing.is_none() {
+                    return Ok(());
                 }
-                Ok(())
+                self.outgoing_reserved = true;
             }
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-                ) =>
-            {
-                Ok(())
+            let Some(outgoing) = self.outgoing.as_mut() else {
+                continue;
+            };
+            let end = outgoing
+                .offset
+                .saturating_add(remaining)
+                .min(outgoing.bytes.len());
+            match self.stream.write(&outgoing.bytes[outgoing.offset..end]) {
+                Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero)),
+                Ok(sent) => {
+                    outgoing.offset += sent;
+                    remaining = remaining.saturating_sub(sent);
+                    if outgoing.offset == outgoing.bytes.len() {
+                        self.outgoing = None;
+                        self.outgoing_reserved = false;
+                        continue;
+                    }
+                }
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    return Ok(());
+                }
+                Err(error) => return Err(error),
             }
-            Err(error) => Err(error),
         }
+        Ok(())
     }
-    /// Never splice Stop into a partially written frame. Escalation still bypasses this stream.
     pub(crate) fn discard_unstarted(&mut self) -> bool {
         if self
             .outgoing
             .as_ref()
             .is_some_and(|message| message.offset != 0)
         {
+            self.reserve_next = true;
             return false;
         }
         self.outgoing = None;
+        self.outgoing_reserved = false;
+        self.reserve_next = false;
         true
     }
 }
@@ -343,6 +388,15 @@ impl std::fmt::Debug for FramedSocket {
                     .as_ref()
                     .map(|m| m.bytes.len().saturating_sub(m.offset)),
             )
+            .field("outgoing_reserved", &self.outgoing_reserved)
+            .field(
+                "reserved_outgoing_bytes",
+                &self
+                    .reserved_outgoing
+                    .as_ref()
+                    .map(|m| m.bytes.len().saturating_sub(m.offset)),
+            )
+            .field("reserve_next", &self.reserve_next)
             .finish_non_exhaustive()
     }
 }
@@ -372,6 +426,99 @@ mod tests {
         assert_eq!(budget.consumed(), 8192);
         assert_eq!(complete, 2);
         drop(senders);
+        Ok(())
+    }
+
+    #[test]
+    fn reserved_control_from_idle_still_uses_exactly_one_slot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, _peer) = UnixStream::pair()?;
+        let mut sender = FramedSocket::new(stream)?;
+        let first = Frame::new(intent_ipc::FrameLane::Control, vec![7; 8]).encode(wire_limits())?;
+        let second = Frame::new(intent_ipc::FrameLane::Control, vec![8; 8]).encode(wire_limits())?;
+
+        sender.queue_reserved(first)?;
+        assert!(sender.outgoing_reserved);
+        sender.flush(0)?;
+        assert!(matches!(
+            sender.queue_reserved(second),
+            Err(SupervisorError::QueueFull)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_reserved_control_preserves_an_occupied_frame_and_has_one_slot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, peer) = UnixStream::pair()?;
+        let mut sender = FramedSocket::new(stream)?;
+        let mut receiver = FramedSocket::new(peer)?;
+        let first =
+            Frame::new(intent_ipc::FrameLane::Control, vec![4; 5000]).encode(wire_limits())?;
+        let acknowledgement =
+            Frame::new(intent_ipc::FrameLane::Control, vec![5; 8]).encode(wire_limits())?;
+        let duplicate =
+            Frame::new(intent_ipc::FrameLane::Control, vec![6; 8]).encode(wire_limits())?;
+
+        let remaining_primary = first.len() - 4096;
+        sender.queue(first)?;
+        sender.flush(4096)?;
+        sender.queue_reserved(acknowledgement)?;
+        assert!(matches!(
+            sender.queue_reserved(duplicate.clone()),
+            Err(SupervisorError::QueueFull)
+        ));
+        sender.flush(remaining_primary)?;
+        assert!(sender.outgoing.is_none());
+        assert!(sender.reserved_outgoing.is_some());
+        assert!(matches!(
+            sender.queue(duplicate),
+            Err(SupervisorError::QueueFull)
+        ));
+        sender.flush(4096)?;
+        let mut budget = 16 * 1024;
+        let first = receiver.read_one(&mut budget)?;
+        let second = receiver.read_one(&mut budget)?;
+        assert!(matches!(first, ReadOutcome::Frame(frame) if frame.payload() == vec![4; 5000]));
+        assert!(matches!(second, ReadOutcome::Frame(frame) if frame.payload() == vec![5; 8]));
+        Ok(())
+    }
+
+    #[test]
+    fn reserved_control_follows_a_partial_frame_without_waiting_for_an_empty_slot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, peer) = UnixStream::pair()?;
+        let mut sender = FramedSocket::new(stream)?;
+        let mut receiver = FramedSocket::new(peer)?;
+        let first =
+            Frame::new(intent_ipc::FrameLane::Control, vec![1; 5000]).encode(wire_limits())?;
+        let reserved =
+            Frame::new(intent_ipc::FrameLane::Control, vec![2; 8]).encode(wire_limits())?;
+        let duplicate =
+            Frame::new(intent_ipc::FrameLane::Control, vec![3; 8]).encode(wire_limits())?;
+
+        sender.queue(first)?;
+        sender.flush(4096)?;
+        assert!(!sender.discard_unstarted());
+        assert!(sender.idle());
+        sender.queue(reserved)?;
+        assert!(!sender.idle());
+        assert!(matches!(
+            sender.queue(duplicate),
+            Err(SupervisorError::QueueFull)
+        ));
+        sender.flush(4096)?;
+        assert!(sender.idle());
+
+        let mut budget = MAX_PACKET_BYTES * 2;
+        let ReadOutcome::Frame(first) = receiver.read_one(&mut budget)? else {
+            return Err("first frame missing".into());
+        };
+        assert_eq!(first.payload(), &[1; 5000]);
+        let ReadOutcome::Frame(reserved) = receiver.read_one(&mut budget)? else {
+            return Err("reserved frame missing".into());
+        };
+        assert_eq!(reserved.payload(), &[2; 8]);
         Ok(())
     }
 
@@ -432,7 +579,7 @@ mod tests {
             offset: 1,
         });
         assert!(!receiver.discard_unstarted());
-        assert!(!receiver.idle());
+        assert!(receiver.idle());
         receiver.outgoing = Some(Outgoing {
             bytes: vec![1, 2, 3],
             offset: 0,
