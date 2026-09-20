@@ -1,5 +1,11 @@
 # CORE native implementation checkpoint
 
+## 2026-09-20 outbound cancellation under reserved queue pressure
+
+The merged stream API could leave a registration active when its outbound Cancel failed to enter a full reserved queue. It now revokes local dispatch before queue insertion and distinguishes a notification pending send from one awaiting acknowledgement. Retries preserve that state, including simultaneous incoming cancellation and failed retransmission. Queue errors retain the rejected event, and retirement remains blocked until the handshake completes.
+
+The regression failed before the fix with `is_active=true`. All 85 native Windows IPC tests, formatting and strict Clippy passed afterward. [The verification report](verification/core-outbound-cancellation-20260920.json) records hashes and the remaining scope limits. This queue API still has no production runtime caller, and identical-registration reuse after retirement remains a separate issue. No CORE acceptance status changed.
+
 ## 2026-09-20 broker crash setup deadline
 
 Latest main through PR #839 is merged at `f258485`. The broker crash test now waits for actual worker readiness before starting its existing eight-second crash-phase deadline. Setup has a separate thirty-second bound. A nine-second setup delay passes both crash phases; the same delay after the parent start still fails the crash-phase deadline. The independent effect and recovery assertions are unchanged.
