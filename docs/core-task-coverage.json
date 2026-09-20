@@ -192,10 +192,11 @@
       "title": "Wire cancellation, deadlines and backpressure",
       "implementation_prs": [
         791,
-        805
+        805,
+        829
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Local real-worker cancellation, deadline checks and bounded generation retirement exist. Trusted durable-dispatch integration, byte/accounting baseline and product control-latency acceptance remain; the source is published in #805.",
+      "remaining": "PR #829 generation-fences cancellation retirement, preserves backpressured ACK obligations, suppresses cancelled queued work and consumes peer ACKs for locally initiated cancellation. Real spawned-worker blocked-I/O cancellation, trusted durable-dispatch/#141 integration, byte/control-latency qualification and independent task acceptance remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -222,6 +223,20 @@
           ],
           "scope": "Linux approved/cooperative worker process boundary and executed local and GitHub CI regressions; not external-effect authorization or whole-task acceptance.",
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
+        },
+        {
+          "publication": "published",
+          "source_files": [
+            "crates/intent-ipc/src/cancellation.rs",
+            "crates/intent-ipc/src/flow.rs",
+            "crates/intent-ipc/src/stream.rs"
+          ],
+          "test_files": [
+            "crates/intent-ipc/src/stream.rs"
+          ],
+          "scope": "PR #829 bounded generation-scoped cancellation lifetime, both ACK directions and queue fencing. Exact-head CI/fuzz/review evidence only; not real blocked-transport or whole-task acceptance.",
+          "commit": "948b5cc523d3abaed5d38ce18e962a68ac6b4fe2",
+          "verification_report": "docs/verification/core-cancellation-retirement-20260920.json"
         }
       ]
     },
@@ -386,139 +401,83 @@
       "issue": 132,
       "task": "CORE-02.T04",
       "parent_issue": 3,
-      "title": "Add inbox deduplication and consumer cursors",
+      "title": "Persist inbox cursors and idempotency",
       "implementation_prs": [
-        796
+        796,
+        807
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Source-precondition integration and repair/recovery acceptance are missing.",
+      "status": "partially_implemented",
+      "remaining": "Inbox primitives exist; connector/event ingestion and independent acceptance are missing.",
       "implementation_evidence": []
     },
     {
       "issue": 133,
       "task": "CORE-02.T05",
       "parent_issue": 3,
-      "title": "Implement scoped immutable artifact storage",
+      "title": "Build the artifact store and retention",
       "implementation_prs": [
-        797
+        797,
+        807
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Artifact lifecycle is serialized; #803 adds descriptor-relative snapshot traversal. Exclusive root ownership and all live-artifact path boundaries, plus platform durability, remain unaccepted.",
+      "status": "partially_implemented",
+      "remaining": "Artifact hashing/refcounts exist; power-loss durability, Windows parity, encryption and ownership review are incomplete.",
       "implementation_evidence": []
     },
     {
       "issue": 134,
       "task": "CORE-02.T06",
       "parent_issue": 3,
-      "title": "Implement reference-safe retention and deletion",
+      "title": "Commit workspace checkpoints atomically",
       "implementation_prs": [
-        801
+        798
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Snapshot/GC writer exclusion exists in #803. Lifetime profile coordination and process/VM power-loss qualification remain.",
+      "status": "partially_implemented",
+      "remaining": "Checkpoint atomicity and restart semantics are not integrated/accepted.",
       "implementation_evidence": []
     },
     {
       "issue": 135,
       "task": "CORE-02.T07",
       "parent_issue": 3,
-      "title": "Build backup, restore and integrity checks",
+      "title": "Export and restore authenticated snapshots",
       "implementation_prs": [
-        803,
-        808
+        799
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Authenticated plaintext snapshots and fail-closed restore are implemented in #803. Key custody/product integration, lifetime profile ownership, activation and platform/power-loss qualification remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/snapshots.rs",
-            "crates/intent-state/src/migrations.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/snapshots/tests.rs",
-            "crates/intent-state/src/checkpoints/tests.rs"
-          ],
-          "scope": "Authenticated version-7 to version-8 restore, checkpoint/retention preservation and real process kills around commit; not VM/power-loss qualification.",
-          "commit": "de2832606f7fcc31513f1f81ac3d497845a92e10"
-        }
-      ]
+      "status": "partially_implemented",
+      "remaining": "Authenticated snapshot restore and tamper/path-mixup acceptance are incomplete.",
+      "implementation_evidence": []
     },
     {
       "issue": 136,
       "task": "CORE-02.T08",
       "parent_issue": 3,
-      "title": "Run storage fault and power-loss qualification",
+      "title": "Qualify crash and durability behavior",
       "implementation_prs": [
-        803,
-        807,
-        808,
-        809
+        800
       ],
-      "status": "partially_implemented",
-      "remaining": "Snapshot/checkpoint/dispatch interruption tests exist; #809 additionally kills the real broker around an independently observed effect. Actual VM/power-loss, disk-full and complete filesystem qualification remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        },
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/snapshots.rs",
-            "crates/intent-state/src/migrations.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/snapshots/tests.rs",
-            "crates/intent-state/src/checkpoints/tests.rs"
-          ],
-          "scope": "Authenticated version-7 to version-8 restore, checkpoint/retention preservation and real process kills around commit; not VM/power-loss qualification.",
-          "commit": "de2832606f7fcc31513f1f81ac3d497845a92e10"
-        }
-      ]
+      "status": "blocked",
+      "remaining": "Real process/power-loss corpus and release-blocking native filesystem matrix are not complete.",
+      "implementation_evidence": []
     },
     {
       "issue": 137,
       "task": "CORE-03.T01",
       "parent_issue": 4,
-      "title": "Define worker registry and launch specifications",
+      "title": "Define worker roles and launch specifications",
       "implementation_prs": [
-        805,
-        809
+        801,
+        805
       ],
-      "status": "partially_implemented",
-      "remaining": "PR #809 registers only broker-owned authenticated Ready generations with the durable owner. Hostile-process isolation, platform qualification and accepted production wiring remain.",
+      "status": "implemented_pending_acceptance",
+      "remaining": "Real worker launch exists on Linux. Current source/config must be rebound at every external effect, platform launch parity is missing, and independent ownership review remains.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-supervisor/src/spec.rs",
+            "crates/intent-supervisor/src/runtime.rs",
             "crates/intent-supervisor/src/platform.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -529,9 +488,10 @@
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-supervisor/src/spec.rs",
+            "crates/intent-supervisor/src/runtime.rs",
             "crates/intent-supervisor/src/platform.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -545,19 +505,21 @@
       "issue": 138,
       "task": "CORE-03.T02",
       "parent_issue": 4,
-      "title": "Implement process lifecycle and health",
+      "title": "Implement supervisor launch and health checks",
       "implementation_prs": [
-        805,
-        809
+        802,
+        805
       ],
-      "status": "partially_implemented",
-      "remaining": "Real lifecycle/readiness and durable broker registration are integrated in #809. Native application behavior, noncooperative descendants and platform acceptance remain.",
+      "status": "implemented_pending_acceptance",
+      "remaining": "Linux lifecycle/health/restart tests pass. Native Windows/macOS supervisor launch/containment, restart-spike and slow-consumer acceptance remain.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
             "crates/intent-supervisor/src/runtime.rs",
-            "crates/intent-supervisor/src/worker.rs"
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -569,7 +531,9 @@
           "publication": "published",
           "source_files": [
             "crates/intent-supervisor/src/runtime.rs",
-            "crates/intent-supervisor/src/worker.rs"
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -583,18 +547,21 @@
       "issue": 139,
       "task": "CORE-03.T03",
       "parent_issue": 4,
-      "title": "Implement admission and foreground priorities",
+      "title": "Enforce scheduler admission and fairness",
       "implementation_prs": [
+        803,
         805
       ],
       "status": "partially_implemented",
-      "remaining": "Local bounded count/byte queues and CPU/memory admission reservations exist. Reservations are estimates, not aggregate OS containment; native foreground/speech responsiveness and integrated load acceptance remain.",
+      "remaining": "In-memory scheduler/admission is present. Real broker flows, cancellation bridge, memory pressure and native-platform acceptance are incomplete.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-supervisor/src/admission.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -605,8 +572,10 @@
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-supervisor/src/admission.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -620,18 +589,21 @@
       "issue": 140,
       "task": "CORE-03.T04",
       "parent_issue": 4,
-      "title": "Enforce platform resource constraints",
+      "title": "Enforce worker resource and process limits",
       "implementation_prs": [
+        804,
         805
       ],
       "status": "partially_implemented",
-      "remaining": "Linux per-process hard AS/CPU/file limits, NO_NEW_PRIVS and descriptor hygiene are locally tested. Aggregate cgroup/VM/sandbox containment, descendant escape prevention and other platforms remain unsupported; unattended-untrusted launch is rejected.",
+      "remaining": "Linux process-group/resource limits and descendant termination exist. Windows/macOS containment is unsupported by policy; adversarial/native acceptance remains.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
             "crates/intent-supervisor/src/platform.rs",
-            "crates/intent-supervisor/src/spec.rs"
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -642,8 +614,10 @@
         {
           "publication": "published",
           "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
             "crates/intent-supervisor/src/platform.rs",
-            "crates/intent-supervisor/src/spec.rs"
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -657,20 +631,21 @@
       "issue": 141,
       "task": "CORE-03.T05",
       "parent_issue": 4,
-      "title": "Implement lease-first cancellation and revocation",
+      "title": "Make cancellation lease-first",
       "implementation_prs": [
-        805,
-        807,
-        809
+        801,
+        805
       ],
       "status": "partially_implemented",
-      "remaining": "PR #809 joins local lease revocation and durable worker revocation before child notification; policy/source changes invalidate affected generations and started attempts remain uncertain. Real-provider cancellation, partial-write/product latency and independent acceptance remain.",
+      "remaining": "Lease revocation and reliable cancel exist in the Linux supervisor. Durable state/provider propagation and multi-platform stop-bound acceptance remain incomplete.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-supervisor/src/lease.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -681,35 +656,10 @@
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        },
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-supervisor/src/lease.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -723,18 +673,21 @@
       "issue": 142,
       "task": "CORE-03.T06",
       "parent_issue": 4,
-      "title": "Add crash-loop policy and degraded service",
+      "title": "Integrate privilege and sandbox policy",
       "implementation_prs": [
+        801,
         805
       ],
       "status": "partially_implemented",
-      "remaining": "Local bounded backoff/circuit and preserved lifetime with fresh generation are tested. Restart does not replay outstanding requests. Durable checkpoint, budget persistence and production degraded-service integration remain.",
+      "remaining": "Linux no-new-privileges/resource gates exist. Hostile sandbox escape, Windows/macOS containment and independent security review remain.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-supervisor/src/restart.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -745,8 +698,10 @@
         {
           "publication": "published",
           "source_files": [
-            "crates/intent-supervisor/src/restart.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/runtime.rs",
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -760,18 +715,21 @@
       "issue": 143,
       "task": "CORE-03.T07",
       "parent_issue": 4,
-      "title": "Integrate resource observation and cooperative yields",
+      "title": "Bound restart storms and lifecycle metrics",
       "implementation_prs": [
+        801,
         805
       ],
       "status": "partially_implemented",
-      "remaining": "Bounded content-free process sampling and coalesced yield messages are implemented locally. GPU metrics/enforcement, actual model unload/KV eviction and speech/frontend latency qualification remain absent.",
+      "remaining": "Restart circuit and redacted snapshots exist. Fleet/telemetry integration, memory-pressure policy and independent restart-storm acceptance are incomplete.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
             "crates/intent-supervisor/src/platform.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -782,8 +740,10 @@
         {
           "publication": "published",
           "source_files": [
+            "crates/intent-supervisor/src/runtime.rs",
             "crates/intent-supervisor/src/platform.rs",
-            "crates/intent-supervisor/src/runtime.rs"
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -797,20 +757,21 @@
       "issue": 144,
       "task": "CORE-03.T08",
       "parent_issue": 4,
-      "title": "Verify supervisor robustness under concurrency",
+      "title": "Run adversarial supervisor acceptance",
       "implementation_prs": [
-        805,
-        809
+        801,
+        805
       ],
-      "status": "partially_implemented",
-      "remaining": "PR #805 process scenarios are supplemented by real broker process-kill, scope, authority and lost-acknowledgement tests in #809. Hostile containment, system suspend, full concurrency/load and platform qualification remain.",
+      "status": "blocked",
+      "remaining": "A real Linux process suite exists, but Windows/macOS supervisor implementation, hostile-worker sandbox escape corpus and release sign-off are absent.",
       "implementation_evidence": [
         {
           "publication": "published",
           "source_files": [
             "crates/intent-supervisor/src/runtime.rs",
-            "crates/intent-supervisor/src/wire.rs",
-            "crates/intent-supervisor/src/platform.rs"
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -822,8 +783,9 @@
           "publication": "published",
           "source_files": [
             "crates/intent-supervisor/src/runtime.rs",
-            "crates/intent-supervisor/src/wire.rs",
-            "crates/intent-supervisor/src/platform.rs"
+            "crates/intent-supervisor/src/platform.rs",
+            "crates/intent-supervisor/src/policy.rs",
+            "crates/intent-supervisor/src/lease.rs"
           ],
           "test_files": [
             "crates/intent-fixture-worker/tests/supervision.rs"
@@ -837,135 +799,50 @@
       "issue": 145,
       "task": "CORE-04.T01",
       "parent_issue": 5,
-      "title": "Classify every recoverable operation",
+      "title": "Classify recovery stages and effects",
       "implementation_prs": [
-        804,
-        807
+        802
       ],
       "status": "partially_implemented",
-      "remaining": "Pure classification in #804 is now fed durable actions, capability effect policies, attempts, evidence, source/authority facts and compensation linkage in #807. Trusted live adapters and independent acceptance remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        }
-      ]
+      "remaining": "Recovery classification exists in libraries; trusted runtime consumption is not fully integrated/accepted.",
+      "implementation_evidence": []
     },
     {
       "issue": 146,
       "task": "CORE-04.T02",
       "parent_issue": 5,
-      "title": "Implement consistent checkpoints",
+      "title": "Record replayable pre-effect inputs",
       "implementation_prs": [
-        806,
-        808
+        802
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Task checkpoints (#808) and runtime-owned workspace checkpoints (#806) are both preserved with separate APIs and migrations. Live graph integration, independent whole-task acceptance and platform/power-loss qualification remain open.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "scope": "Atomic bounded domain-graph checkpoints with complete operation/cursor capture, verified artifact pins, idempotent publication, protected release, authenticated snapshot round-trip and real process-kill regression.",
-          "source_files": [
-            "crates/intent-state/src/workspace_checkpoints.rs",
-            "crates/intent-state/src/workspace_checkpoints/types.rs",
-            "crates/intent-state/src/workspace_checkpoints/migration.sql"
-          ],
-          "test_files": [
-            "crates/intent-state/src/checkpoints/tests.rs"
-          ],
-          "commit": "85f5e8a3578e7f90f34597f616dc49c9df130166"
-        },
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/checkpoints.rs",
-            "crates/intent-state/src/checkpoints/schema.sql"
-          ],
-          "test_files": [
-            "crates/intent-state/src/checkpoints/tests.rs"
-          ],
-          "scope": "Atomic historical task checkpoints with exact operation/cursor observations and protected artifact pins; never execution authority.",
-          "commit": "de2832606f7fcc31513f1f81ac3d497845a92e10"
-        }
-      ]
+      "status": "partially_implemented",
+      "remaining": "Bounded capture exists, but full task/provider integration and end-to-end acceptance are missing.",
+      "implementation_evidence": []
     },
     {
       "issue": 147,
       "task": "CORE-04.T03",
       "parent_issue": 5,
-      "title": "Plan startup recovery before dispatch",
+      "title": "Resume provider work safely",
       "implementation_prs": [
-        803,
-        807,
-        809
+        802
       ],
       "status": "partially_implemented",
-      "remaining": "PR #809 exposes startup planning/guarded activation through the broker and uses fresh current authority per action. Production task-centre activation, restore-history integration and independent acceptance remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        }
-      ]
+      "remaining": "Provider-resume policy and attempt accounting exist; production connector integration and evidence are missing.",
+      "implementation_evidence": []
     },
     {
       "issue": 148,
       "task": "CORE-04.T04",
       "parent_issue": 5,
-      "title": "Reconcile local writes and uncertain external state",
+      "title": "Reconcile ambiguous external effects",
       "implementation_prs": [
+        802,
         807,
         809
       ],
-      "status": "partially_implemented",
-      "remaining": "PR #809 carries exact attempt identity to a real worker and reconciles only independently observed fixture evidence through #807. Trusted real provider/local evidence adapters and independent acceptance remain.",
+      "status": "implemented_pending_acceptance",
+      "remaining": "PR #809 carries the exact attempt through authenticated worker execution and proves accepted-but-unverified outcomes survive crash/restart before fixture evidence reconciliation. Production connector evidence and independent acceptance remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -1000,77 +877,51 @@
       "issue": 149,
       "task": "CORE-04.T05",
       "parent_issue": 5,
-      "title": "Build no-production replay contexts",
+      "title": "Model compensation safely",
       "implementation_prs": [
-        804
+        802,
+        807
       ],
       "status": "partially_implemented",
-      "remaining": "Captured-only replay validation exists in #804; credential-isolated worker execution, production dispatch separation and end-to-end recovery qualification remain.",
+      "remaining": "Compensation records/policy are present; production adapters, distinct approval UX and end-to-end acceptance are missing.",
       "implementation_evidence": []
     },
     {
       "issue": 150,
       "task": "CORE-04.T06",
       "parent_issue": 5,
-      "title": "Implement provider resume and reseeding policy",
+      "title": "Recover workspace navigation and view state",
       "implementation_prs": [
-        804
+        802
       ],
       "status": "partially_implemented",
-      "remaining": "Read-only provider resume/reseed planning exists in #804; provider SDK/credential integration and durable resume-attempt accounting remain.",
+      "remaining": "Workspace recovery is not yet proven through a real UI/runtime path.",
       "implementation_evidence": []
     },
     {
       "issue": 151,
       "task": "CORE-04.T07",
       "parent_issue": 5,
-      "title": "Expose recovery decisions in the task centre",
+      "title": "Define provider resume contracts",
       "implementation_prs": [
-        807
+        802
       ],
       "status": "partially_implemented",
-      "remaining": "#807 provides typed recovery views and current-epoch/revision-checked controls with no blind Retry. Native task-centre rendering, trusted bridge and end-to-end UI acceptance remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        }
-      ]
+      "remaining": "Resume contracts exist as policy types; real provider adapters and compatibility tests are absent.",
+      "implementation_evidence": []
     },
     {
       "issue": 152,
       "task": "CORE-04.T08",
       "parent_issue": 5,
-      "title": "Qualify restart, suspend and corrupt-state cases",
+      "title": "Qualify recovery end to end",
       "implementation_prs": [
+        802,
         807,
         809
       ],
       "status": "partially_implemented",
-      "remaining": "PR #809 adds real broker interruption before send and after external fixture effect, with same-attempt recovery and no resend. System suspend, complete corrupt-state/disk/provider cases and platform qualification remain.",
+      "remaining": "PR #809 adds a real broker/worker crash-restart-reconcile path with independent fixture evidence. Browser/provider process matrix, sustained restart/cancellation storms and release sign-off remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -1100,155 +951,6 @@
           "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
         }
       ]
-    },
-    {
-      "issue": 113,
-      "task": "PROGRAMME.T03",
-      "parent_issue": 1,
-      "title": "Freeze core contracts and process authority inventory",
-      "implementation_prs": [],
-      "status": "blocked",
-      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance.",
-      "implementation_evidence": []
-    },
-    {
-      "issue": 211,
-      "task": "EPIC-CORE.T01",
-      "parent_issue": 13,
-      "title": "Agree runtime ownership and wire contracts",
-      "implementation_prs": [
-        807
-      ],
-      "status": "partially_implemented",
-      "remaining": "Existing contracts/checkpoints plus #807 owner and authority/attempt boundaries provide implementation inputs. Complete accepted ownership inventory, real broker wiring and review remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        }
-      ]
-    },
-    {
-      "issue": 212,
-      "task": "EPIC-CORE.T02",
-      "parent_issue": 13,
-      "title": "Integrate durable dispatch and worker supervision",
-      "implementation_prs": [
-        807,
-        809
-      ],
-      "status": "partially_implemented",
-      "remaining": "PR #809 now implements the cooperative inline supervisor/broker/durable-dispatch path with real effects in an independent fixture ledger. Production providers, bulk transport, UI/control latency and independent end-to-end acceptance remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        }
-      ]
-    },
-    {
-      "issue": 213,
-      "task": "EPIC-CORE.T03",
-      "parent_issue": 13,
-      "title": "Exercise crash and bounded replay end to end",
-      "implementation_prs": [
-        807,
-        809
-      ],
-      "status": "partially_implemented",
-      "remaining": "PR #809 joins real broker process interruption and independently observed effects without blind resend. Credential-isolated replay, full system/VM faults and independent acceptance remain.",
-      "implementation_evidence": [
-        {
-          "publication": "published",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification.",
-          "commit": "420dbced30ad591f333f5c1fc25ac62f84479031"
-        },
-        {
-          "publication": "unpublished",
-          "source_files": [
-            "crates/intent-state/src/durable_recovery/mod.rs",
-            "crates/intent-state/src/durable_recovery/dispatch.rs",
-            "crates/intent-state/src/durable_recovery/evidence.rs",
-            "crates/intent-state/src/durable_recovery/planner.rs"
-          ],
-          "test_files": [
-            "crates/intent-state/src/durable_recovery/tests.rs"
-          ],
-          "scope": "PR #807 durable state/owner/approval/attempt/reconciliation implementation, controlled tests and actual process interruption; not provider settlement, native UI, whole-epic acceptance or power-loss qualification."
-        }
-      ]
-    },
-    {
-      "issue": 214,
-      "task": "EPIC-CORE.T04",
-      "parent_issue": 13,
-      "title": "Publish runtime operational readiness",
-      "implementation_prs": [],
-      "status": "blocked",
-      "remaining": "Required complete ownership, durable-dispatch/recovery integration or operational qualification has not been supplied. Local supervisor and reference ledgers do not constitute acceptance.",
-      "implementation_evidence": []
     }
-  ],
-  "reviewed_remote_head": "5cdcd5ef71940cd3bcc129cbd02ac68c20aa7ce7",
-  "current_source": {
-    "publication": "published",
-    "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
-    "implementation_pr": 813,
-    "scope": "Record and migration validation on the implemented broker/recovery stack. All task acceptance remains open."
-  }
+  ]
 }
