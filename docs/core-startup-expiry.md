@@ -60,3 +60,9 @@ This change does not accept CORE-01.T05. Public transport authentication APIs,
 secret erasure, additional revoked/disconnected/foreign lifecycle cases and
 Windows/macOS launch qualification remain separate work. Linux PID/UID/GID and
 private-endpoint checks do not provide hostile same-user containment.
+
+Published source `299be1e` in PR #852 passed CI run 35518667558. All 284
+archived source blobs match that commit; each native allocation artifact
+matches 55 source entries and contains four valid samples. The real startup
+cases run on Linux. These portable jobs do not establish Windows/macOS
+supervisor support. See `verification/core-startup-expiry-ci-20260920.json`.

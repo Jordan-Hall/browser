@@ -246,10 +246,11 @@
       "title": "Authenticate locally launched worker channels",
       "implementation_prs": [
         789,
-        805
+        805,
+        852
       ],
       "status": "partially_implemented",
-      "remaining": "Linux child authentication and absolute startup-admission expiry are implemented; the expiry increment is awaiting publication and final qualification. Public low-level authentication hardening, secret disposal, revoked/disconnected/foreign-lifecycle cases, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Public low-level authentication hardening, secret disposal, revoked/disconnected/foreign-lifecycle cases, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -278,7 +279,7 @@
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
         },
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-supervisor/src/runtime.rs"
           ],
@@ -288,7 +289,8 @@
             "crates/intent-fixture-worker/src/startup_gate.rs",
             "crates/intent-fixture-worker/tests/startup_expiry.rs"
           ],
-          "scope": "Linux absolute startup-admission deadline shared by both channels and Ready; real-child expiry and on-time controls; no whole-task or platform acceptance."
+          "scope": "Linux absolute startup-admission deadline shared by both channels and Ready; real-child expiry and on-time controls; no whole-task or platform acceptance.",
+          "commit": "299be1e1fe75f56290c004a18ab444a61cbb1e18"
         }
       ]
     },
