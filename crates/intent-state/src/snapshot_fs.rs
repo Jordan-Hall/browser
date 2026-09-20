@@ -28,10 +28,7 @@ fn retry_profile_lock(mut attempt: impl FnMut() -> Result<(), TryLockError>) -> 
             Err(TryLockError::WouldBlock) if retry < PROFILE_LOCK_RETRIES => {
                 thread::sleep(PROFILE_LOCK_RETRY_DELAY);
             }
-            Err(TryLockError::WouldBlock) => {
-                return Err(io::Error::from(io::ErrorKind::WouldBlock));
-            }
-            Err(TryLockError::Error(error)) => return Err(error),
+            Err(error) => return Err(io::Error::other(error.to_string())),
         }
     }
     unreachable!("bounded lock retry loop always returns")
@@ -284,7 +281,7 @@ mod tests {
             Err(TryLockError::WouldBlock)
         })
         .expect_err("persistent lock contention unexpectedly succeeded");
-        assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(attempts.get(), PROFILE_LOCK_RETRIES + 1);
     }
 }
