@@ -21,9 +21,7 @@ const DIRECTORY_FLAGS: OFlag = OFlag::O_RDONLY
 const PROFILE_LOCK_RETRIES: usize = 16;
 const PROFILE_LOCK_RETRY_DELAY: Duration = Duration::from_millis(1);
 
-fn retry_profile_lock(
-    mut attempt: impl FnMut() -> Result<(), TryLockError>,
-) -> io::Result<()> {
+fn retry_profile_lock(mut attempt: impl FnMut() -> Result<(), TryLockError>) -> io::Result<()> {
     for retry in 0..=PROFILE_LOCK_RETRIES {
         match attempt() {
             Ok(()) => return Ok(()),
