@@ -474,11 +474,7 @@ fn read_completion_cannot_complete_a_managed_compensation() -> Result {
     let mut compensation = action(31)?;
     compensation.operation.capability_id = id(14)?;
     compensation.effect = RecoveryEffect::ReadOnly;
-    let binding = compensation
-        .operation
-        .binding
-        .as_mut()
-        .ok_or("binding")?;
+    let binding = compensation.operation.binding.as_mut().ok_or("binding")?;
     binding.capability_id = id(14)?;
     binding.effect_class = intent_contracts::CapabilityEffectClass::ReadOnly;
     compensation.compensation = Some(CompensationOrigin {
