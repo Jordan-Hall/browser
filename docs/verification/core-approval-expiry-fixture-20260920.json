@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "scope": "Broker approval-expiry fixture setup correction; no production behavior change",
+  "base_commit": "657d715930a4a89b536eb84aca900c9e036b05e8",
+  "source_git_blobs": {
+    "crates/intent-fixture-worker/tests/broker.rs": "e84e1fa200b61e15988c06b83dfec31c98eef686"
+  },
+  "failure": {
+    "run_id": 35520415026,
+    "url": "https://github.com/Jordan-Hall/browser/actions/runs/35520415026",
+    "source_commit": "657d715930a4a89b536eb84aca900c9e036b05e8",
+    "log": "target/startup-main-merge-ci-failure.log",
+    "sha256": "6f35e0c45c45741a5d7094bd61313a9e44415f420c9eb10fae928fd388cbe069",
+    "observation": "The 100 ms approval expired during setup before enqueue, so the test returned Denied before reaching its dispatch assertion."
+  },
+  "correction": "Prepare and enqueue with the RuntimeOwner explicit clock while approval is valid, then hand the same owner to the real-clock broker. Require expiry after real worker readiness and the exact approval denial at dispatch. No sleeps, database tampering or production test clock.",
+  "validation": {
+    "log": "target/approval-expiry-ci-fix.log",
+    "sha256": "5988e9802dc5211f4af478575c707f102a9360dd6ed48545bd31582546662c6b",
+    "exit_code": 0,
+    "passing_test_results": 16,
+    "failed_test_results": 0,
+    "checks": [
+      "workspace formatting",
+      "strict broker fixture Clippy",
+      "complete broker integration binary"
+    ]
+  },
+  "limits": [
+    "This test correction does not establish CORE task acceptance.",
+    "Remote CI of the correction is pending publication."
+  ]
+}
