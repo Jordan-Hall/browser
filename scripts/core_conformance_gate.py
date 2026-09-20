@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -42,10 +43,19 @@ def _repo_file(root: Path, relative: str, evidence_id: str) -> Path:
     candidate = PurePosixPath(relative)
     if candidate.is_absolute() or ".." in candidate.parts or not candidate.parts:
         raise GateError(f"{evidence_id} path escapes repository: {relative}")
+    resolved_root = root.resolve()
     path = root.joinpath(*candidate.parts)
-    if not path.is_file():
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise GateError(f"{evidence_id} file does not exist safely: {relative}") from error
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as error:
+        raise GateError(f"{evidence_id} path resolves outside repository: {relative}") from error
+    if not resolved.is_file():
         raise GateError(f"{evidence_id} file does not exist: {relative}")
-    return path
+    return resolved
 
 
 def _validate_target_part(value: Any, field: str, evidence_id: str) -> str:
@@ -81,6 +91,70 @@ def _target_inventory_id(target: tuple[str, str, str | None]) -> str:
         return f"{package}--lib"
     assert name is not None
     return f"{package}--test--{name}"
+
+
+def _package_for_source(
+    root: Path, source: Path, evidence_id: str
+) -> tuple[Path, str]:
+    resolved_root = root.resolve()
+    current = source.parent
+    while True:
+        manifest_path = current / "Cargo.toml"
+        if manifest_path.is_file():
+            try:
+                cargo = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+                raise GateError(f"{evidence_id} package manifest is unreadable") from error
+            package = cargo.get("package")
+            package_name = package.get("name") if isinstance(package, dict) else None
+            if not isinstance(package_name, str) or not package_name:
+                raise GateError(f"{evidence_id} source is not owned by a Cargo package")
+            return current, package_name
+        if current == resolved_root:
+            break
+        if resolved_root not in current.parents:
+            break
+        current = current.parent
+    raise GateError(f"{evidence_id} source is not owned by a Cargo package")
+
+
+def _validate_source_target(
+    root: Path,
+    source: Path,
+    target: tuple[str, str, str | None],
+    evidence_id: str,
+    test_name: str,
+    inventory_name: str,
+) -> None:
+    package_root, actual_package = _package_for_source(root, source, evidence_id)
+    package, kind, target_name = target
+    if actual_package != package:
+        raise GateError(
+            f"{evidence_id} source package {actual_package} does not match cargo_target {package}"
+        )
+    relative = source.relative_to(package_root)
+    if kind == "lib":
+        if not relative.parts or relative.parts[0] != "src" or relative.suffix != ".rs":
+            raise GateError(f"{evidence_id} lib evidence is outside the package src tree")
+        modules = list(relative.with_suffix("").parts[1:])
+        if modules and modules[-1] in {"lib", "mod"}:
+            modules.pop()
+        expected = "::".join([*modules, "tests", test_name])
+        if inventory_name != expected:
+            raise GateError(
+                f"{evidence_id} inventory_name does not match its mapped lib source function"
+            )
+        return
+    assert target_name is not None
+    expected_file = Path("tests") / f"{target_name}.rs"
+    if relative != expected_file:
+        raise GateError(
+            f"{evidence_id} source file does not match integration target {target_name}"
+        )
+    if inventory_name != test_name:
+        raise GateError(
+            f"{evidence_id} inventory_name does not match its mapped integration test function"
+        )
 
 
 def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
@@ -155,13 +229,22 @@ def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
             if evidence_class in {"unit", "subprocess"}:
                 if re.search(r"#\[test\]", attributes) is None:
                     raise GateError(f"{evidence_id} does not reference a #[test] function")
+                # Rust supports #[ignore], #[ignore = "reason"] and cfg_attr(..., ignore).
+                # Reject any ignore token in the function's attribute block rather than
+                # trying to enumerate every syntactic spelling that libtest understands.
                 if re.search(r"\bignore\b", attributes) is not None:
-                    raise GateError(
-                        f"{evidence_id} references a conditionally or explicitly ignored test"
-                    )
+                    raise GateError(f"{evidence_id} references a conditionally or explicitly ignored test")
                 if not isinstance(inventory_name, str) or not inventory_name:
                     raise GateError(f"{evidence_id} must name its exact inventory_name")
                 cargo_target = _cargo_target(item, evidence_id)
+                _validate_source_target(
+                    root,
+                    file_path,
+                    cargo_target,
+                    evidence_id,
+                    test_name,
+                    inventory_name,
+                )
             else:
                 if inventory_name is not None:
                     raise GateError(f"{evidence_id} has inventory_name for non-test evidence")
@@ -342,7 +425,7 @@ def main() -> int:
         report, passed = build_report(
             manifest, root, args.platform, args.commit, steps, inventory
         )
-    except (GateError, json.JSONDecodeError, OSError) as error:
+    except (GateError, json.JSONDecodeError, OSError, UnicodeError) as error:
         report = {
             "schema_version": 1,
             "scope": "CORE-01 acceptance evidence mapping",
