@@ -32,6 +32,23 @@ fn starting_worker() -> Result<(Supervisor, WorkerInstanceId), Box<dyn Error>> {
     Ok((supervisor, id))
 }
 
+fn fixture_identity(
+    id: WorkerInstanceId,
+    stream: &UnixStream,
+) -> Result<WorkerIdentity, Box<dyn Error>> {
+    let (token, pending) = issue_worker_authentication(id, WorkerRole::FixtureWorker)
+        .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    let mut verifier = pending.bind(ExpectedPeer::unix_process(
+        std::process::id(),
+        geteuid().as_raw(),
+        getegid().as_raw(),
+    )?);
+    Ok(verifier.authenticate_unix(
+        &WorkerHello::new(id, WorkerRole::FixtureWorker, token),
+        stream,
+    )?)
+}
+
 #[test]
 fn exact_deadline_revokes_startup_and_discards_both_unused_credentials()
 -> Result<(), Box<dyn Error>> {
@@ -70,21 +87,8 @@ fn an_expired_silent_startup_ignores_zero_budget_and_stale_poll_time() -> Result
 fn ready_admission_rechecks_time_after_the_outer_poll_started() -> Result<(), Box<dyn Error>> {
     let (mut supervisor, id) = starting_worker()?;
     let entry = supervisor.entries.get_mut(&id).ok_or("missing entry")?;
-    let token =
-        BootstrapToken::generate().map_err(|error| format!("bootstrap entropy: {error}"))?;
-    let peer = expected_peer(entry.child.id());
-    let identity = OneShotAuthenticator::new(WorkerLaunchRecord::new(
-        id,
-        WorkerRole::FixtureWorker,
-        token.clone(),
-        PeerExpectation::exact(peer),
-    ))
-    .authenticate(
-        &WorkerHello::new(id, WorkerRole::FixtureWorker, token),
-        peer,
-    )?;
-    entry.progress.identity = Some(identity);
     let (receiver, mut sender) = UnixStream::pair()?;
+    entry.progress.identity = Some(fixture_identity(id, &receiver)?);
     entry.control.socket = Some(FramedSocket::new(receiver)?);
     sender.write_all(&encode_event(
         ControlMessage::Ready { generation: id },
@@ -106,14 +110,13 @@ fn ready_admission_rechecks_time_after_the_outer_poll_started() -> Result<(), Bo
 fn late_hello_cannot_consume_the_lane_credential() -> Result<(), Box<dyn Error>> {
     let (mut supervisor, id) = starting_worker()?;
     let entry = supervisor.entries.get_mut(&id).ok_or("missing entry")?;
-    let token =
-        BootstrapToken::generate().map_err(|error| format!("bootstrap entropy: {error}"))?;
-    entry.control.authenticator = Some(OneShotAuthenticator::new(WorkerLaunchRecord::new(
-        id,
-        WorkerRole::FixtureWorker,
-        token.clone(),
-        PeerExpectation::exact(expected_peer(std::process::id())),
-    )));
+    let (token, pending) = issue_worker_authentication(id, WorkerRole::FixtureWorker)
+        .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    entry.control.authenticator = Some(pending.bind(ExpectedPeer::unix_process(
+        std::process::id(),
+        geteuid().as_raw(),
+        getegid().as_raw(),
+    )?));
     let (receiver, mut sender) = UnixStream::pair()?;
     entry.control.socket = Some(FramedSocket::new(receiver)?);
     sender.write_all(&encode_event(
@@ -127,7 +130,6 @@ fn late_hello_cannot_consume_the_lane_credential() -> Result<(), Box<dyn Error>>
     let mut budget = ReadBudget::new(MAX_READ_BYTES_PER_POLL);
     assert_eq!(
         entry.control.poll_authentication(
-            std::process::id(),
             ChannelKind::Control,
             id,
             Instant::now(),
@@ -146,19 +148,6 @@ fn late_hello_cannot_consume_the_lane_credential() -> Result<(), Box<dyn Error>>
 fn serviced_ready_signal(heartbeat: bool) -> Result<(), Box<dyn Error>> {
     let (mut supervisor, id) = starting_worker()?;
     let entry = supervisor.entries.get_mut(&id).ok_or("missing entry")?;
-    let token =
-        BootstrapToken::generate().map_err(|error| format!("bootstrap entropy: {error}"))?;
-    let peer = expected_peer(entry.child.id());
-    let identity = OneShotAuthenticator::new(WorkerLaunchRecord::new(
-        id,
-        WorkerRole::FixtureWorker,
-        token.clone(),
-        PeerExpectation::exact(peer),
-    ))
-    .authenticate(
-        &WorkerHello::new(id, WorkerRole::FixtureWorker, token),
-        peer,
-    )?;
     entry.state = WorkerState::Ready;
     entry.config.health.heartbeat_timeout = Duration::from_millis(100);
     entry.config.health.work_progress_timeout = Duration::from_millis(100);
@@ -170,6 +159,7 @@ fn serviced_ready_signal(heartbeat: bool) -> Result<(), Box<dyn Error>> {
     };
     entry.progress_at = stale_poll_time - Duration::from_secs(1);
     let (receiver, mut sender) = UnixStream::pair()?;
+    let identity = fixture_identity(id, &receiver)?;
     if heartbeat {
         entry.control.identity = Some(identity);
         entry.control.socket = Some(FramedSocket::new(receiver)?);

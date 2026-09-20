@@ -1,4 +1,4 @@
-use crate::peer::{PeerCredentialEvidence, PeerExpectation};
+use crate::peer::{ExpectedPeer, ObservedPeer, PeerCredentialError};
 use intent_contracts::{SchemaVersion, WorkerInstanceId};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -12,19 +12,7 @@ pub const BOOTSTRAP_TOKEN_BYTES: usize = 32;
 pub struct BootstrapToken([u8; BOOTSTRAP_TOKEN_BYTES]);
 
 impl BootstrapToken {
-    pub fn generate() -> Result<Self, getrandom::Error> {
-        let mut bytes = [0_u8; BOOTSTRAP_TOKEN_BYTES];
-        getrandom::fill(&mut bytes)?;
-        Ok(Self(bytes))
-    }
-
-    #[must_use]
-    pub const fn from_bytes(bytes: [u8; BOOTSTRAP_TOKEN_BYTES]) -> Self {
-        Self(bytes)
-    }
-
-    #[must_use]
-    pub fn matches(&self, other: &Self) -> bool {
+    fn matches(&self, other: &Self) -> bool {
         bool::from(self.0.as_slice().ct_eq(other.0.as_slice()))
     }
 }
@@ -146,42 +134,75 @@ impl WorkerHello {
     }
 }
 
-/// A launch record is a move-only input; one-use registry enforcement is still required.
-///
-/// ```compile_fail
-/// use intent_local_transport::WorkerLaunchRecord;
-/// fn duplicate(record: WorkerLaunchRecord) { let _ = record.clone(); }
-/// ```
-#[derive(Debug, Eq, PartialEq)]
-pub struct WorkerLaunchRecord {
+#[derive(Debug)]
+struct WorkerLaunch {
     instance_id: WorkerInstanceId,
     role: WorkerRole,
     bootstrap_token: BootstrapToken,
-    peer_expectation: PeerExpectation,
 }
 
-impl WorkerLaunchRecord {
-    #[must_use]
-    pub const fn new(
-        instance_id: WorkerInstanceId,
-        role: WorkerRole,
-        bootstrap_token: BootstrapToken,
-        peer_expectation: PeerExpectation,
-    ) -> Self {
-        Self {
+/// Issued before spawn, then bound once to the actual child's process policy.
+///
+/// ```compile_fail
+/// use intent_local_transport::UnboundWorkerVerifier;
+/// fn duplicate(verifier: UnboundWorkerVerifier) { let _ = verifier.clone(); }
+/// ```
+/// ```compile_fail
+/// use intent_local_transport::UnboundWorkerVerifier;
+/// fn deserializable<T: serde::de::DeserializeOwned>() {}
+/// deserializable::<UnboundWorkerVerifier>();
+/// ```
+#[derive(Debug)]
+pub struct UnboundWorkerVerifier {
+    launch: WorkerLaunch,
+}
+
+pub fn issue_worker_authentication(
+    instance_id: WorkerInstanceId,
+    role: WorkerRole,
+) -> Result<(BootstrapToken, UnboundWorkerVerifier), getrandom::Error> {
+    let mut bytes = [0_u8; BOOTSTRAP_TOKEN_BYTES];
+    getrandom::fill(&mut bytes)?;
+    let token = BootstrapToken(bytes);
+    let verifier = UnboundWorkerVerifier {
+        launch: WorkerLaunch {
             instance_id,
             role,
-            bootstrap_token,
-            peer_expectation,
+            bootstrap_token: token.clone(),
+        },
+    };
+    Ok((token, verifier))
+}
+
+impl UnboundWorkerVerifier {
+    #[must_use]
+    pub fn bind(self, expected: ExpectedPeer) -> WorkerVerifier {
+        WorkerVerifier {
+            launch: Some(self.launch),
+            expected,
         }
     }
 }
 
+/// The caller retains the connection and decodes its Hello. This result cannot
+/// be installed into the supervisor or converted into a runtime lease.
+///
+/// ```compile_fail
+/// use intent_contracts::WorkerInstanceId;
+/// use intent_local_transport::{WorkerIdentity, WorkerRole};
+/// fn forge(instance_id: WorkerInstanceId, role: WorkerRole) -> WorkerIdentity {
+///     WorkerIdentity { instance_id, role }
+/// }
+/// ```
+/// ```compile_fail
+/// use intent_local_transport::WorkerIdentity;
+/// fn deserializable<T: serde::de::DeserializeOwned>() {}
+/// deserializable::<WorkerIdentity>();
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkerIdentity {
     instance_id: WorkerInstanceId,
     role: WorkerRole,
-    peer: PeerCredentialEvidence,
 }
 
 impl WorkerIdentity {
@@ -196,52 +217,115 @@ impl WorkerIdentity {
     }
 
     #[must_use]
-    pub const fn peer(&self) -> PeerCredentialEvidence {
-        self.peer
-    }
-
-    #[must_use]
     pub fn allows(&self, family: MessageFamily) -> bool {
         self.role.allows(family)
     }
 }
 
+/// Only issuance can create this verifier; wire proof cannot recreate it.
+///
+/// ```compile_fail
+/// use intent_local_transport::WorkerVerifier;
+/// fn duplicate(verifier: WorkerVerifier) { let _ = verifier.clone(); }
+/// ```
+/// ```compile_fail
+/// use intent_local_transport::{BootstrapToken, WorkerVerifier};
+/// fn recreate(token: BootstrapToken) -> WorkerVerifier { WorkerVerifier::new(token) }
+/// ```
+/// ```compile_fail
+/// use intent_local_transport::WorkerVerifier;
+/// fn deserializable<T: serde::de::DeserializeOwned>() {}
+/// deserializable::<WorkerVerifier>();
+/// ```
 #[derive(Debug)]
-pub struct OneShotAuthenticator {
-    launch: WorkerLaunchRecord,
+pub struct WorkerVerifier {
+    launch: Option<WorkerLaunch>,
+    expected: ExpectedPeer,
 }
 
-impl OneShotAuthenticator {
-    #[must_use]
-    pub const fn new(launch: WorkerLaunchRecord) -> Self {
-        Self { launch }
+impl WorkerVerifier {
+    /// Checks the connected process before reading Hello without consuming the verifier.
+    #[cfg(unix)]
+    pub fn check_unix_peer(
+        &self,
+        stream: &std::os::unix::net::UnixStream,
+    ) -> Result<(), AuthenticationError> {
+        self.require_active()?;
+        self.check_observed(crate::peer::unix_peer_credentials(stream))
     }
 
-    pub fn authenticate(
-        self,
+    /// Authenticates a Hello decoded from this connection, which the caller must retain.
+    /// A matching peer consumes the verifier even when Hello validation fails.
+    /// Peer mismatch or observation failure does not consume an active verifier.
+    #[cfg(unix)]
+    pub fn authenticate_unix(
+        &mut self,
         hello: &WorkerHello,
-        peer: PeerCredentialEvidence,
+        stream: &std::os::unix::net::UnixStream,
     ) -> Result<WorkerIdentity, AuthenticationError> {
+        self.check_unix_peer(stream)?;
+        self.consume_hello(hello)
+    }
+
+    /// Checks the connected client before reading Hello without consuming the verifier.
+    #[cfg(windows)]
+    pub fn check_named_pipe_client<H: std::os::windows::io::AsRawHandle>(
+        &self,
+        pipe: &H,
+    ) -> Result<(), AuthenticationError> {
+        self.require_active()?;
+        self.check_observed(crate::peer::named_pipe_client_credentials(pipe))
+    }
+
+    /// Authenticates a Hello decoded from this pipe, which the caller must retain.
+    /// A matching peer consumes the verifier even when Hello validation fails.
+    /// Peer mismatch or observation failure does not consume an active verifier.
+    #[cfg(windows)]
+    pub fn authenticate_named_pipe_client<H: std::os::windows::io::AsRawHandle>(
+        &mut self,
+        hello: &WorkerHello,
+        pipe: &H,
+    ) -> Result<WorkerIdentity, AuthenticationError> {
+        self.check_named_pipe_client(pipe)?;
+        self.consume_hello(hello)
+    }
+
+    fn require_active(&self) -> Result<(), AuthenticationError> {
+        self.launch
+            .as_ref()
+            .ok_or(AuthenticationError::AlreadyConsumed)
+            .map(|_| ())
+    }
+
+    fn check_observed(
+        &self,
+        observed: Result<ObservedPeer, PeerCredentialError>,
+    ) -> Result<(), AuthenticationError> {
+        let observed = observed.map_err(AuthenticationError::PeerObservation)?;
+        if !self.expected.matches(observed) {
+            return Err(AuthenticationError::PeerCredentialMismatch);
+        }
+        Ok(())
+    }
+
+    fn consume_hello(
+        &mut self,
+        hello: &WorkerHello,
+    ) -> Result<WorkerIdentity, AuthenticationError> {
+        let launch = self
+            .launch
+            .take()
+            .ok_or(AuthenticationError::AlreadyConsumed)?;
         if hello.schema_version != SchemaVersion::V1 {
             return Err(AuthenticationError::UnsupportedSchema);
         }
-
-        let token_matches = self.launch.bootstrap_token.matches(&hello.bootstrap_token);
-        let launch_matches = token_matches
-            && self.launch.instance_id == hello.instance_id
-            && self.launch.role == hello.role;
-        if !launch_matches {
+        let token_matches = launch.bootstrap_token.matches(&hello.bootstrap_token);
+        if !token_matches || launch.instance_id != hello.instance_id || launch.role != hello.role {
             return Err(AuthenticationError::LaunchIdentityMismatch);
         }
-
-        if !self.launch.peer_expectation.matches(peer) {
-            return Err(AuthenticationError::PeerCredentialMismatch);
-        }
-
         Ok(WorkerIdentity {
-            instance_id: hello.instance_id,
-            role: hello.role,
-            peer,
+            instance_id: launch.instance_id,
+            role: launch.role,
         })
     }
 }
@@ -251,6 +335,8 @@ pub enum AuthenticationError {
     UnsupportedSchema,
     LaunchIdentityMismatch,
     PeerCredentialMismatch,
+    PeerObservation(PeerCredentialError),
+    AlreadyConsumed,
 }
 
 impl fmt::Display for AuthenticationError {
@@ -263,6 +349,10 @@ impl fmt::Display for AuthenticationError {
             Self::PeerCredentialMismatch => {
                 formatter.write_str("worker OS peer credentials did not match launch expectation")
             }
+            Self::PeerObservation(error) => {
+                write!(formatter, "worker OS peer observation failed: {error}")
+            }
+            Self::AlreadyConsumed => formatter.write_str("worker verifier was already consumed"),
         }
     }
 }
@@ -270,112 +360,4 @@ impl fmt::Display for AuthenticationError {
 impl Error for AuthenticationError {}
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        AuthenticationError, BootstrapToken, MessageFamily, OneShotAuthenticator, WorkerHello,
-        WorkerLaunchRecord, WorkerRole,
-    };
-    use crate::peer::{PeerCredentialEvidence, PeerExpectation};
-    use intent_contracts::WorkerInstanceId;
-    use std::error::Error;
-    use std::str::FromStr;
-
-    fn instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
-        Ok(WorkerInstanceId::from_str(
-            "018f47f7-5a86-7c00-8000-000000000501",
-        )?)
-    }
-
-    fn peer() -> PeerCredentialEvidence {
-        PeerCredentialEvidence::Unix {
-            pid: Some(123),
-            uid: 1000,
-            gid: 1000,
-        }
-    }
-
-    #[test]
-    fn debug_output_never_contains_bootstrap_secret() {
-        let token = BootstrapToken::from_bytes([0xabu8; 32]);
-        let debug = format!("{token:?}");
-        assert_eq!(debug, "BootstrapToken([REDACTED])");
-        assert!(!debug.contains("171"));
-    }
-
-    #[test]
-    fn incorrect_token_fails_as_launch_identity_mismatch() -> Result<(), Box<dyn Error>> {
-        let expected = BootstrapToken::from_bytes([1_u8; 32]);
-        let supplied = BootstrapToken::from_bytes([2_u8; 32]);
-        let launch = WorkerLaunchRecord::new(
-            instance()?,
-            WorkerRole::BrowserWorker,
-            expected,
-            PeerExpectation::exact(peer()),
-        );
-        let hello = WorkerHello::new(instance()?, WorkerRole::BrowserWorker, supplied);
-        let Err(error) = OneShotAuthenticator::new(launch).authenticate(&hello, peer()) else {
-            return Err("incorrect token unexpectedly authenticated".into());
-        };
-        assert_eq!(error, AuthenticationError::LaunchIdentityMismatch);
-        Ok(())
-    }
-
-    #[test]
-    fn claimed_role_must_match_supervisor_launch_record() -> Result<(), Box<dyn Error>> {
-        let token = BootstrapToken::from_bytes([3_u8; 32]);
-        let launch = WorkerLaunchRecord::new(
-            instance()?,
-            WorkerRole::PolicyBroker,
-            token.clone(),
-            PeerExpectation::exact(peer()),
-        );
-        let hello = WorkerHello::new(instance()?, WorkerRole::BrowserWorker, token);
-        let Err(error) = OneShotAuthenticator::new(launch).authenticate(&hello, peer()) else {
-            return Err("role mismatch unexpectedly authenticated".into());
-        };
-        assert_eq!(error, AuthenticationError::LaunchIdentityMismatch);
-        Ok(())
-    }
-
-    #[test]
-    fn peer_credentials_are_checked_after_primary_secret() -> Result<(), Box<dyn Error>> {
-        let token = BootstrapToken::from_bytes([4_u8; 32]);
-        let launch = WorkerLaunchRecord::new(
-            instance()?,
-            WorkerRole::BrowserWorker,
-            token.clone(),
-            PeerExpectation::exact(peer()),
-        );
-        let hello = WorkerHello::new(instance()?, WorkerRole::BrowserWorker, token);
-        let different_peer = PeerCredentialEvidence::Unix {
-            pid: Some(124),
-            uid: 1000,
-            gid: 1000,
-        };
-        let Err(error) = OneShotAuthenticator::new(launch).authenticate(&hello, different_peer)
-        else {
-            return Err("peer mismatch unexpectedly authenticated".into());
-        };
-        assert_eq!(error, AuthenticationError::PeerCredentialMismatch);
-        Ok(())
-    }
-
-    #[test]
-    fn successful_authentication_binds_role_and_instance() -> Result<(), Box<dyn Error>> {
-        let token = BootstrapToken::from_bytes([5_u8; 32]);
-        let launch = WorkerLaunchRecord::new(
-            instance()?,
-            WorkerRole::BrowserWorker,
-            token.clone(),
-            PeerExpectation::exact(peer()),
-        );
-        let hello = WorkerHello::new(instance()?, WorkerRole::BrowserWorker, token);
-        let identity = OneShotAuthenticator::new(launch).authenticate(&hello, peer())?;
-
-        assert_eq!(identity.instance_id(), instance()?);
-        assert_eq!(identity.role(), WorkerRole::BrowserWorker);
-        assert!(identity.allows(MessageFamily::BrowserObservation));
-        assert!(!identity.allows(MessageFamily::PolicyDecision));
-        Ok(())
-    }
-}
+mod tests;

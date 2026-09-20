@@ -220,8 +220,7 @@ fn a_different_child_cannot_use_the_intended_childs_bootstrap() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn a_rejected_foreign_peer_does_not_consume_the_intended_childs_bootstrap() -> TestResult {
+fn rejected_foreign_peer(mode: &str) -> TestResult {
     use std::os::unix::fs::DirBuilderExt;
 
     let markers = Markers(std::env::temp_dir().join(format!("foreign-peer-{}", Uuid::new_v4())));
@@ -233,7 +232,7 @@ fn a_rejected_foreign_peer_does_not_consume_the_intended_childs_bootstrap() -> T
         image()?,
         config(scope(), capability)?,
         &[
-            "wrong-peer-then-owner".to_owned(),
+            mode.to_owned(),
             foreign_pid_path
                 .to_str()
                 .ok_or("non-UTF8 marker path")?
@@ -261,6 +260,16 @@ fn a_rejected_foreign_peer_does_not_consume_the_intended_childs_bootstrap() -> T
     terminal(&mut supervisor, id)?;
     assert!(supervisor.retire(id)?.unresolved_requests.is_empty());
     Ok(())
+}
+
+#[test]
+fn a_rejected_foreign_peer_does_not_consume_the_intended_childs_bootstrap() -> TestResult {
+    rejected_foreign_peer("wrong-peer-then-owner")
+}
+
+#[test]
+fn a_silent_foreign_peer_is_rejected_before_reading_hello() -> TestResult {
+    rejected_foreign_peer("silent-peer-then-owner")
 }
 
 fn foreign_worker_message(mode: &str) -> TestResult {

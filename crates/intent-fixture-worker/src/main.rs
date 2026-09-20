@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use intent_supervisor::{BootstrapPacket, ControlMessage, wire_limits, worker::WorkerClient};
     use std::{
         fs::File,
-        io::Write,
+        io::{Read, Write},
         process::{Command, Stdio},
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
@@ -63,14 +63,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    if matches!(mode, "wrong-peer" | "wrong-peer-then-owner") {
+    if mode == "silent-peer" {
+        let mut socket = std::os::unix::net::UnixStream::connect(packet.control_endpoint.as_str())?;
+        socket.set_read_timeout(Some(Duration::from_secs(10)))?;
+        let mut byte = [0];
+        if socket.read(&mut byte)? == 0 {
+            return Err("foreign connection rejected before Hello".into());
+        }
+        return Ok(());
+    }
+    if matches!(
+        mode,
+        "wrong-peer" | "wrong-peer-then-owner" | "silent-peer-then-owner"
+    ) {
         let bytes = intent_ipc::encode_control(
             &Envelope::event(TraceId::from_uuid(Uuid::new_v4()), &packet),
             wire_limits(),
         )?
         .encode(wire_limits())?;
         let mut child = Command::new("/proc/self/exe")
-            .arg("normal")
+            .arg(if mode == "silent-peer-then-owner" {
+                "silent-peer"
+            } else {
+                "normal"
+            })
             .env_clear()
             .stdin(Stdio::piped())
             .stdout(Stdio::null())

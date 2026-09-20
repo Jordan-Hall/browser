@@ -251,7 +251,7 @@
         853
       ],
       "status": "partially_implemented",
-      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Public low-level authentication hardening, secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Issued move-only verifiers and connected peer observation are locally verified, including real Windows pipes and a Linux silent-peer mutation control; publication and exact-source CI are pending. Secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -306,6 +306,21 @@
           "scope": "Linux actual-child authentication lifecycle cases with owner-preservation and foreign-heartbeat mutation controls; production supervisor unchanged; no whole-task acceptance.",
           "verification_report": "docs/verification/core-authentication-lifecycle-20260920.json",
           "commit": "bbb64eb8ab2975f03db9acdd636082ddda7aa994"
+        },
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-local-transport/src/auth.rs",
+            "crates/intent-local-transport/src/peer.rs",
+            "crates/intent-supervisor/src/runtime.rs"
+          ],
+          "test_files": [
+            "crates/intent-local-transport/src/auth/tests.rs",
+            "crates/intent-local-transport/tests/windows_named_pipe.rs",
+            "crates/intent-fixture-worker/tests/supervision.rs"
+          ],
+          "scope": "Issued verifier and connected observation API; no public caller-created observed evidence or token-to-verifier constructor; not whole-task acceptance.",
+          "verification_report": "docs/verification/core-authentication-api-20260920.json"
         }
       ]
     },

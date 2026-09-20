@@ -12,13 +12,10 @@ mod peer;
 
 pub use auth::{
     AuthenticationError, BOOTSTRAP_TOKEN_BYTES, BootstrapToken, MessageFamily,
-    OneShotAuthenticator, WorkerHello, WorkerIdentity, WorkerLaunchRecord, WorkerRole,
+    UnboundWorkerVerifier, WorkerHello, WorkerIdentity, WorkerRole, WorkerVerifier,
+    issue_worker_authentication,
 };
-pub use peer::{PeerCredentialError, PeerCredentialEvidence, PeerExpectation};
+pub use peer::{ExpectedPeer, PeerCredentialError};
 
-#[cfg(unix)]
-pub use peer::anonymous_unix_channel_pair;
-#[cfg(unix)]
-pub use peer::unix_peer_credentials;
 #[cfg(windows)]
-pub use peer::{named_pipe_client_credentials, named_pipe_server_credentials};
+pub use peer::verify_named_pipe_server;

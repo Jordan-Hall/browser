@@ -557,7 +557,12 @@ mod tests {
                     identity: WorkerHello::new(
                         WorkerInstanceId::from_uuid(Uuid::new_v4()),
                         intent_local_transport::WorkerRole::FixtureWorker,
-                        intent_local_transport::BootstrapToken::from_bytes([171; 32])
+                        intent_local_transport::issue_worker_authentication(
+                            WorkerInstanceId::from_uuid(Uuid::new_v4()),
+                            intent_local_transport::WorkerRole::FixtureWorker,
+                        )
+                        .map_err(|error| format!("bootstrap entropy: {error}"))?
+                        .0
                     ),
                     offer: offer()?,
                 })

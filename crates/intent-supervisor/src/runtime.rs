@@ -13,8 +13,8 @@ use intent_contracts::{
 };
 use intent_ipc::{ControlCodec, Envelope, EnvelopeKind};
 use intent_local_transport::{
-    BootstrapToken, OneShotAuthenticator, PeerCredentialEvidence, PeerExpectation, WorkerHello,
-    WorkerIdentity, WorkerLaunchRecord, unix_peer_credentials,
+    AuthenticationError, ExpectedPeer, WorkerHello, WorkerIdentity, WorkerVerifier,
+    issue_worker_authentication,
 };
 use nix::{
     fcntl::{OFlag, open, openat},
@@ -253,7 +253,7 @@ struct Lane {
     name: String,
     listener: UnixListener,
     socket: Option<FramedSocket>,
-    authenticator: Option<OneShotAuthenticator>,
+    authenticator: Option<WorkerVerifier>,
     identity: Option<WorkerIdentity>,
     codec: Option<ControlCodec>,
 }
@@ -268,7 +268,6 @@ enum AuthenticationProgress {
 impl Lane {
     fn poll_authentication(
         &mut self,
-        pid: u32,
         channel: ChannelKind,
         generation: WorkerInstanceId,
         startup_deadline: Instant,
@@ -292,10 +291,17 @@ impl Lane {
                     }
                     Err(error) => return Err(error.into()),
                 };
-                let peer = unix_peer_credentials(&stream).map_err(|_| SupervisorError::Protocol)?;
-                if peer != expected_peer(pid) {
-                    *rejected = rejected.saturating_add(1);
-                    continue;
+                let auth = self
+                    .authenticator
+                    .as_ref()
+                    .ok_or(SupervisorError::Protocol)?;
+                match auth.check_unix_peer(&stream) {
+                    Ok(()) => {}
+                    Err(AuthenticationError::PeerCredentialMismatch) => {
+                        *rejected = rejected.saturating_add(1);
+                        continue;
+                    }
+                    Err(_) => return Err(SupervisorError::Protocol),
                 }
                 self.socket = Some(FramedSocket::new(stream)?);
                 break;
@@ -323,14 +329,12 @@ impl Lane {
                 }
                 let codec =
                     ControlCodec::negotiate(&hello.offer).map_err(|_| SupervisorError::Protocol)?;
-                let peer =
-                    unix_peer_credentials(&socket.stream).map_err(|_| SupervisorError::Protocol)?;
                 if Instant::now() >= startup_deadline {
                     return Ok(AuthenticationProgress::Expired);
                 }
-                let auth = self.authenticator.take().ok_or(SupervisorError::Protocol)?;
+                let mut auth = self.authenticator.take().ok_or(SupervisorError::Protocol)?;
                 let identity = auth
-                    .authenticate(&hello.identity, peer)
+                    .authenticate_unix(&hello.identity, &socket.stream)
                     .map_err(|_| SupervisorError::Protocol)?;
                 let welcome = encode_event(
                     ControlMessage::Welcome {
@@ -352,13 +356,6 @@ impl Lane {
                 Ok(AuthenticationProgress::Authenticated)
             }
         }
-    }
-}
-fn expected_peer(pid: u32) -> PeerCredentialEvidence {
-    PeerCredentialEvidence::Unix {
-        pid: Some(pid),
-        uid: geteuid().as_raw(),
-        gid: getegid().as_raw(),
     }
 }
 
@@ -488,7 +485,6 @@ impl Entry {
         if self.state == WorkerState::Starting {
             let before = read_budget.blocked_reads();
             let authentication = self.control.poll_authentication(
-                self.child.id(),
                 ChannelKind::Control,
                 self.generation,
                 self.startup_deadline,
@@ -503,7 +499,6 @@ impl Entry {
         if self.state == WorkerState::Starting {
             let before = read_budget.blocked_reads();
             let authentication = self.progress.poll_authentication(
-                self.child.id(),
                 ChannelKind::Progress,
                 self.generation,
                 self.startup_deadline,
@@ -808,10 +803,14 @@ impl Supervisor {
                 .ok_or(SupervisorError::InvalidConfiguration(
                     "startup deadline overflow",
                 ))?;
-            let control_token = BootstrapToken::generate()
-                .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
-            let progress_token = BootstrapToken::generate()
-                .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
+            let (control_token, control_pending) =
+                issue_worker_authentication(generation, config.role).map_err(|_| {
+                    SupervisorError::InvalidConfiguration("OS randomness unavailable")
+                })?;
+            let (progress_token, progress_pending) =
+                issue_worker_authentication(generation, config.role).map_err(|_| {
+                    SupervisorError::InvalidConfiguration("OS randomness unavailable")
+                })?;
             let packet = BootstrapPacket {
                 control_endpoint: BoundedText::try_new(
                     self.namespace.endpoint(&control_name, true),
@@ -823,12 +822,12 @@ impl Supervisor {
                 .map_err(|_| SupervisorError::InvalidConfiguration("socket endpoint too long"))?,
                 control: ChannelHello {
                     channel: ChannelKind::Control,
-                    identity: WorkerHello::new(generation, config.role, control_token.clone()),
+                    identity: WorkerHello::new(generation, config.role, control_token),
                     offer: offer()?,
                 },
                 progress: ChannelHello {
                     channel: ChannelKind::Progress,
-                    identity: WorkerHello::new(generation, config.role, progress_token.clone()),
+                    identity: WorkerHello::new(generation, config.role, progress_token),
                     offer: offer()?,
                 },
                 scope: config.scope,
@@ -853,25 +852,24 @@ impl Supervisor {
                 .spawn()?;
             let stdin = raw.stdin.take();
             let child = ManagedChild::new(raw);
+            let expected =
+                ExpectedPeer::unix_process(child.id(), geteuid().as_raw(), getegid().as_raw())
+                    .map_err(|_| SupervisorError::Protocol)?;
+            let control_auth = control_pending.bind(expected);
+            let progress_auth = progress_pending.bind(expected);
             stdin
                 .ok_or(SupervisorError::InvalidState)?
                 .write_all(&bootstrap)?;
-            let expectation = PeerExpectation::exact(expected_peer(child.id()));
-            let lane = |name, listener, token| Lane {
+            let lane = |name, listener, authenticator| Lane {
                 name,
                 listener,
                 socket: None,
-                authenticator: Some(OneShotAuthenticator::new(WorkerLaunchRecord::new(
-                    generation,
-                    config.role,
-                    token,
-                    expectation,
-                ))),
+                authenticator: Some(authenticator),
                 identity: None,
                 codec: None,
             };
-            let control = lane(control_name.clone(), control_listener, control_token);
-            let progress = lane(progress_name.clone(), progress_listener, progress_token);
+            let control = lane(control_name.clone(), control_listener, control_auth);
+            let progress = lane(progress_name.clone(), progress_listener, progress_auth);
             let lease = WorkerLease::new(
                 generation,
                 config.scope,
