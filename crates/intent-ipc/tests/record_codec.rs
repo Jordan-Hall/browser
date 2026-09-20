@@ -106,6 +106,103 @@ fn all_equal_version_imports_use_registered_record_validators() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn execution_outcomes_survive_canonical_import_envelopes_and_strict_validation() -> TestResult {
+    let fixtures: Vec<Value> = serde_json::from_str(include_str!(
+        "../../../fixtures/core/execution-records-v1.json"
+    ))?;
+    let kind = CoreRecordKind::Operation;
+    let mut registry = MigrationRegistry::new();
+    let family = kind.record_family()?;
+    registry.register_schema(family.clone(), SchemaVersion::V1, kind.validator())?;
+    let trace = "018f47f7-5a86-7c00-8000-000000000099".parse()?;
+    let mut stages = HashSet::new();
+    for fixture in fixtures {
+        stages.insert(
+            fixture["state"]["details"]["observation"]["stage"]
+                .as_str()
+                .ok_or("stage")?
+                .to_owned(),
+        );
+        let source = serde_json::to_vec(&fixture)?;
+        assert_eq!(
+            registry
+                .migrate(&family, SchemaVersion::V1, SchemaVersion::V1, &source)?
+                .bytes(),
+            source
+        );
+        let imported = intent_ipc::import_core_document(kind, &source, WireLimits::default())?;
+        let canonical = imported.encode_for_write(WireLimits::default())?;
+        assert_eq!(serde_json::from_slice::<Value>(&canonical)?, fixture);
+        let frame = encode_control(
+            &Envelope::event(trace, fixture.clone()),
+            WireLimits::default(),
+        )?;
+        let envelope: Envelope<Value> = decode_control(&frame, WireLimits::default())?;
+        let decoded = decode_core_record(
+            kind,
+            &serde_json::to_vec(envelope.payload())?,
+            WireLimits::default(),
+        )?;
+        assert_eq!(
+            serde_json::from_slice::<Value>(&decoded.encode(WireLimits::default())?)?,
+            fixture
+        );
+        let mut paths = Vec::new();
+        object_paths(&fixture, "", &mut paths);
+        for path in paths {
+            let mut invalid = fixture.clone();
+            invalid.pointer_mut(&path).ok_or("path")?["authority_override"] = json!(true);
+            assert!(
+                intent_ipc::import_core_document(
+                    kind,
+                    &serde_json::to_vec(&invalid)?,
+                    WireLimits::default()
+                )
+                .is_err(),
+                "accepted unknown field at {path}"
+            );
+        }
+        for (path, value) in [
+            ("/idempotency_key", json!("invented")),
+            ("/state/details/observation/evidence", Value::Null),
+        ] {
+            if path.ends_with("evidence")
+                && fixture["state"]["details"]["observation"]["stage"] != "verified"
+            {
+                continue;
+            }
+            let mut invalid = fixture.clone();
+            if path == "/idempotency_key" {
+                invalid["idempotency_key"] = value;
+            } else {
+                *invalid.pointer_mut(path).ok_or("path")? = value;
+            }
+            assert!(
+                intent_ipc::import_core_document(
+                    kind,
+                    &serde_json::to_vec(&invalid)?,
+                    WireLimits::default()
+                )
+                .is_err()
+            );
+        }
+    }
+    assert_eq!(
+        stages,
+        [
+            "accepted",
+            "needs_reconciliation",
+            "verified",
+            "compensated"
+        ]
+        .map(str::to_owned)
+        .into_iter()
+        .collect()
+    );
+    Ok(())
+}
+
 fn object_paths(value: &Value, prefix: &str, output: &mut Vec<String>) {
     match value {
         Value::Object(map) => {

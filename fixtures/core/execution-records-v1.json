@@ -1,0 +1,176 @@
+[
+  {
+    "schema_version": {
+      "major": 1,
+      "minor": 0
+    },
+    "id": "00000000-0000-0000-0000-000000000004",
+    "action_proposal_id": "00000000-0000-0000-0000-000000000005",
+    "account_id": "00000000-0000-0000-0000-000000000006",
+    "state": {
+      "state": "execution",
+      "details": {
+        "observation": {
+          "task_id": "00000000-0000-0000-0000-000000000001",
+          "capability_id": "00000000-0000-0000-0000-000000000002",
+          "arguments_hash": "0303030303030303030303030303030303030303030303030303030303030303",
+          "revision": 4,
+          "stage": "accepted",
+          "attempt": {
+            "id": "00000000-0000-0000-0000-000000000007",
+            "started_at": 100
+          },
+          "phase": {
+            "phase": "original"
+          },
+          "evidence": null,
+          "compensation": null,
+          "detail": "Provider acceptance awaits independent outcome evidence"
+        }
+      }
+    },
+    "last_reconciled_at": null
+  },
+  {
+    "schema_version": {
+      "major": 1,
+      "minor": 0
+    },
+    "id": "00000000-0000-0000-0000-000000000004",
+    "action_proposal_id": "00000000-0000-0000-0000-000000000005",
+    "account_id": "00000000-0000-0000-0000-000000000006",
+    "state": {
+      "state": "execution",
+      "details": {
+        "observation": {
+          "task_id": "00000000-0000-0000-0000-000000000001",
+          "capability_id": "00000000-0000-0000-0000-000000000002",
+          "arguments_hash": "0303030303030303030303030303030303030303030303030303030303030303",
+          "revision": 5,
+          "stage": "needs_reconciliation",
+          "attempt": {
+            "id": "00000000-0000-0000-0000-000000000007",
+            "started_at": 100
+          },
+          "phase": {
+            "phase": "original"
+          },
+          "evidence": {
+            "evidence_id": "00000000-0000-0000-0000-000000000008",
+            "attempt_id": "00000000-0000-0000-0000-000000000007",
+            "payload_hash": "0909090909090909090909090909090909090909090909090909090909090909",
+            "observed_at": 110,
+            "recorded_at": 120,
+            "outcome": {
+              "outcome": "inconclusive"
+            }
+          },
+          "compensation": null,
+          "detail": "Independent observation is inconclusive"
+        }
+      }
+    },
+    "last_reconciled_at": 120
+  },
+  {
+    "schema_version": {
+      "major": 1,
+      "minor": 0
+    },
+    "id": "00000000-0000-0000-0000-000000000004",
+    "action_proposal_id": "00000000-0000-0000-0000-000000000005",
+    "account_id": "00000000-0000-0000-0000-000000000006",
+    "state": {
+      "state": "execution",
+      "details": {
+        "observation": {
+          "task_id": "00000000-0000-0000-0000-000000000001",
+          "capability_id": "00000000-0000-0000-0000-000000000002",
+          "arguments_hash": "0303030303030303030303030303030303030303030303030303030303030303",
+          "revision": 6,
+          "stage": "verified",
+          "attempt": {
+            "id": "00000000-0000-0000-0000-000000000007",
+            "started_at": 100
+          },
+          "phase": {
+            "phase": "original"
+          },
+          "evidence": {
+            "evidence_id": "00000000-0000-0000-0000-000000000008",
+            "attempt_id": "00000000-0000-0000-0000-000000000007",
+            "payload_hash": "0909090909090909090909090909090909090909090909090909090909090909",
+            "observed_at": 110,
+            "recorded_at": 120,
+            "outcome": {
+              "outcome": "external_committed",
+              "receipt": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+            }
+          },
+          "compensation": null,
+          "detail": "Independent evidence records the exact attempt"
+        }
+      }
+    },
+    "last_reconciled_at": 120
+  },
+  {
+    "schema_version": {
+      "major": 1,
+      "minor": 0
+    },
+    "id": "00000000-0000-0000-0000-000000000004",
+    "action_proposal_id": "00000000-0000-0000-0000-000000000005",
+    "account_id": "00000000-0000-0000-0000-000000000006",
+    "state": {
+      "state": "execution",
+      "details": {
+        "observation": {
+          "task_id": "00000000-0000-0000-0000-000000000001",
+          "capability_id": "00000000-0000-0000-0000-000000000002",
+          "arguments_hash": "0303030303030303030303030303030303030303030303030303030303030303",
+          "revision": 7,
+          "stage": "compensated",
+          "attempt": {
+            "id": "00000000-0000-0000-0000-000000000007",
+            "started_at": 100
+          },
+          "phase": {
+            "phase": "original"
+          },
+          "evidence": {
+            "evidence_id": "00000000-0000-0000-0000-000000000008",
+            "attempt_id": "00000000-0000-0000-0000-000000000007",
+            "payload_hash": "0909090909090909090909090909090909090909090909090909090909090909",
+            "observed_at": 110,
+            "recorded_at": 120,
+            "outcome": {
+              "outcome": "external_committed",
+              "receipt": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+            }
+          },
+          "compensation": {
+            "operation_id": "00000000-0000-0000-0000-00000000000e",
+            "attempt": {
+              "id": "00000000-0000-0000-0000-00000000000f",
+              "started_at": 130
+            },
+            "evidence": {
+              "evidence_id": "00000000-0000-0000-0000-000000000010",
+              "attempt_id": "00000000-0000-0000-0000-00000000000f",
+              "payload_hash": "0909090909090909090909090909090909090909090909090909090909090909",
+              "observed_at": 140,
+              "recorded_at": 150,
+              "outcome": {
+                "outcome": "external_committed",
+                "receipt": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+              }
+            }
+          },
+          "detail": "Independent evidence records the exact attempt"
+        }
+      }
+    },
+    "last_reconciled_at": 150
+  }
+]

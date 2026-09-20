@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "scope": "Published PR847 checked operation execution projection verification; not whole-task acceptance",
+  "source_commit": "3bdd8fbfc6966ddd22fa6c8640966cd886702558",
+  "tested_merge_commit": "a9c382dfb27ff6b712ce31189059b70cb604ebb1",
+  "base_pr": 846,
+  "pull_request": "https://github.com/Jordan-Hall/browser/pull/847",
+  "ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35509263183",
+  "fuzz_run": "https://github.com/Jordan-Hall/browser/actions/runs/35509263111",
+  "checks": {
+    "rust_workspace": "success",
+    "native_ubuntu": "success",
+    "native_macos": "success",
+    "native_windows": "success",
+    "fuzz_control_envelope": "success",
+    "fuzz_frame_decoder": "success",
+    "fuzz_record_codec": "success"
+  },
+  "artifact": {
+    "id": 10604893365,
+    "name": "core-verification-35509263183-1",
+    "retained_local_directory": "target/operation-projection-ci-35509263183",
+    "source_files_matched": 259,
+    "source_match": "Every archived Git blob matched the published source commit",
+    "source_archive_sha256": "56f892360919db5b8fd5a3ae5803666ff108ce9fb3921dbf6141c5c101de2652",
+    "verification_sha256": "c077a00d198b281847ccd55b0b11dc3a0bb634c391ccd80b982ee9eb05200850",
+    "workspace_lockfile_sha256": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+    "fuzz_lockfile_sha256": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641",
+    "actual_compiler": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "earlier_local_evidence": "docs/verification/core-operation-projection-20260920.json",
+  "limits": [
+    "No CORE task acceptance or production readiness claim",
+    "Descriptive imports do not authorize dispatch; trusted provider execution remains downstream work",
+    "Parser fuzz jobs are bounded smoke runs, not exhaustive qualification",
+    "Published CI does not erase earlier local intermediate failures"
+  ]
+}

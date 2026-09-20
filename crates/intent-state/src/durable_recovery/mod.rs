@@ -2,6 +2,7 @@
 mod dispatch;
 mod evidence;
 mod planner;
+mod projection;
 mod types;
 use crate::operations::load_operation_from_connection;
 use crate::recovery_error::{digest, sql_u64};
