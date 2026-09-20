@@ -99,7 +99,7 @@
         849
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Full/minimal fixtures and strict imports (#813), immutable action binding (#846), checked execution outcomes (#847), and per-family collection/time invariants (#849) are implemented and CI-qualified. Independent whole-task acceptance remains; trusted provider execution belongs to downstream dispatch work.",
+      "remaining": "Full/minimal fixtures, immutable action binding, checked execution outcomes and per-family invariants are implemented. Independent whole-task review approved combined source 37c996f, and its exact-source CI passed. PRs #847 and #849 must merge before final main acceptance; trusted provider execution remains downstream work.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -163,6 +163,20 @@
             "crates/intent-ipc/tests/record_invariants.rs"
           ],
           "verification_report": "docs/verification/core-record-invariants-ci-20260920.json"
+        },
+        {
+          "publication": "published",
+          "commit": "37c996fa28a9f04707817ddd0f17cae37b4d5b30",
+          "scope": "Combined record implementation after compensation-lineage/time and complete-outcome comparison fixes; all 268 archived source blobs matched green full workspace/native/fuzz CI; independent task review approved subject to merge",
+          "source_files": [
+            "crates/intent-contracts/src/execution.rs",
+            "crates/intent-state/src/durable_recovery/projection.rs"
+          ],
+          "test_files": [
+            "crates/intent-contracts/tests/execution.rs",
+            "crates/intent-state/src/durable_recovery/tests/projection.rs"
+          ],
+          "verification_report": "docs/verification/core-records-combined-20260920.json"
         }
       ]
     },
