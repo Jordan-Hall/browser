@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "scope": "Current combined CORE-01.T03 implementation qualification; acceptance subject to merge",
+  "source_commit": "37c996fa28a9f04707817ddd0f17cae37b4d5b30",
+  "tested_merge_commit": "18d0391e1545cd892b76548a16f271373b25a665",
+  "pull_requests": [
+    846,
+    847,
+    849
+  ],
+  "ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35513889023",
+  "fuzz_run": "https://github.com/Jordan-Hall/browser/actions/runs/35513888951",
+  "checks": {
+    "rust_workspace": "success",
+    "native_ubuntu": "success",
+    "native_macos": "success",
+    "native_windows": "success",
+    "fuzz_control_envelope": "success",
+    "fuzz_frame_decoder": "success",
+    "fuzz_record_codec": "success"
+  },
+  "artifact": {
+    "id": 10606525604,
+    "name": "core-verification-35513889023-1",
+    "commit": "37c996f",
+    "source_files_matched": 268,
+    "compiler": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "source_archive_sha256": "579304e3c96431c9ece67025b925e350603a64fc14e265787cf58657974f4a05",
+    "verification_sha256": "cbe8d47ac4f19f2e11c93df6137697874edc54c6468890e0701befeaf206e199",
+    "lockfile_sha256": {
+      "Cargo.lock": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+      "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+    }
+  },
+  "incoming_changes": [
+    "Reject compensated observations on a compensation operation",
+    "Compare complete decisive stored outcomes, including local revision evidence",
+    "Reject compensation starting before original committed evidence was recorded"
+  ],
+  "independent_acceptance_review": {
+    "source_commit": "37c996fa28a9f04707817ddd0f17cae37b4d5b30",
+    "reviewer": "Codex based on GPT-6, separate acceptance reviewer",
+    "result": "No remaining issue #123 implementation criterion gap; approval conditional on exact-source CI and merge",
+    "artifact": "target/base-record-validation-design/task123-acceptance-review.md"
+  },
+  "limits": [
+    "PR847 and PR849 are not yet merged; issue #123 stays open",
+    "Previous 267-blob CI evidence qualifies 11d0f52 only; this 268-blob artifact qualifies the combined source",
+    "No production readiness or downstream provider execution claim",
+    "Fuzz runs are finite smoke checks"
+  ]
+}

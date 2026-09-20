@@ -67,6 +67,7 @@ impl<'de> Deserialize<'de> for Approval {
             state: ApprovalState,
         }
         let wire = WireApproval::deserialize(deserializer)?;
+        wire.state.validate().map_err(serde::de::Error::custom)?;
         if wire.exact_binding.as_ref().is_some_and(|binding| {
             binding.canonical_arguments.content_hash() != wire.exact_arguments_hash
         }) {
