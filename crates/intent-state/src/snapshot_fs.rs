@@ -5,7 +5,7 @@ use nix::{
     unistd::{UnlinkatFlags, geteuid, unlinkat},
 };
 use std::{
-    fs::File,
+    fs::{File, TryLockError},
     io,
     os::{fd::AsRawFd, unix::fs::MetadataExt},
     path::{Component, Path, PathBuf},
@@ -21,16 +21,19 @@ const DIRECTORY_FLAGS: OFlag = OFlag::O_RDONLY
 const PROFILE_LOCK_RETRIES: usize = 16;
 const PROFILE_LOCK_RETRY_DELAY: Duration = Duration::from_millis(1);
 
-fn retry_profile_lock(mut attempt: impl FnMut() -> io::Result<()>) -> io::Result<()> {
+fn retry_profile_lock(
+    mut attempt: impl FnMut() -> Result<(), TryLockError>,
+) -> io::Result<()> {
     for retry in 0..=PROFILE_LOCK_RETRIES {
         match attempt() {
             Ok(()) => return Ok(()),
-            Err(error)
-                if error.kind() == io::ErrorKind::WouldBlock && retry < PROFILE_LOCK_RETRIES =>
-            {
+            Err(TryLockError::WouldBlock) if retry < PROFILE_LOCK_RETRIES => {
                 thread::sleep(PROFILE_LOCK_RETRY_DELAY);
             }
-            Err(error) => return Err(error),
+            Err(TryLockError::WouldBlock) => {
+                return Err(io::Error::from(io::ErrorKind::WouldBlock));
+            }
+            Err(TryLockError::Error(error)) => return Err(error),
         }
     }
     unreachable!("bounded lock retry loop always returns")
@@ -257,7 +260,7 @@ fn invalid(detail: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::{PROFILE_LOCK_RETRIES, retry_profile_lock};
-    use std::{cell::Cell, io};
+    use std::{cell::Cell, fs::TryLockError, io};
 
     #[test]
     fn transient_profile_lock_contention_is_retried() -> io::Result<()> {
@@ -266,7 +269,7 @@ mod tests {
             let attempt = attempts.get();
             attempts.set(attempt + 1);
             if attempt < 2 {
-                Err(io::Error::from(io::ErrorKind::WouldBlock))
+                Err(TryLockError::WouldBlock)
             } else {
                 Ok(())
             }
@@ -280,7 +283,7 @@ mod tests {
         let attempts = Cell::new(0_usize);
         let error = retry_profile_lock(|| {
             attempts.set(attempts.get() + 1);
-            Err(io::Error::from(io::ErrorKind::WouldBlock))
+            Err(TryLockError::WouldBlock)
         })
         .expect_err("persistent lock contention unexpectedly succeeded");
         assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
