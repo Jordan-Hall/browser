@@ -1,5 +1,41 @@
 # CORE native implementation checkpoint
 
+## 2026-09-20 published cancellation verification
+
+[PR #843](https://github.com/Jordan-Hall/browser/pull/843) passed all remote checks on source `ceb2ac1501a2fa34b54de9b9193b406d86f3233c`: strict Rust checks, workspace tests and doctests, native Linux/Windows/macOS jobs, the conformance evidence map, and all three parser fuzz jobs. The retained archive matches all 242 source files at that head. [The CI report](verification/core-cancellation-ci-20260920.json) records the tested merge, runs, compiler and artifact hashes.
+
+This establishes remote verification for the published changes. Earlier local host-contention failures remain recorded below. Windows and macOS CI do not run the Linux-only supervisor scenarios, and this evidence does not establish whole-task acceptance or production latency.
+
+## 2026-09-20 fixture final-message observation
+
+Main through PRs #840 and #841 is merged at `ca712c2`. The blocked-progress and stale-result fixtures now wait for the parent to observe their final messages before exiting. Both former fixed-sleep races were reproduced with a 30 ms parent delay. The stale-result test also seals both executable images before launch, so replacement setup cannot consume cancellation grace. Stop deadlines and stale-result rejection assertions remain unchanged.
+
+Strict Clippy and formatting passed. The combined four-thread Linux run recorded 159 passes and one timeout in the existing 300 ms control-notification test. All three tests in that target passed on a separate four-thread rerun with unchanged limits. The two corrected exit-race scenarios passed in the combined run. Python validation ran 51 tests with one platform-specific skip and passed after a separate rerun; its earlier overlapping run had one subprocess timeout. [The verification report](verification/core-fixture-observation-20260920.json) retains source hashes and both Linux outcomes. These results do not qualify production latency or establish a fully green combined load run.
+
+## 2026-09-20 outbound cancellation under reserved queue pressure
+
+The merged stream API could leave a registration active when its outbound Cancel failed to enter a full reserved queue. It now revokes local dispatch before queue insertion and distinguishes a notification pending send from one awaiting acknowledgement. Retries preserve that state, including simultaneous incoming cancellation and failed retransmission. Queue errors retain the rejected event, and retirement remains blocked until the handshake completes.
+
+The regression failed before the fix with `is_active=true`. All 85 native Windows IPC tests, formatting and strict Clippy passed afterward. [The verification report](verification/core-outbound-cancellation-20260920.json) records hashes and the remaining scope limits. This queue API still has no production runtime caller, and identical-registration reuse after retirement remains a separate issue. No CORE acceptance status changed.
+
+## 2026-09-20 broker crash setup deadline
+
+Latest main through PR #839 is merged at `f258485`. The broker crash test now waits for actual worker readiness before starting its existing eight-second crash-phase deadline. Setup has a separate thirty-second bound. A nine-second setup delay passes both crash phases; the same delay after the parent start still fails the crash-phase deadline. The independent effect and recovery assertions are unchanged.
+
+Formatting, strict Clippy and all 16 broker tests passed on the merged code. The broader four-thread run finished with 73 passing tests and two failures in the newly merged blocked-progress and stale-result fixtures. Those failures remain open; this is not a green full-suite result. Exact source and log hashes are in [the verification report](verification/core-broker-startup-deadline-20260920.json). No task acceptance changed.
+
+## 2026-09-19 measured cancellation backpressure
+
+Local fixture and regression changes build on main `ce06a3aa0364b65b2c1fe4e4d8a05f0721abb09e`, including merged PR #824. A parent-controlled start lets two real cooperative workers fill their progress sockets without supervisor reads. Each reports repeated refused progress admissions and its admitted frame count. The test requires cancellation acknowledgements before that measured backlog drains, immediate lease revocation, successful exit without escalation, and a completed request through an independent worker.
+
+The final run admitted 168 progress frames per worker and observed each acknowledgement after consuming only 8 frames. Its 34.640 ms acknowledgement interval includes an intentional 30 ms parent delay and is not production latency qualification. A container-only mutation that drained all 168 frames failed the new assertion. A separate controlled-delay run reproduced the fixture's former exit-before-acknowledgement race. Both this fixture and the older stdout/stderr flood fixture now wait for a parent release marker after acknowledgement observation.
+
+Pinned Rust 1.98.1 formatting, strict Clippy, 64 Linux supervisor/worker test results and 25 Python validator tests passed. The Linux suite ran serially; one process-observation helper is marked ignored and invoked by its passing parent. An earlier four-thread run hit the existing broker crash-test deadline while executable sealing took 8.8 seconds. Serial success does not qualify that concurrent case. The unchanged release gate still rejects all 37 unaccepted tasks.
+
+At verification time, these were unpublished working-tree changes. Exact source hashes, commands, negative checks and limitations are in [the verification report](verification/core-progress-backpressure-20260919.json). Native Windows/macOS supervision, remote CI, full workspace qualification and independent task acceptance are not claimed. No later epic has started. Earlier entries below retain their original historical scope.
+
+## Earlier checkpoint
+
 This working-tree checkpoint extends commit `e33408ffa09dfd826715b25f063ec0849b1dde50`.
 The changes are uncommitted on `main`. CORE acceptance remains open; no later workstream was started.
 
