@@ -276,12 +276,12 @@ mod tests {
     #[test]
     fn persistent_profile_lock_contention_still_fails_closed() {
         let attempts = Cell::new(0_usize);
-        let error = retry_profile_lock(|| {
+        let result = retry_profile_lock(|| {
             attempts.set(attempts.get() + 1);
             Err(TryLockError::WouldBlock)
-        })
-        .expect_err("persistent lock contention unexpectedly succeeded");
-        assert_eq!(error.kind(), io::ErrorKind::Other);
+        });
+        assert!(result.is_err(), "persistent lock contention unexpectedly succeeded");
+        assert_eq!(result.err().map(|error| error.kind()), Some(io::ErrorKind::Other));
         assert_eq!(attempts.get(), PROFILE_LOCK_RETRIES + 1);
     }
 }
