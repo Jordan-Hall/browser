@@ -37,6 +37,13 @@ const PAYLOAD: &[u8] = b"\x00approved exact bytes\xff\n";
 const CANCELLATION_DETAIL: &str =
     "worker cancellation requested after dispatch start; outcome retained for reconciliation";
 
+fn cancellation_busy_handler(_attempt: i32) -> bool {
+    if let Ok(root) = std::env::var("INTENT_CANCEL_STALL_PROFILE") {
+        let _ = fs::write(Path::new(&root).join("cancel-write-blocked"), b"blocked");
+    }
+    true
+}
+
 fn hash(bytes: &[u8]) -> ContentHash {
     ContentHash::from_bytes(Sha256::digest(bytes).into())
 }
@@ -293,6 +300,9 @@ fn cancellation_stall_child() -> Result {
     }
     assert_eq!(state(&broker)?, DurableOperationState::Attempting);
     assert_eq!(revision(&broker)?, 3);
+    broker
+        .state()
+        .install_busy_handler_for_integration_test(Some(cancellation_busy_handler))?;
     fs::write(
         profile.root.join("cancel-ready"),
         format!("{worker}\n{outbox}"),
@@ -369,7 +379,19 @@ fn process_death_while_cancellation_persistence_is_stalled_recovers_without_rese
         }
         std::thread::sleep(Duration::from_millis(1));
     }
-    std::thread::sleep(Duration::from_millis(100));
+    let blocked_deadline = Instant::now() + Duration::from_secs(3);
+    while !profile.root.join("cancel-write-blocked").is_file() {
+        if let Some(status) = child.0.try_wait()? {
+            return Err(format!(
+                "broker child exited before cancellation reached the blocked SQLite writer: {status}"
+            )
+            .into());
+        }
+        if Instant::now() >= blocked_deadline {
+            return Err("cancellation never reached the blocked SQLite writer".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
     assert!(
         child.0.try_wait()?.is_none(),
         "stalled cancellation unexpectedly returned before process death"
