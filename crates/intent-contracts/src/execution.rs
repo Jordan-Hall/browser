@@ -225,7 +225,10 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
         let committed = outcome.is_some_and(|o| o.committed_reference().is_some());
         let compensable = outcome.is_some_and(ExecutionOutcome::is_compensating_write);
         let valid = match data.stage {
-            S::Verified => committed,
+            S::Verified => match data.phase {
+                ExecutionPhase::Original {} => committed,
+                ExecutionPhase::Compensation { .. } => compensable,
+            },
             S::Compensated => compensable,
             S::Failed => {
                 outcome.is_none_or(|o| matches!(o, ExecutionOutcome::ProvenNotCommitted { .. }))
