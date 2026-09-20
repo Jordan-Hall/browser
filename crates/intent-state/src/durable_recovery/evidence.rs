@@ -127,6 +127,10 @@ impl VerifiedReadOnlyEvidence {
     }
 }
 
+fn ignore_post_decision_inconclusive(previous_decisive: bool, verdict: &str) -> bool {
+    previous_decisive && verdict == "inconclusive"
+}
+
 impl RuntimeOwner {
     pub fn revoke_evidence_key(
         &mut self,
@@ -261,9 +265,11 @@ impl RuntimeOwner {
                 DurableOperationState::NeedsReconciliation,
             ),
         };
-        if let Some((old, old_receipt, old_payload)) = &previous
-            && verdict != "inconclusive"
-        {
+        if ignore_post_decision_inconclusive(previous.is_some(), verdict) {
+            tx.commit()?;
+            return Ok(op.revision());
+        }
+        if let Some((old, old_receipt, old_payload)) = &previous {
             let old_value: ReadOnlyAttestation = serde_json::from_slice(old_payload)?;
             if old != verdict || old_receipt != &receipt || old_value.verdict != value.verdict {
                 return Err(RecoveryError::Conflict(
@@ -353,5 +359,18 @@ impl RuntimeOwner {
         }
         tx.commit()?;
         Ok(rev)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ignore_post_decision_inconclusive;
+
+    #[test]
+    fn post_decision_inconclusive_is_a_non_persistent_noop() {
+        assert!(ignore_post_decision_inconclusive(true, "inconclusive"));
+        assert!(!ignore_post_decision_inconclusive(false, "inconclusive"));
+        assert!(!ignore_post_decision_inconclusive(true, "committed"));
+        assert!(!ignore_post_decision_inconclusive(true, "not_committed"));
     }
 }
