@@ -109,12 +109,20 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, An
                     raise GateError(f"{evidence_id} does not reference a #[test] function")
                 if re.search(r"#\[ignore(?:\([^]]*\))?\]", attributes) is not None:
                     raise GateError(f"{evidence_id} references an ignored test")
+            inventory_name = item.get("inventory_name")
+            if evidence_class in {"unit", "subprocess"}:
+                if not isinstance(inventory_name, str) or not inventory_name:
+                    raise GateError(f"{evidence_id} must name its exact inventory_name")
+            elif inventory_name is not None:
+                raise GateError(f"{evidence_id} has inventory_name for non-test evidence")
             fixture = item.get("fixture")
             if fixture is not None:
                 if not isinstance(fixture, str):
                     raise GateError(f"{evidence_id} has invalid fixture path")
                 _repo_file(root, fixture, evidence_id)
-            definition = (evidence_class, step, test_file, test_name, fixture, tuple(targets))
+            definition = (
+                evidence_class, step, test_file, test_name, inventory_name, fixture, tuple(targets)
+            )
             previous = evidence_definitions.get(evidence_id)
             if previous is not None and previous != definition:
                 raise GateError(f"{evidence_id} is defined inconsistently")
@@ -153,7 +161,9 @@ def build_report(
             if supported and evidence["evidence_class"] in {"unit", "subprocess"}:
                 inventory_outcome = steps.get(TEST_INVENTORY_STEP, {}).get("outcome", "not_run")
                 inventory_result = (
-                    "present" if inventory_outcome == "success" and evidence["test_name"] in test_inventory
+                    "present"
+                    if inventory_outcome == "success"
+                    and evidence["inventory_name"] in test_inventory
                     else "missing"
                 )
             passed = (
@@ -168,6 +178,7 @@ def build_report(
                     "step": evidence["step"],
                     "test_file": evidence["test_file"],
                     "test_name": evidence["test_name"],
+                    "inventory_name": evidence.get("inventory_name"),
                     "fixture": evidence.get("fixture"),
                     "supported_targets": evidence["supported_targets"],
                     "tested_revision": commit if supported else None,
@@ -215,7 +226,7 @@ def parse_test_inventory(path: Path) -> set[str]:
             continue
         qualified = line[: -len(": test")].strip()
         if qualified:
-            tests.add(qualified.rsplit("::", 1)[-1])
+            tests.add(qualified)
     if not tests:
         raise GateError("test inventory contains no executable tests")
     return tests
