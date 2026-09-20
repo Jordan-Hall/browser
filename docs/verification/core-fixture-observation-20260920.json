@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "scope": "Observe actual cancellation acknowledgements and withheld results before fixture process exit",
+  "base_commit": "ca712c29a2c87e2f8e77962e7c763683c9ab2e31",
+  "upstream_main": "65abb8e13672494832e71e62576e6691f9bd060d",
+  "environment": {
+    "rust": "1.98.1",
+    "platform": "Linux WSL2 x86_64",
+    "test_threads": 4
+  },
+  "source_sha256": {
+    "crates/intent-fixture-worker/src/bin/intent-blocked-progress-worker.rs": "6c46755ddbdbcb882600d3688558cfc02844fc8f73d0083ca21b80a721ee20c4",
+    "crates/intent-fixture-worker/src/bin/intent-stale-result-worker.rs": "000251378269e81c0e2ffbfb801e6d1a897ce6e2aa956a8bc44231dca8dabc03",
+    "crates/intent-fixture-worker/tests/blocked_progress_cancellation.rs": "1fecbf99dd809717b206c6946dc743be3e6d3eb5b85203ad0333c93b63047e31",
+    "crates/intent-fixture-worker/tests/broker_stale_result.rs": "31cda825e5182f4b8e995fe1f0635fffed9966c6e347d36c69d35c6b2b33415b"
+  },
+  "checks": {
+    "controlled_exit_race_before": "Both final-message assertions failed with 30 ms parent delay and the old fixed 15 ms worker exit",
+    "replacement_setup_before": "Executable loading during cancellation exhausted the unchanged stop grace before replacement readiness",
+    "format": "passed",
+    "strict_clippy": "passed for IPC, supervisor and fixture worker, all targets and features",
+    "combined_suite": {
+      "passed": 159,
+      "failed": 1,
+      "ignored": 1
+    },
+    "combined_failure": "Existing cancellation_notification_is_not_starved_by_an_occupied_control_slot exceeded its 300 ms marker wait while Python validators also ran",
+    "targeted_recheck": "All three blocked-progress tests passed at four threads with the original limits and no overlapping Python validation",
+    "fixed_scenarios": "Both controlled parent-delay cases passed; broker stale-result test observed the withheld response and refused replacement redispatch"
+  },
+  "review": "Independent readonly gpt-5.6-sol review found no concrete correctness, cleanup or assertion-strength regression",
+  "comment_cleanup": {
+    "change": "Removed three redundant test comments and named the one-frame local queue allowance",
+    "verification": "Measured-backlog regression passed again; admitted 168 frames per worker and drained 8 at acknowledgement",
+    "source_sha256": "7f0cd8d5783d880085e3cbd702b0d3634bc390c056d76a55114f4f1a6aa699be",
+    "log_sha256": "ea5f162874ec4db7cbdc3f314ea41958f4206ed7bdf726daad0664d5380d1add"
+  },
+  "evidence_sha256": {
+    "target/fixture-exit-before.log": "c6ae6df1355acd61164dce8b94d95ffe835947f5821d5a653e1a878f29fd8500",
+    "target/fixture-replacement-setup-before.log": "ac6d9fa6a1fbcf7f2f21223ecc43f2742f38c4e6091984b829acdc624f2b27dd",
+    "target/fixture-exit-after.log": "80a275aeb2c98666c2961ada21096394ff3b8fbd7f60301690eb36c496a43a2d",
+    "target/fixture-control-recheck.log": "1c9706cd520af99ed603ee81161d0c958f30ab7340d0732d416b81a120575411",
+    "target/verify-fixture-exit.sh": "e4d9d518e28cfb08d4b9c5ec342b6c316534168f736e3b4327112bd4f494f438"
+  },
+  "limitations": [
+    "The combined suite was not fully green; the failed target passed on a separate rerun",
+    "The deliberate 30 ms delays consume existing grace and retain sensitivity to extreme host scheduling delay",
+    "No production latency, remote CI, native Windows/macOS runtime or whole-task acceptance claimed"
+  ]
+}

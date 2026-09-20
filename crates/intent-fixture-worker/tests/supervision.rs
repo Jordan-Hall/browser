@@ -379,6 +379,7 @@ fn stop_revokes_both_worker_generations_without_waiting_for_saturated_progress()
 
 #[test]
 fn cancellation_acknowledgements_precede_draining_measured_progress_backlogs() -> TestResult {
+    const MAX_LOCALLY_QUEUED_PROGRESS_FRAMES: u64 = 1;
     let markers =
         Markers(std::env::temp_dir().join(format!("intent-progress-pressure-{}", Uuid::new_v4())));
     std::fs::create_dir(&markers.0)?;
@@ -411,7 +412,6 @@ fn cancellation_acknowledgements_precede_draining_measured_progress_backlogs() -
         .collect::<Result<Vec<_>, _>>()?;
     std::fs::write(&start, [])?;
     let pressure_deadline = Instant::now() + Duration::from_secs(3);
-    // Do not poll the supervisor while measuring pressure: it would drain the sockets.
     while !reports.iter().all(|report| report.is_file()) {
         if Instant::now() >= pressure_deadline {
             return Err("workers did not report progress backpressure".into());
@@ -433,7 +433,6 @@ fn cancellation_acknowledgements_precede_draining_measured_progress_backlogs() -
     assert!(revoked_after < Duration::from_millis(250));
 
     supervisor.poll();
-    // A delayed reader must observe the ACK before the fixture is allowed to exit.
     std::thread::sleep(Duration::from_millis(30));
     let mut acknowledgements = [None, None];
     while acknowledgements.iter().any(Option::is_none) {
@@ -449,9 +448,8 @@ fn cancellation_acknowledgements_precede_draining_measured_progress_backlogs() -
                 .into());
             }
             if acknowledgements[index].is_none() && snapshot.cancellation_acknowledged {
-                // One admitted frame may still be locally queued in the worker.
                 assert!(
-                    snapshot.late_messages + 1 < admitted[index],
+                    snapshot.late_messages + MAX_LOCALLY_QUEUED_PROGRESS_FRAMES < admitted[index],
                     "worker drained progress before acknowledging cancellation: {snapshot:?}; admitted={}",
                     admitted[index]
                 );

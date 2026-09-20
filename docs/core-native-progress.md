@@ -1,5 +1,11 @@
 # CORE native implementation checkpoint
 
+## 2026-09-20 fixture final-message observation
+
+Main through PRs #840 and #841 is merged at `ca712c2`. The blocked-progress and stale-result fixtures now wait for the parent to observe their final messages before exiting. Both former fixed-sleep races were reproduced with a 30 ms parent delay. The stale-result test also seals both executable images before launch, so replacement setup cannot consume cancellation grace. Stop deadlines and stale-result rejection assertions remain unchanged.
+
+Strict Clippy and formatting passed. The combined four-thread Linux run recorded 159 passes and one timeout in the existing 300 ms control-notification test. All three tests in that target passed on a separate four-thread rerun with unchanged limits. The two corrected exit-race scenarios passed in the combined run. Python validation ran 51 tests with one platform-specific skip and passed after a separate rerun; its earlier overlapping run had one subprocess timeout. [The verification report](verification/core-fixture-observation-20260920.json) retains source hashes and both Linux outcomes. These results do not qualify production latency or establish a fully green combined load run.
+
 ## 2026-09-20 outbound cancellation under reserved queue pressure
 
 The merged stream API could leave a registration active when its outbound Cancel failed to enter a full reserved queue. It now revokes local dispatch before queue insertion and distinguishes a notification pending send from one awaiting acknowledgement. Retries preserve that state, including simultaneous incoming cancellation and failed retransmission. Queue errors retain the rejected event, and retirement remains blocked until the handshake completes.

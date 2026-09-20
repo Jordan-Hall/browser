@@ -2,6 +2,14 @@
 
 Standing instruction, 2026-09-19: commit verified work and continue until the user explicitly stops execution or every epic and subtask is done. Finish CORE implementation and acceptance before starting the next epic. Keep incomplete checks and platform limits visible; do not substitute source publication for task acceptance.
 
+Standing instruction, 2026-09-20: fetch and incorporate `origin/main` before each new implementation unit and before publication. Check merged work before implementing a reported gap. Close GitHub issues as their full task criteria are verified, and proceed to the next epic only after CORE completion.
+
+- [x] Merge main through PRs #840 and #841; retain the distinct local outbound-cancellation and fixture-observation fixes.
+- [x] Commit the broker startup deadline separation and outbound cancellation state fix.
+- [x] Reproduce and fix final-message observation races in the newly merged process fixtures without extending stop deadlines.
+- [ ] Publish the verified cancellation changes and inspect exact-head CI.
+- [ ] Complete task-level acceptance audit of CORE-01.T01, then close #121 if its full criteria are proven.
+
 - [x] Read the Principles section of the poteto-mode skill.
 - [x] Phase A: Frame. Compare the consolidated implementation with the CORE task ledger and live issues.
 - [x] Phase B: Design the workflow. Work in stable CORE task order, verify each correction, then continue to later workstreams only after CORE acceptance.
