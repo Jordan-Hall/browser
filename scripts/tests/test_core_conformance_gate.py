@@ -1,6 +1,9 @@
 import copy
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -141,6 +144,39 @@ class CoreConformanceGateTests(unittest.TestCase):
                 GATE.parse_test_inventory(path)
             path.write_text("module::real_case: test\n")
             self.assertEqual(GATE.parse_test_inventory(path), {"module::real_case"})
+
+    def test_cli_failure_retains_report_and_nonzero_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            inventory = Path(directory) / "tests.txt"
+            inventory.write_text("".join(f"{name}: test\n" for name in sorted(self.inventory)))
+            output = Path(directory) / "failure.json"
+            steps = copy.deepcopy(self.steps)
+            steps["tests"]["outcome"] = "failure"
+            env = os.environ.copy()
+            env["CORE_STEP_RESULTS"] = json.dumps(steps)
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/core_conformance_gate.py"),
+                    "--platform",
+                    "ubuntu-24.04",
+                    "--commit",
+                    self.commit,
+                    "--test-inventory",
+                    str(inventory),
+                    "--output",
+                    str(output),
+                ],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(process.returncode, 1, process.stderr)
+            report = json.loads(output.read_text())
+            self.assertFalse(report["checks_passed"])
+            self.assertTrue(any(not item["passed"] for item in report["invariants"]))
 
     def test_failure_report_is_written_atomically(self):
         with tempfile.TemporaryDirectory() as directory:
