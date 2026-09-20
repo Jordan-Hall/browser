@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T05 connected Unix peer primitive qualification after real exec; local Linux evidence, native macOS CI pending",
+  "base_commit": "f455135db2e711475595924c8a3012ab558b1e34",
+  "sources": {
+    "crates/intent-local-transport/tests/unix_spawned_peer.rs": {
+      "git_blob": "b92c95189c4b8bda3efc16a38f59944034841984",
+      "tested_file_sha256": "fd8a640128cce73b9fa78322d226b85066adcb78df5512e2808f7dee7ba72dd8"
+    },
+    "crates/intent-local-transport/src/auth.rs": {
+      "git_blob": "e307319ee1f82d1fe0c5cf4b87669c141c0d8ca3",
+      "tested_file_sha256": "02fad4ee995926f9fdf044517633b72b1b24442e1e450e29bfd4b639238e6b01"
+    }
+  },
+  "checks": [
+    {
+      "log": "target/unix-peer-negative.log",
+      "sha256": "d842c6a2d3c65a54633032d5f6e2be015c8da00b86a91f1253861130a9be1194",
+      "exit_code": 101,
+      "scope": "Expected failure when the OS peer comparison is disabled: the silent foreign connection is incorrectly accepted.",
+      "passing_results": 0,
+      "failed_results": 1,
+      "ignored_results": 0
+    },
+    {
+      "log": "target/unix-peer-restored.log",
+      "sha256": "27c954bded3c4710cf179a5651959e4fc80b87a4785ff8b2b7a94894b8d2e64d",
+      "exit_code": 0,
+      "scope": "Final production source restored: four parent cases and four executed child cases pass. One helper is ignored only during the parent inventory.",
+      "passing_results": 8,
+      "failed_results": 0,
+      "ignored_results": 1
+    },
+    {
+      "log": "target/unix-peer-mutations.log",
+      "sha256": "2986ca67e5599c1cece1dfb9546116360a0990adf1a497f0f6d2c57a13d69292",
+      "exit_code": 0,
+      "scope": "Strict local-transport Clippy after restoration and exact restored source SHA-256 values.",
+      "passing_results": 0,
+      "failed_results": 0,
+      "ignored_results": 0
+    }
+  ],
+  "source_review": "target/unix-post-exec-source-review.md",
+  "limits": [
+    "No macOS execution has been observed locally; native CI must qualify it before claiming macOS coverage.",
+    "The test-owned private endpoint and bounded fixture exchange do not implement Supervisor or WorkerClient on macOS.",
+    "The connected live child is checked against actual PID, UID and GID; altered UID/GID and a silent parent connector are rejected.",
+    "Wrong token, role and instance consume the issued verifier; replay is rejected.",
+    "The fixture creates ordinary serialized credential copies and makes no secret-disposal claim.",
+    "Whole-task acceptance, protected native production endpoints and complete platform lifecycle remain open."
+  ]
+}

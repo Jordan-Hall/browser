@@ -33,6 +33,14 @@ impl ControlCodec {
         encode_control(envelope, limits)
     }
 
+    pub fn decode_owned<T: DeserializeOwned>(
+        &self,
+        frame: Frame,
+        limits: WireLimits,
+    ) -> Result<Envelope<T>, WireError> {
+        crate::decode_control_owned(frame, limits)
+    }
+
     pub fn decode<T: DeserializeOwned>(
         &self,
         frame: &Frame,

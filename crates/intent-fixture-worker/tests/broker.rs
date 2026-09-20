@@ -105,7 +105,7 @@ fn authority(revision: u64) -> Result<AuthorityUpdate> {
         evidence_key_id: EvidenceVerifier::new(KEY)?.key_id(),
     })
 }
-fn broker(profile: &Profile) -> Result<RuntimeBroker> {
+fn owner(profile: &Profile) -> Result<RuntimeOwner> {
     let mut owner = RuntimeOwner::open_profile(&profile.root, now()?)?;
     owner.state_mut().save_workspace_graph(
         &ArtifactScope::try_new("broker-scope")?,
@@ -113,7 +113,10 @@ fn broker(profile: &Profile) -> Result<RuntimeBroker> {
         &graph()?,
         now()?,
     )?;
-    let mut broker = from_owner(owner)?;
+    Ok(owner)
+}
+fn broker(profile: &Profile) -> Result<RuntimeBroker> {
+    let mut broker = from_owner(owner(profile)?)?;
     broker.plan_startup(128)?;
     broker.activate_after_planning()?;
     broker.update_authority(authority(0)?)?;
@@ -435,14 +438,25 @@ fn authority_or_source_revision_change_revokes_workers_and_stale_approval() -> R
 #[test]
 fn expired_approval_is_denied_before_the_socket_or_attempt_start() -> Result {
     let p = Profile::new()?;
-    let mut b = broker(&p)?;
+    let mut owner = owner(&p)?;
+    owner.plan_startup(now()?, 128)?;
+    owner.activate_after_planning(now()?)?;
+    owner.update_authority(authority(0)?, now()?)?;
+    let op = owner.prepare_action(action(30)?)?;
+    let approved_at = now()?;
+    let expires_at = UnixTimestampMicros::try_new(approved_at.get() + 1)?;
+    owner.approve_action(op, 0, expires_at, approved_at)?;
+    let out = owner.enqueue_action(op, 1, approved_at)?;
+    let mut b = from_owner(owner)?;
     let w = launch(&mut b, &p, "broker-effect", id(12)?, id(13)?)?;
     ready(&mut b, w)?;
-    let op = b.prepare_action(action(30)?)?;
-    b.approve_action(op, 0, UnixTimestampMicros::try_new(now()?.get() + 100_000)?)?;
-    let out = b.enqueue_action(op, 1)?;
-    std::thread::sleep(Duration::from_millis(120));
-    assert!(b.dispatch(out, w, Duration::from_secs(1)).is_err());
+    assert!(now()? > expires_at);
+    assert!(matches!(
+        b.dispatch(out, w, Duration::from_secs(1)),
+        Err(BrokerError::Recovery(intent_state::RecoveryError::Denied(
+            "missing, expired or superseded explicit approval"
+        )))
+    ));
     assert_eq!(state(&b, 30)?, DurableOperationState::DispatchPending);
     assert!(rows(&p)?.is_empty());
     Ok(())

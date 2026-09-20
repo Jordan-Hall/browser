@@ -13,6 +13,7 @@ use std::{
     os::unix::net::UnixStream,
 };
 use uuid::Uuid;
+use zeroize::{Zeroize, Zeroizing};
 
 pub const MAX_PACKET_BYTES: usize = 16384;
 pub fn wire_limits() -> WireLimits {
@@ -108,6 +109,16 @@ pub struct ProgressMessage {
     pub work_sequence: u64,
 }
 
+pub(crate) fn encode_bootstrap_event<T: Serialize>(
+    payload: T,
+) -> Result<intent_ipc::SecretFrame, SupervisorError> {
+    let envelope = Envelope::event(TraceId::from_uuid(Uuid::new_v4()), payload);
+    Ok(intent_ipc::SecretFrame::encode_control(
+        &envelope,
+        wire_limits(),
+    )?)
+}
+
 pub(crate) fn encode_event<T: Serialize>(
     payload: T,
     codec: Option<&ControlCodec>,
@@ -126,14 +137,23 @@ pub(crate) fn encode_envelope<T: Serialize>(
     Ok(frame.encode(wire_limits())?)
 }
 pub(crate) fn decode<T: DeserializeOwned>(
-    frame: &Frame,
+    frame: Frame,
     codec: Option<&ControlCodec>,
 ) -> Result<Envelope<T>, SupervisorError> {
     Ok(match codec {
-        Some(codec) => codec.decode(frame, wire_limits())?,
-        None => intent_ipc::decode_control(frame, wire_limits())?,
+        Some(codec) => codec.decode_owned(frame, wire_limits())?,
+        None => intent_ipc::decode_control_owned(frame, wire_limits())?,
     })
 }
+struct ReadPayload(Zeroizing<Vec<u8>>);
+impl Drop for ReadPayload {
+    fn drop(&mut self) {
+        self.0.as_mut_slice().zeroize();
+        #[cfg(test)]
+        disposal_tests::observe_read_disposal(&self.0);
+    }
+}
+
 pub(crate) fn read_blocking<T: DeserializeOwned>(
     reader: &mut impl Read,
     codec: Option<&ControlCodec>,
@@ -144,9 +164,15 @@ pub(crate) fn read_blocking<T: DeserializeOwned>(
     if header[0] != 1 || length > MAX_PACKET_BYTES {
         return Err(SupervisorError::Protocol);
     }
-    let mut payload = vec![0; length];
-    reader.read_exact(&mut payload)?;
-    decode(&Frame::new(intent_ipc::FrameLane::Control, payload), codec)
+    let mut payload = ReadPayload(Zeroizing::new(vec![0; length]));
+    reader.read_exact(&mut payload.0)?;
+    decode(
+        Frame::new(
+            intent_ipc::FrameLane::Control,
+            std::mem::take(&mut *payload.0),
+        ),
+        codec,
+    )
 }
 
 #[derive(Debug)]
@@ -200,7 +226,7 @@ struct Outgoing {
 pub(crate) struct FramedSocket {
     pub(crate) stream: UnixStream,
     decoder: FrameDecoder,
-    buffer: [u8; 4096],
+    buffer: Zeroizing<[u8; 4096]>,
     offset: usize,
     length: usize,
     outgoing: Option<Outgoing>,
@@ -214,7 +240,7 @@ impl FramedSocket {
         Ok(Self {
             stream,
             decoder: FrameDecoder::new(wire_limits()),
-            buffer: [0; 4096],
+            buffer: Zeroizing::new([0; 4096]),
             offset: 0,
             length: 0,
             outgoing: None,
@@ -252,8 +278,18 @@ impl FramedSocket {
                     Err(error) => return Err(error.into()),
                 }
             }
-            let batch = self.decoder.push(&self.buffer[self.offset..self.length])?;
-            self.offset += batch.consumed();
+            let batch = match self.decoder.push(&self.buffer[self.offset..self.length]) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    self.buffer.zeroize();
+                    self.offset = 0;
+                    self.length = 0;
+                    return Err(error.into());
+                }
+            };
+            let consumed = self.offset + batch.consumed();
+            self.buffer[self.offset..consumed].zeroize();
+            self.offset = consumed;
             if let Some(frame) = batch.into_frames().into_iter().next() {
                 return Ok(ReadOutcome::Frame(frame));
             }
@@ -541,7 +577,7 @@ mod tests {
         let ReadOutcome::Frame(frame) = receiver.read_one(&mut 4096)? else {
             return Err("complete frame missing".into());
         };
-        let decoded: Envelope<ControlMessage> = decode(&frame, None)?;
+        let decoded: Envelope<ControlMessage> = decode(frame, None)?;
         assert!(matches!(
             decoded.payload(),
             ControlMessage::Heartbeat { sequence: 1, .. }
@@ -557,7 +593,12 @@ mod tests {
                     identity: WorkerHello::new(
                         WorkerInstanceId::from_uuid(Uuid::new_v4()),
                         intent_local_transport::WorkerRole::FixtureWorker,
-                        intent_local_transport::BootstrapToken::from_bytes([171; 32])
+                        intent_local_transport::issue_worker_authentication(
+                            WorkerInstanceId::from_uuid(Uuid::new_v4()),
+                            intent_local_transport::WorkerRole::FixtureWorker,
+                        )
+                        .map_err(|error| format!("bootstrap entropy: {error}"))?
+                        .0
                     ),
                     offer: offer()?,
                 })
@@ -626,3 +667,6 @@ mod tests {
 
 #[cfg(test)]
 mod budget_tests;
+
+#[cfg(test)]
+mod disposal_tests;

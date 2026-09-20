@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+zeroize.workspace = true
 intent-contracts = { path = "../intent-contracts" }
 intent-ipc = { path = "../intent-ipc" }
 intent-local-transport = { path = "../intent-local-transport" }

@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T05 Linux authentication lifecycle qualification; fixture changes only, not whole-task acceptance",
+  "base_commit": "212123a46cd80d5ad1c15e26fccc391f338ce40e",
+  "merged_main": "db8fd8768cb3bf3f19990d2b70828b70403b5481",
+  "source_git_blobs": {
+    "crates/intent-fixture-worker/src/main.rs": "fea726c07bdb5847e8552cf59803f8490447816a",
+    "crates/intent-fixture-worker/src/startup_gate.rs": "8971accc7688602e31dd0b5e794bdd1de5ac2abe",
+    "crates/intent-fixture-worker/tests/startup_expiry.rs": "680ce907e93189d637d076917db6c4fcac73dcfe",
+    "crates/intent-fixture-worker/tests/supervision.rs": "60ddd4fb6ae820f42da7b13ff102184911e45f69",
+    "crates/intent-supervisor/src/runtime.rs": "709a8fc905c8cfbf393d9b89f60fa0775eef73fa",
+    "crates/intent-state/src/durable_recovery/evidence.rs": "0491289c34256603f28a33259f89be27a93376b1",
+    "crates/intent-state/src/durable_recovery/projection.rs": "90b545f2dd5171091ae1fe1af1340f6732d056f8"
+  },
+  "checks": [
+    {
+      "log": "target/authentication-lifecycle-first.log",
+      "exit_code": 0,
+      "scope": "Initial six startup cases and intended-owner admission passed before marker rename, foreign Cancel and foreign heartbeat additions.",
+      "sha256": "919576e497dfe376dd5aa7109840fdfe4c87f25d98dba2dc3eeee6a688130e09",
+      "passing_test_results": 7,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-lifecycle-intermediate.log",
+      "exit_code": 0,
+      "scope": "Intermediate fixture formatting, strict Clippy and full fixture suite passed; predates foreign heartbeat and quiet-sender correction.",
+      "sha256": "d567c7a5b6021b3e15028f8a35cfd1345ff3952c3d10c80c534f9a3b938988d3",
+      "passing_test_results": 51,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-lifecycle-environment-error.log",
+      "exit_code": 1,
+      "scope": "Docker login shell omitted cargo from PATH; no Rust check ran. Retried with the container environment.",
+      "sha256": "de6374aa23b5d25e03466dc0d2d4604fcc04569ea4bb91c005840ca1e12ea913",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-lifecycle-final.log",
+      "exit_code": 0,
+      "scope": "Final source formatting, strict fixture Clippy, six startup and 24 supervision tests; state all-feature tests cover incoming main changes.",
+      "sha256": "198a3d553d87dbc1ebd1ddbb06ffcab6d6576e388f65be08bb9ce46487093e5f",
+      "passing_test_results": 215,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-peer-negative.log",
+      "exit_code": 101,
+      "scope": "Removing the OS peer prefilter consumes owner authorization on the foreign attempt; intended-owner admission test fails.",
+      "sha256": "988d72cd37e0248ec2b66b95fc6a9fbaf37fa6487ab461263211b8ae6be443f8",
+      "passing_test_results": 0,
+      "failed_test_results": 1,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-peer-restored.log",
+      "exit_code": 0,
+      "scope": "Identical owner-admission test passes with unchanged production restored.",
+      "sha256": "6994d0db35ef5fb19cd4d8f772a45b2e85dd47a1f65406d4868f99b16f7f59f6",
+      "passing_test_results": 1,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-heartbeat-negative.log",
+      "exit_code": 101,
+      "scope": "Removing only the Heartbeat generation predicate fails the foreign-heartbeat assertion; sender stays quiet so duplicate sequence rejection cannot conceal the defect.",
+      "sha256": "5fc94793dc54cfae0bf9fa445628639ce0341e5566f5877d9ac4f486021500ae",
+      "passing_test_results": 0,
+      "failed_test_results": 1,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-heartbeat-restored.log",
+      "exit_code": 0,
+      "scope": "Identical foreign-heartbeat test passes with unchanged production restored.",
+      "sha256": "f0d268ba984760d051fb6686fad683bf1d5464cd80f9045c1b87bf57d591ab43",
+      "passing_test_results": 1,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    }
+  ],
+  "review_correction": "Source review found that an ordinary heartbeat after the foreign frame could cause a duplicate-sequence rejection and conceal a missing generation check. Both foreign-message modes now retain their sockets and remain quiet after one frame.",
+  "limits": [
+    "Linux actual-child evidence only; portable jobs with these cases disabled do not qualify Windows or macOS authentication.",
+    "Cancel is a worker-message direction rejection case. Heartbeat separately qualifies generation binding for an allowed message family.",
+    "Public low-level authentication hardening, secret disposal, Windows/macOS supervisor authentication and independent whole-task acceptance remain.",
+    "Hostile same-user containment belongs to SEC-04."
+  ],
+  "independent_review": "gpt-5.6-luna independently verified all seven source blobs, raw-log hashes/counts, actual mutation failures and restored passes; no scoped source or evidence blocker. Whole-task T05 remains open."
+}

@@ -1,7 +1,10 @@
 //! Worker-side endpoint. Only the supervisor's authenticated readiness creates a live session.
 use crate::{
     BootstrapPacket, ChannelKind, ControlMessage, ProgressMessage, SupervisorError,
-    wire::{FramedSocket, ReadOutcome, decode, encode_envelope, encode_event, read_blocking},
+    wire::{
+        FramedSocket, ReadOutcome, decode, encode_bootstrap_event, encode_envelope, encode_event,
+        read_blocking,
+    },
 };
 use intent_contracts::{SchemaVersion, WorkerInstanceId};
 use intent_ipc::{ControlCodec, Envelope};
@@ -50,7 +53,7 @@ impl WorkerClient {
                 .ok_or(SupervisorError::DeadlineExpired)?;
             stream.set_read_timeout(Some(remaining))?;
             stream.set_write_timeout(Some(remaining))?;
-            stream.write_all(&encode_event(ControlMessage::Hello(hello), None)?)?;
+            encode_bootstrap_event(ControlMessage::Hello(hello))?.write_all(stream)?;
         }
         for stream in [&mut control, &mut progress] {
             let remaining = deadline
@@ -88,7 +91,7 @@ impl WorkerClient {
             ReadOutcome::Closed => Err(SupervisorError::Io(
                 std::io::ErrorKind::UnexpectedEof.into(),
             )),
-            ReadOutcome::Frame(frame) => Ok(Some(decode(&frame, Some(&self.codec))?)),
+            ReadOutcome::Frame(frame) => Ok(Some(decode(frame, Some(&self.codec))?)),
         }
     }
     pub fn send(&mut self, envelope: &Envelope<ControlMessage>) -> Result<(), SupervisorError> {
@@ -190,7 +193,7 @@ mod tests {
         let ReadOutcome::Frame(frame) = second else {
             return Err("reserved cancellation acknowledgement was not delivered".into());
         };
-        let envelope: Envelope<ControlMessage> = decode(&frame, Some(&client.codec))?;
+        let envelope: Envelope<ControlMessage> = decode(frame, Some(&client.codec))?;
         assert_eq!(envelope.trace_id(), trace);
         assert_eq!(envelope.cancellation_id(), Some(cancellation_id));
         assert!(matches!(
