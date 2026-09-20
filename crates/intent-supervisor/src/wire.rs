@@ -276,6 +276,21 @@ impl FramedSocket {
         self.reserve_next = false;
         Ok(())
     }
+    pub(crate) fn queue_reserved(&mut self, bytes: Vec<u8>) -> Result<(), SupervisorError> {
+        if bytes.len() > MAX_PACKET_BYTES + 5 {
+            return Err(SupervisorError::Protocol);
+        }
+        if self.reserved_outgoing.is_some() {
+            return Err(SupervisorError::QueueFull);
+        }
+        if self.outgoing.is_none() {
+            self.outgoing = Some(Outgoing { bytes, offset: 0 });
+        } else {
+            self.reserved_outgoing = Some(Outgoing { bytes, offset: 0 });
+        }
+        self.reserve_next = false;
+        Ok(())
+    }
     pub(crate) fn idle(&self) -> bool {
         (self.outgoing.is_none() && self.reserved_outgoing.is_none())
             || (self.reserve_next && self.reserved_outgoing.is_none())
@@ -407,6 +422,37 @@ mod tests {
         assert_eq!(budget.consumed(), 8192);
         assert_eq!(complete, 2);
         drop(senders);
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_reserved_control_preserves_an_occupied_frame_and_has_one_slot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, peer) = UnixStream::pair()?;
+        let mut sender = FramedSocket::new(stream)?;
+        let mut receiver = FramedSocket::new(peer)?;
+        let first =
+            Frame::new(intent_ipc::FrameLane::Control, vec![4; 5000]).encode(wire_limits())?;
+        let acknowledgement =
+            Frame::new(intent_ipc::FrameLane::Control, vec![5; 8]).encode(wire_limits())?;
+        let duplicate =
+            Frame::new(intent_ipc::FrameLane::Control, vec![6; 8]).encode(wire_limits())?;
+
+        sender.queue(first)?;
+        sender.flush(4096)?;
+        sender.queue_reserved(acknowledgement)?;
+        assert!(matches!(
+            sender.queue_reserved(duplicate),
+            Err(SupervisorError::QueueFull)
+        ));
+
+        sender.flush(4096)?;
+        sender.flush(4096)?;
+        let mut budget = 16 * 1024;
+        let first = receiver.read_one(&mut budget)?;
+        let second = receiver.read_one(&mut budget)?;
+        assert!(matches!(first, ReadOutcome::Frame(frame) if frame.payload() == vec![4; 5000]));
+        assert!(matches!(second, ReadOutcome::Frame(frame) if frame.payload() == vec![5; 8]));
         Ok(())
     }
 
