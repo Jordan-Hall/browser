@@ -106,12 +106,17 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: cargo test --locked --workspace --all-targets --no-fail-fast
 
-      - name: Retain executable test inventory
+      - name: Retain Cargo-target-qualified executable test inventory
         id: test_inventory
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: |
-          mkdir -p target/conformance
-          cargo test --locked --workspace --all-targets -- --list > target/conformance/test-inventory.txt
+          mkdir -p target/conformance/test-inventory
+          cargo test --locked -p intent-contracts --lib -- --list > target/conformance/test-inventory/intent-contracts--lib.txt
+          cargo test --locked -p intent-contracts --test hardening -- --list > target/conformance/test-inventory/intent-contracts--test--hardening.txt
+          cargo test --locked -p intent-ipc --lib -- --list > target/conformance/test-inventory/intent-ipc--lib.txt
+          cargo test --locked -p intent-ipc --test record_codec -- --list > target/conformance/test-inventory/intent-ipc--test--record_codec.txt
+          cargo test --locked -p intent-fixture-worker --test blocked_progress_cancellation -- --list > target/conformance/test-inventory/intent-fixture-worker--test--blocked_progress_cancellation.txt
+          cargo test --locked -p intent-fixture-worker --test supervision -- --list > target/conformance/test-inventory/intent-fixture-worker--test--supervision.txt
 
       - name: Run documentation tests
         id: doctests
@@ -144,7 +149,7 @@ jobs:
           python3 scripts/core_conformance_gate.py \
             --platform ubuntu-24.04 \
             --commit "$(git rev-parse HEAD)" \
-            --test-inventory target/conformance/test-inventory.txt \
+            --test-inventory target/conformance/test-inventory \
             --output target/conformance/core-01-evidence.json
 
       - name: Retain verification outcomes and exact build inputs
