@@ -160,9 +160,10 @@ impl RuntimeOwner {
         tx.commit()?;
         Ok(())
     }
-    /// Durable cancellation linearization point for work that has not started dispatch. Revoke
-    /// the worker and retire its unstarted claims in one writer transaction before notification.
-    /// Already-started attempts are retained for the caller's reconciliation path.
+    /// Durable cancellation linearization point. Revoke the worker, retire its unstarted claims,
+    /// and journal cancellation intent for its active started attempts in one writer transaction
+    /// before notification. Started attempts remain uncertain until transport settlement or restart
+    /// recovery moves them to reconciliation.
     pub fn revoke_worker(
         &mut self,
         worker: intent_contracts::WorkerInstanceId,
@@ -174,13 +175,19 @@ impl RuntimeOwner {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         current_epoch(&tx, self.epoch, false)?;
         observe_clock(&tx, now)?;
-        let exists: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM recovery_workers WHERE worker_id=?1 AND runtime_epoch=?2)",
-            params![worker.to_string(), self.epoch.to_string()],
-            |row| row.get(0),
-        )?;
-        if !exists {
+        let revoked: Option<bool> = tx
+            .query_row(
+                "SELECT revoked FROM recovery_workers WHERE worker_id=?1 AND runtime_epoch=?2",
+                params![worker.to_string(), self.epoch.to_string()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(already_revoked) = revoked else {
             return Err(RecoveryError::Missing("current worker"));
+        };
+        if already_revoked {
+            tx.commit()?;
+            return Ok(());
         }
         tx.execute(
             "UPDATE recovery_workers SET revoked=1 WHERE worker_id=?1 AND runtime_epoch=?2",
@@ -227,6 +234,51 @@ impl RuntimeOwner {
                 [operation],
             )?;
             tx.execute("DELETE FROM recovery_claims WHERE outbox_id=?1", [outbox])?;
+        }
+
+        let started = {
+            let mut statement = tx.prepare(
+                "SELECT a.operation_id,a.attempt_id,a.outbox_id \
+                 FROM recovery_attempts a JOIN durable_operations o \
+                   ON o.operation_id=a.operation_id AND o.attempt_identity=a.attempt_id \
+                 WHERE a.worker_id=?1 AND a.runtime_epoch=?2 \
+                   AND a.started_at_micros IS NOT NULL AND o.state='attempting' \
+                 ORDER BY a.operation_id",
+            )?;
+            statement
+                .query_map(params![worker.to_string(), self.epoch.to_string()], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        for (operation, attempt, outbox) in started {
+            let operation_id = dispatch::parse(&operation)?;
+            let attempt_id = dispatch::parse(&attempt)?;
+            let op = load(&tx, operation_id)?;
+            let attempting_outbox: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM outbox_messages WHERE outbox_id=?1 \
+                 AND operation_id=?2 AND attempt_identity=?3 AND state='attempting')",
+                params![outbox, operation, attempt],
+                |row| row.get(0),
+            )?;
+            if op.state() != DurableOperationState::Attempting
+                || op.attempt_identity() != Some(attempt_id)
+                || !attempting_outbox
+            {
+                return Err(RecoveryError::Integrity("started attempt state changed"));
+            }
+            transition(
+                &tx,
+                &op,
+                DurableOperationState::Attempting,
+                Some(attempt_id),
+                now,
+                "worker cancellation requested after dispatch start; outcome retained for reconciliation",
+            )?;
         }
 
         tx.execute(
