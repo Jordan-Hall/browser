@@ -163,6 +163,41 @@ class CoreConformanceGateTests(unittest.TestCase):
                 with self.assertRaises(GATE.GateError):
                     GATE.validate_manifest(manifest, root)
 
+    def test_source_function_is_bound_to_declared_cargo_target_and_inventory(self):
+        manifest = copy.deepcopy(self.manifest)
+        evidence = next(
+            item
+            for invariant in manifest["invariants"]
+            for item in invariant["evidence"]
+            if item["id"] == "CORE-01.ACTION-HASH-BINDING"
+        )
+        evidence["cargo_target"]["package"] = "intent-ipc"
+        with self.assertRaises(GATE.GateError):
+            GATE.validate_manifest(manifest, ROOT)
+
+        manifest = copy.deepcopy(self.manifest)
+        evidence = next(
+            item
+            for invariant in manifest["invariants"]
+            for item in invariant["evidence"]
+            if item["id"] == "CORE-01.ACTION-HASH-BINDING"
+        )
+        evidence["inventory_name"] = "money_rejects_ambiguous_spellings_and_numeric_json"
+        with self.assertRaises(GATE.GateError):
+            GATE.validate_manifest(manifest, ROOT)
+
+    @unittest.skipIf(os.name == "nt", "symlink creation is not portable on Windows runners")
+    def test_repo_file_rejects_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outer = Path(directory)
+            root = outer / "repo"
+            root.mkdir()
+            outside = outer / "outside.txt"
+            outside.write_text("external")
+            (root / "evidence.txt").symlink_to(outside)
+            with self.assertRaises(GATE.GateError):
+                GATE._repo_file(root, "evidence.txt", "E")
+
     def test_inconsistent_reused_evidence_id_is_rejected(self):
         manifest = copy.deepcopy(self.manifest)
         manifest["invariants"][-1]["evidence"][0]["step"] = "tests"
@@ -285,6 +320,41 @@ class CoreConformanceGateTests(unittest.TestCase):
             report = json.loads(output.read_text())
             self.assertFalse(report["checks_passed"])
             self.assertIn("manifest must be a JSON object", report["error"])
+
+    def test_cli_invalid_utf8_still_retains_structured_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            inventory = Path(directory) / "tests"
+            self._write_inventory(inventory)
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_bytes(b"\xff")
+            output = Path(directory) / "failure.json"
+            env = os.environ.copy()
+            env["CORE_STEP_RESULTS"] = json.dumps(self.steps)
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/core_conformance_gate.py"),
+                    "--manifest",
+                    str(manifest),
+                    "--platform",
+                    "ubuntu-24.04",
+                    "--commit",
+                    self.commit,
+                    "--test-inventory",
+                    str(inventory),
+                    "--output",
+                    str(output),
+                ],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(process.returncode, 1, process.stderr)
+            report = json.loads(output.read_text())
+            self.assertFalse(report["checks_passed"])
+            self.assertIn("utf-8", report["error"].lower())
 
     def test_failure_report_is_written_atomically(self):
         with tempfile.TemporaryDirectory() as directory:
