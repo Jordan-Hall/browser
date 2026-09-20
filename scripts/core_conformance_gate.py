@@ -16,6 +16,7 @@ VALID_CLASSES = {"unit", "subprocess", "conformance", "platform"}
 VALID_STEPS = {"tests", "doctests", "conformance", "architecture", "fuzz_compile"}
 TEST_INVENTORY_STEP = "test_inventory"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+TARGET_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 MAX_ERROR = 512
 
 
@@ -47,9 +48,49 @@ def _repo_file(root: Path, relative: str, evidence_id: str) -> Path:
     return path
 
 
-def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, Any]]:
+def _validate_target_part(value: Any, field: str, evidence_id: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or "--" in value
+        or TARGET_PART_RE.fullmatch(value) is None
+    ):
+        raise GateError(f"{evidence_id} has invalid cargo_target.{field}")
+    return value
+
+
+def _cargo_target(item: dict[str, Any], evidence_id: str) -> tuple[str, str, str | None]:
+    target = item.get("cargo_target")
+    if not isinstance(target, dict):
+        raise GateError(f"{evidence_id} must name cargo_target")
+    package = _validate_target_part(target.get("package"), "package", evidence_id)
+    kind = target.get("kind")
+    if kind not in {"lib", "test"}:
+        raise GateError(f"{evidence_id} has invalid cargo_target.kind")
+    name = target.get("name")
+    if kind == "lib":
+        if name is not None:
+            raise GateError(f"{evidence_id} lib cargo_target must not name a target")
+        return package, kind, None
+    return package, kind, _validate_target_part(name, "name", evidence_id)
+
+
+def _target_inventory_id(target: tuple[str, str, str | None]) -> str:
+    package, kind, name = target
+    if kind == "lib":
+        return f"{package}--lib"
+    assert name is not None
+    return f"{package}--test--{name}"
+
+
+def validate_manifest(manifest: Any, root: Path) -> list[dict[str, Any]]:
+    if not isinstance(manifest, dict):
+        raise GateError("manifest must be a JSON object")
     if manifest.get("schema_version") != 1:
         raise GateError("unsupported conformance manifest schema_version")
+    parent_issue = manifest.get("parent_issue")
+    if isinstance(parent_issue, bool) or not isinstance(parent_issue, int) or parent_issue <= 0:
+        raise GateError("parent_issue must be a positive integer")
     required = manifest.get("required_invariants")
     invariants = manifest.get("invariants")
     if not isinstance(required, list) or not required or not all(isinstance(x, str) for x in required):
@@ -64,6 +105,9 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, An
         if not isinstance(invariant, dict) or not isinstance(invariant.get("id"), str):
             raise GateError("every invariant must have a string id")
         invariant_id = invariant["id"]
+        requirement = invariant.get("requirement")
+        if not isinstance(requirement, str) or not requirement.strip():
+            raise GateError(f"{invariant_id} must have a non-empty requirement")
         if invariant_id in by_id:
             raise GateError(f"duplicate invariant {invariant_id}")
         by_id[invariant_id] = invariant
@@ -100,28 +144,43 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, An
                 raise GateError(f"{evidence_id} must name a test_file and test_name")
             if not isinstance(targets, list) or not targets or not all(isinstance(x, str) for x in targets):
                 raise GateError(f"{evidence_id} must name supported_targets")
+            if len(targets) != len(set(targets)):
+                raise GateError(f"{evidence_id} contains duplicate supported_targets")
             file_path = _repo_file(root, test_file, evidence_id)
             attributes = _rust_function_attributes(file_path, test_name)
             if attributes is None:
                 raise GateError(f"{evidence_id} test function does not exist: {test_name}")
+            inventory_name = item.get("inventory_name")
+            cargo_target: tuple[str, str, str | None] | None = None
             if evidence_class in {"unit", "subprocess"}:
                 if re.search(r"#\[test\]", attributes) is None:
                     raise GateError(f"{evidence_id} does not reference a #[test] function")
-                if re.search(r"#\[ignore(?:\([^]]*\))?\]", attributes) is not None:
-                    raise GateError(f"{evidence_id} references an ignored test")
-            inventory_name = item.get("inventory_name")
-            if evidence_class in {"unit", "subprocess"}:
+                if re.search(r"\bignore\b", attributes) is not None:
+                    raise GateError(
+                        f"{evidence_id} references a conditionally or explicitly ignored test"
+                    )
                 if not isinstance(inventory_name, str) or not inventory_name:
                     raise GateError(f"{evidence_id} must name its exact inventory_name")
-            elif inventory_name is not None:
-                raise GateError(f"{evidence_id} has inventory_name for non-test evidence")
+                cargo_target = _cargo_target(item, evidence_id)
+            else:
+                if inventory_name is not None:
+                    raise GateError(f"{evidence_id} has inventory_name for non-test evidence")
+                if item.get("cargo_target") is not None:
+                    raise GateError(f"{evidence_id} has cargo_target for non-test evidence")
             fixture = item.get("fixture")
             if fixture is not None:
                 if not isinstance(fixture, str):
                     raise GateError(f"{evidence_id} has invalid fixture path")
                 _repo_file(root, fixture, evidence_id)
             definition = (
-                evidence_class, step, test_file, test_name, inventory_name, fixture, tuple(targets)
+                evidence_class,
+                step,
+                test_file,
+                test_name,
+                inventory_name,
+                cargo_target,
+                fixture,
+                tuple(targets),
             )
             previous = evidence_definitions.get(evidence_id)
             if previous is not None and previous != definition:
@@ -140,15 +199,19 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, An
 
 
 def build_report(
-    manifest: dict[str, Any],
+    manifest: Any,
     root: Path,
     platform: str,
     commit: str,
-    steps: dict[str, Any],
-    test_inventory: set[str],
+    steps: Any,
+    test_inventory: dict[str, set[str]],
 ) -> tuple[dict[str, Any], bool]:
     if not COMMIT_RE.fullmatch(commit):
         raise GateError("commit must be an exact 40-character lowercase SHA")
+    if not isinstance(steps, dict):
+        raise GateError("CORE_STEP_RESULTS must be a JSON object")
+    if not isinstance(test_inventory, dict):
+        raise GateError("test inventory must preserve Cargo target provenance")
     invariants = validate_manifest(manifest, root)
     results: list[dict[str, Any]] = []
     overall = True
@@ -156,14 +219,24 @@ def build_report(
         evidence_results: list[dict[str, Any]] = []
         for evidence in invariant["evidence"]:
             supported = platform in evidence["supported_targets"]
-            outcome = steps.get(evidence["step"], {}).get("outcome", "not_run") if supported else "unsupported"
+            step_state = steps.get(evidence["step"], {})
+            outcome = (
+                step_state.get("outcome", "not_run")
+                if supported and isinstance(step_state, dict)
+                else ("invalid" if supported else "unsupported")
+            )
             inventory_result = "not_applicable"
+            inventory_target = None
             if supported and evidence["evidence_class"] in {"unit", "subprocess"}:
-                inventory_outcome = steps.get(TEST_INVENTORY_STEP, {}).get("outcome", "not_run")
+                target = _cargo_target(evidence, evidence["id"])
+                inventory_target = _target_inventory_id(target)
+                inventory_step = steps.get(TEST_INVENTORY_STEP, {})
+                target_tests = test_inventory.get(inventory_target, set())
                 inventory_result = (
                     "present"
-                    if inventory_outcome == "success"
-                    and evidence["inventory_name"] in test_inventory
+                    if isinstance(inventory_step, dict)
+                    and inventory_step.get("outcome") == "success"
+                    and evidence["inventory_name"] in target_tests
                     else "missing"
                 )
             passed = (
@@ -179,6 +252,7 @@ def build_report(
                     "test_file": evidence["test_file"],
                     "test_name": evidence["test_name"],
                     "inventory_name": evidence.get("inventory_name"),
+                    "inventory_target": inventory_target,
                     "fixture": evidence.get("fixture"),
                     "supported_targets": evidence["supported_targets"],
                     "tested_revision": commit if supported else None,
@@ -219,17 +293,24 @@ def build_report(
     )
 
 
-def parse_test_inventory(path: Path) -> set[str]:
-    tests: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.endswith(": test"):
-            continue
-        qualified = line[: -len(": test")].strip()
-        if qualified:
-            tests.add(qualified)
-    if not tests:
-        raise GateError("test inventory contains no executable tests")
-    return tests
+def parse_test_inventory(path: Path) -> dict[str, set[str]]:
+    if not path.is_dir():
+        raise GateError("test inventory path must be a directory")
+    inventories: dict[str, set[str]] = {}
+    for target_file in sorted(path.glob("*.txt")):
+        tests: set[str] = set()
+        for line in target_file.read_text(encoding="utf-8").splitlines():
+            if not line.endswith(": test"):
+                continue
+            qualified = line[: -len(": test")].strip()
+            if qualified:
+                tests.add(qualified)
+        if not tests:
+            raise GateError(f"test inventory contains no executable tests: {target_file.name}")
+        inventories[target_file.stem] = tests
+    if not inventories:
+        raise GateError("test inventory contains no Cargo targets")
+    return inventories
 
 
 def write_report(path: Path, report: dict[str, Any]) -> None:
