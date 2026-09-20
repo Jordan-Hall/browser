@@ -1048,6 +1048,38 @@ fn read_capture_and_local_versions_preserve_distinct_effect_semantics() -> Resul
             )
         };
         o.reconcile(signed(&attestation(&attempt, verdict)?)?, 3, t(100)?)?;
+        let record = o.project_operation(id(30)?)?;
+        let observed = record
+            .execution()
+            .ok_or("execution")?
+            .data()
+            .evidence
+            .as_ref()
+            .ok_or("evidence")?;
+        match (verdict, observed.outcome) {
+            (
+                ReconciliationVerdict::ReadCompleted { capture },
+                intent_contracts::ExecutionOutcome::ReadCompleted { capture: exported },
+            ) => assert_eq!(capture, exported),
+            (
+                ReconciliationVerdict::LocalCommitted {
+                    before_revision,
+                    after_revision,
+                    revision,
+                    receipt,
+                },
+                intent_contracts::ExecutionOutcome::LocalCommitted {
+                    before_revision: before,
+                    after_revision: after,
+                    revision: exported,
+                    receipt: reference,
+                },
+            ) => assert_eq!(
+                (before_revision, after_revision, revision, receipt),
+                (before, after, exported, reference)
+            ),
+            _ => return Err("projection lost the effect domain".into()),
+        }
         assert_eq!(
             o.recovery_view(id(30)?, t(100)?)?.plan.decision.disposition,
             expected
@@ -1163,3 +1195,4 @@ fn source_change_after_bound_approval_cannot_stage_identical_bytes() -> Result {
     assert_eq!((outbox, attempts), (0, 0));
     Ok(())
 }
+mod projection;
