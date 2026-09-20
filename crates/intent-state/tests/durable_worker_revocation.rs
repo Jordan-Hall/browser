@@ -8,7 +8,7 @@ use intent_contracts::{
 use intent_recovery::RecoveryEffect;
 use intent_state::{
     ArtifactScope, AuthorityUpdate, DurableOperationState, NewDurableOperation, RecoverableAction,
-    RuntimeOwner, WorkerRegistration, WorkspaceGraph,
+    RuntimeOwner, TransportObservation, WorkerRegistration, WorkspaceGraph,
 };
 use sha2::{Digest, Sha256};
 use std::{error::Error, fs, os::unix::fs::DirBuilderExt, path::PathBuf};
@@ -209,5 +209,77 @@ fn worker_revocation_only_retires_claims_bound_to_that_generation() -> Result {
             .state(),
         DurableOperationState::Attempting
     );
+    Ok(())
+}
+
+#[test]
+fn started_attempt_records_cancellation_intent_before_transport_settlement() -> Result {
+    let profile = Profile::new()?;
+    let mut owner = owner(&profile)?;
+    let outbox = pending(&mut owner, 40)?;
+    let lease = owner.claim_dispatch(outbox, id(20)?, t(200)?, t(100)?)?;
+    let attempt = owner.begin_authorized_dispatch(lease, t(100)?)?;
+    let before = owner
+        .state()
+        .load_operation(id::<OperationId>(40)?)?
+        .ok_or("operation")?;
+    assert_eq!(before.state(), DurableOperationState::Attempting);
+    assert_eq!(before.revision(), 3);
+
+    owner.revoke_worker(id(20)?, t(101)?)?;
+
+    let intent = owner
+        .state()
+        .load_operation(id::<OperationId>(40)?)?
+        .ok_or("operation")?;
+    assert_eq!(intent.state(), DurableOperationState::Attempting);
+    assert_eq!(intent.revision(), 4, "revocation must durably journal cancellation intent before notification");
+    owner.revoke_worker(id(20)?, t(101)?)?;
+    assert_eq!(
+        owner
+            .state()
+            .load_operation(id::<OperationId>(40)?)?
+            .ok_or("operation")?
+            .revision(),
+        4,
+        "duplicate revocation must not append duplicate cancellation intent"
+    );
+
+    owner.record_transport_observation(attempt, TransportObservation::OutcomeUnknown, t(102)?)?;
+    let settled = owner
+        .state()
+        .load_operation(id::<OperationId>(40)?)?
+        .ok_or("operation")?;
+    assert_eq!(settled.state(), DurableOperationState::NeedsReconciliation);
+    assert_eq!(settled.revision(), 5);
+    Ok(())
+}
+
+#[test]
+fn restart_after_started_cancellation_intent_never_revives_the_attempt() -> Result {
+    let profile = Profile::new()?;
+    {
+        let mut owner = owner(&profile)?;
+        let outbox = pending(&mut owner, 41)?;
+        let lease = owner.claim_dispatch(outbox, id(20)?, t(200)?, t(100)?)?;
+        let _attempt = owner.begin_authorized_dispatch(lease, t(100)?)?;
+        owner.revoke_worker(id(20)?, t(101)?)?;
+        let operation = owner
+            .state()
+            .load_operation(id::<OperationId>(41)?)?
+            .ok_or("operation")?;
+        assert_eq!(operation.state(), DurableOperationState::Attempting);
+        assert_eq!(operation.revision(), 4);
+    }
+
+    let mut next = RuntimeOwner::open_profile(&profile.0, t(102)?)?;
+    let batch = next.plan_startup(t(102)?, 128)?;
+    assert!(!batch.plans.is_empty());
+    let recovered = next
+        .state()
+        .load_operation(id::<OperationId>(41)?)?
+        .ok_or("operation")?;
+    assert_eq!(recovered.state(), DurableOperationState::NeedsReconciliation);
+    assert!(next.activate_after_planning(t(102)?).is_ok());
     Ok(())
 }
