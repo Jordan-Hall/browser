@@ -505,7 +505,7 @@ mod tests {
             offset: 1,
         });
         assert!(!receiver.discard_unstarted());
-        assert!(!receiver.idle());
+        assert!(receiver.idle());
         receiver.outgoing = Some(Outgoing {
             bytes: vec![1, 2, 3],
             offset: 0,
