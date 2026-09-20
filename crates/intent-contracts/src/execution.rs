@@ -236,6 +236,9 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
         if (data.stage == S::Compensated) != data.compensation.is_some() {
             return Err("compensated state requires separate verified compensation");
         }
+        if data.stage == S::Compensated && !matches!(data.phase, ExecutionPhase::Original {}) {
+            return Err("compensated state must describe an original operation");
+        }
         if let Some(compensation) = &data.compensation {
             validate_evidence(&compensation.evidence, compensation.attempt)?;
             if compensation
