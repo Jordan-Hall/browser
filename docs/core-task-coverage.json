@@ -190,10 +190,11 @@
         813,
         823,
         824,
-        850
+        850,
+        851
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Framing poison/EOF behavior (#823), aggregate read budgets (#824), strict canonical parsing (#813), and measured encoder allocation (#850) are CI-qualified. Whole-task compatibility review reproduced silent discard of nested Event message fields; that parser gap, final compatibility evidence and main acceptance remain.",
+      "remaining": "Framing, EOF/poisoning, aggregate read budgets, strict canonical parsing, measured encoder allocation and strict nested Event fields are implemented. Independent task review approved source 3c82332; exact-source workspace, native and fuzz CI passed. The prerequisite PR stack must merge before final main acceptance.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -222,6 +223,19 @@
             "crates/intent-ipc/tests/encoder_allocations.rs"
           ],
           "verification_report": "docs/verification/core-encoder-allocation-ci-20260920.json"
+        },
+        {
+          "publication": "published",
+          "commit": "3c82332aeddd9bdae44c3609d669360c952790d2",
+          "scope": "Strict Event metadata with unchanged valid forms; finite v1 compatibility review; all 276 archived source blobs and 54 source entries per native artifact matched; independent whole-task approval subject to merge",
+          "source_files": [
+            "crates/intent-ipc/src/envelope.rs",
+            "docs/core-wire-compatibility.md"
+          ],
+          "test_files": [
+            "crates/intent-ipc/tests/hardening.rs"
+          ],
+          "verification_report": "docs/verification/core-bounded-wire-ci-20260920.json"
         }
       ]
     },

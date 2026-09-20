@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T04 strict nested Event message import; not whole-task acceptance",
+  "base_commit": "88fbeb95242458656db8ba14fc520b2382bbebe9",
+  "source_git_blobs": {
+    "crates/intent-ipc/src/envelope.rs": "25147e6eb6f5514f65957a956a48a51ed3f3e791",
+    "crates/intent-ipc/tests/hardening.rs": "924cfb1f0f12f9dbd2d68ae31fa84f7691e2456f"
+  },
+  "checks": [
+    {
+      "log": "target/strict-event-before.log",
+      "exit_code": 101,
+      "scope": "Pre-fix decode_control silently accepted and discarded a nested Event request_id; regression failed",
+      "sha256": "1b30986d966fae8a0bf5a308d5c5f3a28be967f8c52243bca8dfc1e491f467e8",
+      "passing_test_results": 0,
+      "failed_test_results": 1,
+      "allocation_samples": 0
+    },
+    {
+      "log": "target/strict-event-after.log",
+      "exit_code": 0,
+      "scope": "Final parser source: thirteen Windows hardening tests passed",
+      "sha256": "5d829ea4832db5294879257b7b91302b2388f603f710a20f1d2f585922b74f93",
+      "passing_test_results": 13,
+      "failed_test_results": 0,
+      "allocation_samples": 0
+    },
+    {
+      "log": "target/strict-event-windows-clippy.log",
+      "exit_code": 0,
+      "scope": "Final parser source: strict Windows IPC Clippy, all targets/features",
+      "sha256": "cec26003ffbf06d28eb058765d7b143767845aa46b424400c46bda823a84774b",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "allocation_samples": 0
+    },
+    {
+      "log": "target/strict-event-windows-tests.log",
+      "exit_code": 0,
+      "scope": "Final parser source: Windows IPC all-target tests, standalone allocation probe and doctests",
+      "sha256": "4ae423da8b85fa23db8a09e5df458f2df4faf3d7c25128699d7eb05edbe42cd3",
+      "passing_test_results": 95,
+      "failed_test_results": 0,
+      "allocation_samples": 4
+    },
+    {
+      "log": "target/strict-event-linux.log",
+      "exit_code": 0,
+      "scope": "Final parser source: Linux formatting, strict IPC Clippy, all-target tests, standalone allocation probe and doctests",
+      "sha256": "e78ba7ec5a0b657e6d966713c6199985a055ca63dc2a32dbe7541087148376d7",
+      "passing_test_results": 95,
+      "failed_test_results": 0,
+      "allocation_samples": 4
+    }
+  ],
+  "compatibility": {
+    "public_api": "EnvelopeKind variants and constructors unchanged",
+    "json": "Exact request/response/event forms preserved; unknown nested Event fields now rejected",
+    "optional_fields": "Missing cancellation_id and deadline remain accepted and absent",
+    "framing_error_limits": "Source blobs match origin/main at 26b130b; no binary framing, error spelling or budget changes"
+  },
+  "independent_review": "gpt-5.6-luna approved source, regressions, compatibility claims and final log/source-hash audit; published CI and main acceptance remain pending",
+  "limits": [
+    "MacOS and published exact-source CI remain pending",
+    "Direct typed import does not authorize execution",
+    "CORE-01.T04 main acceptance and production readiness remain separate"
+  ]
+}
