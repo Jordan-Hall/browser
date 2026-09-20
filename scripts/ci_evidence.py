@@ -24,6 +24,7 @@ REQUIRED_CHECKS = (
     "fuzz_compile",
     "architecture",
     "conformance",
+    "conformance_map",
 )
 
 
