@@ -7,6 +7,9 @@ mod broker_effect;
 mod progress_pressure;
 
 #[cfg(target_os = "linux")]
+mod startup_gate;
+
+#[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use intent_contracts::{TraceId, UnixTimestampMicros};
     use intent_ipc::{Envelope, EnvelopeKind};
@@ -37,6 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => None,
     };
     let packet = WorkerClient::read_bootstrap(&mut std::io::stdin().lock())?;
+    if mode == "startup-gate" {
+        return startup_gate::run(
+            packet,
+            args.get(1).ok_or("missing startup gate directory")?,
+            args.get(2).map(String::as_str).unwrap_or("ready"),
+        );
+    }
     if mode == "inherited-fd-probe" {
         let expected_absent = args.get(1).ok_or("missing descriptor target")?;
         for descriptor in std::fs::read_dir("/proc/self/fd")?.take(4097) {

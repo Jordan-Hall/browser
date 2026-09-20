@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T05 Linux absolute startup-admission expiry; not whole-task acceptance",
+  "independent_review": "gpt-5.6-luna verified final source blobs, raw-log hashes/counts, causal negative controls, clock correction and scoped claims; no blocking finding for this Linux increment. Whole-task acceptance remains open.",
+  "base_commit": "3e2b499c60e8f4f83cc6e9f2b0b21d7298f42317",
+  "source_git_blobs": {
+    "crates/intent-supervisor/src/runtime.rs": "709a8fc905c8cfbf393d9b89f60fa0775eef73fa",
+    "crates/intent-supervisor/src/runtime/health_tests.rs": "98851653f4bd575980e49670ac98a81190b2afbf",
+    "crates/intent-supervisor/src/runtime/startup_tests.rs": "82c1410743e35e208a20d53eb79052c1ce069839",
+    "crates/intent-fixture-worker/src/main.rs": "8f1de65deef6ccb0e9ef068792a8216ee58360f4",
+    "crates/intent-fixture-worker/src/startup_gate.rs": "8a6effece76f55b103c847d0704317013f922f33",
+    "crates/intent-fixture-worker/tests/startup_expiry.rs": "edff2b602a416d9ccd50cff13eb1c5ba0a0d0b60"
+  },
+  "checks": [
+    {
+      "log": "target/startup-before.log",
+      "exit_code": 1,
+      "scope": "Original supervisor admitted actual-child Ready after expiry; same gated on-time child passed. Outer Docker invocation reported exit 1.",
+      "sha256": "12899d75d82787cb96810a6664c56cdf4390dd9a63b4715ea282af10228b3c41",
+      "passing_test_results": 1,
+      "failed_test_results": 1,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-after-initial.log",
+      "exit_code": 0,
+      "scope": "Initial correction passed the same two real-child tests.",
+      "sha256": "3f991b992a104ba9d0ed03be593dba14563b4ef7e19a3e9c2dfda3a90cfa230f",
+      "passing_test_results": 2,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-expanded-marker-race.log",
+      "exit_code": 1,
+      "scope": "First expanded fixture observed an empty PID marker; fixed by publishing the completed marker with rename.",
+      "sha256": "1993ab6f793d21cf5477fd716090fbe3b0d0b7ebc991777714d9ad7812ea2f66",
+      "passing_test_results": 3,
+      "failed_test_results": 1,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-linux-compile-failure.log",
+      "exit_code": 101,
+      "scope": "Private-test compile failed because getrandom Error lacks std::error::Error; tests now explicitly map the error.",
+      "sha256": "6c0c80f284813eb0d713bcb6563a0c710dec7564e4a035271479329c67e08ed7",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-linux-workspace.log",
+      "exit_code": 0,
+      "scope": "Intermediate patch passed strict workspace Clippy and the complete Linux workspace, including doctests and four encoder samples; subsequent targeted review still found a health-clock mismatch.",
+      "sha256": "5b94e2425274d3f1694050cd3cecac4586f621528bfadb46355b1d9e30e69ace",
+      "passing_test_results": 492,
+      "failed_test_results": 0,
+      "ignored_test_results": 1
+    },
+    {
+      "log": "target/startup-clock-before.log",
+      "exit_code": 101,
+      "scope": "Targeted heartbeat and progress cases consumed their signals but falsely drained a Ready worker under a stale outer poll time.",
+      "sha256": "8b8d992ee2cf797d93c16a507a8cf2ececef682b182135df067a5caefe2718b4",
+      "passing_test_results": 0,
+      "failed_test_results": 2,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-clock-after.log",
+      "exit_code": 0,
+      "scope": "Both clock regressions pass after preserving the existing liveness clock.",
+      "sha256": "7e022e1473d57e391928e16cdc40bd3113101df2e62dc57c7ceaf7335a98d04e",
+      "passing_test_results": 2,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-linux-final.log",
+      "exit_code": 0,
+      "scope": "Final source: workspace formatting/strict Clippy; all-feature supervisor and real-fixture tests plus doctests; architecture check and conformance.",
+      "sha256": "026d3d826002dcb158879aef30eb6c5d0b534ca5446064ecb1002244c424958c",
+      "passing_test_results": 86,
+      "failed_test_results": 0,
+      "ignored_test_results": 1
+    },
+    {
+      "log": "target/startup-negative-current-fixture.log",
+      "exit_code": 101,
+      "scope": "Final fixture with original runtime 3e2b499 still detects late Ready admission; expected negative control.",
+      "sha256": "bcf12909069afd4572cc15a1093d7cb17bdd62e1a139c202f6d6f20d53cc4cf3",
+      "passing_test_results": 0,
+      "failed_test_results": 1,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-restored.log",
+      "exit_code": 0,
+      "scope": "Restored final runtime passes the identical late-Ready case; Docker runtime hash matches the working source.",
+      "sha256": "413df93a581e89d2d3096f2a1811b23e6c2b6c8906c70a5814640a8650bb9bb4",
+      "passing_test_results": 1,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/startup-python-tests.log",
+      "exit_code": 0,
+      "scope": "51 Python evidence/toolchain tests ran successfully, one skipped; this is tooling evidence, not worker authentication qualification.",
+      "sha256": "a90b3fa1275f48348075edfe9afc9b44914dedd45f3ef3a3311b56aba9b9f747",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    }
+  ],
+  "intermediate_clock_mismatch_runtime_blob": "c93c9b961a7b37ff8600389a256cfdbf0f5ba347",
+  "reproduction_contract": {
+    "child": "Parent observes exact launched PID and successful Welcome markers at the selected gate.",
+    "late_message": "Gate releases after launch-return plus handshake timeout; parent waits for completed send without supervisor polling.",
+    "positive_controls": "Same real fixture reaches Ready and obtains a revocable lease for control-Hello, progress-Hello and Ready gates released on time.",
+    "negative_controls": "Late first Hello, split-lane late progress Hello and late Ready never gain a lease and are reaped with HandshakeTimeout.",
+    "clock_and_budget": "Private tests cover exact deadline, zero read budget, stale outer poll time, credential disposal and unchanged Ready-worker health behavior."
+  },
+  "limits": [
+    "Real supervisor/startup cases run on Linux; zero-gated tests on other platforms do not qualify platform authentication.",
+    "Public low-level authentication hardening, secret erasure, additional negative cases and Windows/macOS supervisor support remain.",
+    "An admission deadline does not bound a blocking spawn/bootstrap system call.",
+    "Published exact-source CI and independent whole-task acceptance remain separate gates."
+  ]
+}

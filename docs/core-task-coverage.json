@@ -99,7 +99,7 @@
         849
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Full/minimal fixtures, immutable action binding, checked execution outcomes and per-family invariants are implemented. Independent whole-task review approved combined source 37c996f, and its exact-source CI passed. PRs #847 and #849 must merge before final main acceptance; trusted provider execution remains downstream work.",
+      "remaining": "Record families, immutable action binding, checked execution outcomes and per-family invariants are implemented. Refreshed independent whole-task review approves combined source 3e2b499, including the latest projection corrections; its exact-source CI and fuzz checks passed. Merge PRs #847/#849 and verify the source on main before final acceptance.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -248,8 +248,8 @@
         789,
         805
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Real post-spawn peer credentials, one-use bootstrap and role binding are tested locally. Independent threat-boundary review, hostile same-user isolation and platform qualification remain; the source is published in #805.",
+      "status": "partially_implemented",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are implemented; the expiry increment is awaiting publication and final qualification. Public low-level authentication hardening, secret disposal, revoked/disconnected/foreign-lifecycle cases, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -276,6 +276,19 @@
           ],
           "scope": "Linux approved/cooperative worker process boundary and executed local and GitHub CI regressions; not external-effect authorization or whole-task acceptance.",
           "commit": "3bfdbc0f679e37368f5d8e04975390bb4d862295"
+        },
+        {
+          "publication": "unpublished",
+          "source_files": [
+            "crates/intent-supervisor/src/runtime.rs"
+          ],
+          "test_files": [
+            "crates/intent-supervisor/src/runtime/startup_tests.rs",
+            "crates/intent-supervisor/src/runtime/health_tests.rs",
+            "crates/intent-fixture-worker/src/startup_gate.rs",
+            "crates/intent-fixture-worker/tests/startup_expiry.rs"
+          ],
+          "scope": "Linux absolute startup-admission deadline shared by both channels and Ready; real-child expiry and on-time controls; no whole-task or platform acceptance."
         }
       ]
     },
