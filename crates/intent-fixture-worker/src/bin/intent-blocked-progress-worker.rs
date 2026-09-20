@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let kind = envelope.message();
             let trace = envelope.trace_id();
             let cancellation = envelope.cancellation_id();
+            let deadline_header = envelope.deadline();
             match envelope.into_payload() {
                 ControlMessage::Execute {
                     generation,
@@ -31,7 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ..
                 } if generation == client.generation()
                     && work_scope == scope
-                    && kind == (EnvelopeKind::Request { request_id }) =>
+                    && kind == (EnvelopeKind::Request { request_id })
+                    && deadline_header == Some(deadline) =>
                 {
                     let wall = UnixTimestampMicros::try_new(i64::try_from(
                         SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros(),
