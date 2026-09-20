@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Validate and report the machine-checkable CORE-01 acceptance evidence map."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+MANIFEST = Path("docs/core-01-conformance.json")
+VALID_CLASSES = {"unit", "subprocess", "conformance", "platform"}
+VALID_STEPS = {"tests", "doctests", "conformance", "architecture", "fuzz_compile"}
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+MAX_ERROR = 512
+
+
+class GateError(ValueError):
+    pass
+
+
+def _bounded(message: str) -> str:
+    return message[:MAX_ERROR]
+
+
+def _rust_function_exists(path: Path, name: str) -> bool:
+    source = path.read_text(encoding="utf-8")
+    return re.search(rf"\bfn\s+{re.escape(name)}\s*(?:<[^>]*>)?\s*\(", source) is not None
+
+
+def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, Any]]:
+    if manifest.get("schema_version") != 1:
+        raise GateError("unsupported conformance manifest schema_version")
+    required = manifest.get("required_invariants")
+    invariants = manifest.get("invariants")
+    if not isinstance(required, list) or not required or not all(isinstance(x, str) for x in required):
+        raise GateError("required_invariants must be a non-empty string list")
+    if len(required) != len(set(required)):
+        raise GateError("required_invariants contains duplicates")
+    if not isinstance(invariants, list):
+        raise GateError("invariants must be a list")
+    by_id: dict[str, dict[str, Any]] = {}
+    evidence_definitions: dict[str, tuple[Any, ...]] = {}
+    for invariant in invariants:
+        if not isinstance(invariant, dict) or not isinstance(invariant.get("id"), str):
+            raise GateError("every invariant must have a string id")
+        invariant_id = invariant["id"]
+        if invariant_id in by_id:
+            raise GateError(f"duplicate invariant {invariant_id}")
+        by_id[invariant_id] = invariant
+        evidence = invariant.get("evidence")
+        required_evidence = invariant.get("required_evidence_ids")
+        if not isinstance(evidence, list) or not evidence:
+            raise GateError(f"{invariant_id} has no evidence")
+        if not isinstance(required_evidence, list) or not required_evidence:
+            raise GateError(f"{invariant_id} has no required_evidence_ids")
+        evidence_ids: list[str] = []
+        for item in evidence:
+            if not isinstance(item, dict):
+                raise GateError(f"{invariant_id} contains non-object evidence")
+            evidence_id = item.get("id")
+            if not isinstance(evidence_id, str) or not evidence_id:
+                raise GateError(f"{invariant_id} evidence is missing id")
+            evidence_ids.append(evidence_id)
+            evidence_class = item.get("evidence_class")
+            if evidence_class not in VALID_CLASSES:
+                raise GateError(f"{evidence_id} has invalid evidence_class")
+            step = item.get("step")
+            if step not in VALID_STEPS:
+                raise GateError(f"{evidence_id} has invalid step")
+            test_file = item.get("test_file")
+            test_name = item.get("test_name")
+            targets = item.get("supported_targets")
+            if not isinstance(test_file, str) or not isinstance(test_name, str):
+                raise GateError(f"{evidence_id} must name a test_file and test_name")
+            if not isinstance(targets, list) or not targets or not all(isinstance(x, str) for x in targets):
+                raise GateError(f"{evidence_id} must name supported_targets")
+            file_path = root / test_file
+            if not file_path.is_file():
+                raise GateError(f"{evidence_id} test file does not exist: {test_file}")
+            if not _rust_function_exists(file_path, test_name):
+                raise GateError(f"{evidence_id} test function does not exist: {test_name}")
+            fixture = item.get("fixture")
+            if fixture is not None and (not isinstance(fixture, str) or not (root / fixture).is_file()):
+                raise GateError(f"{evidence_id} fixture does not exist: {fixture}")
+            definition = (evidence_class, step, test_file, test_name, fixture, tuple(targets))
+            previous = evidence_definitions.get(evidence_id)
+            if previous is not None and previous != definition:
+                raise GateError(f"{evidence_id} is defined inconsistently")
+            evidence_definitions[evidence_id] = definition
+        if len(evidence_ids) != len(set(evidence_ids)):
+            raise GateError(f"{invariant_id} contains duplicate evidence ids")
+        missing_evidence = sorted(set(required_evidence) - set(evidence_ids))
+        if missing_evidence:
+            raise GateError(f"{invariant_id} is missing required evidence: {', '.join(missing_evidence)}")
+    missing = sorted(set(required) - set(by_id))
+    extra = sorted(set(by_id) - set(required))
+    if missing or extra:
+        raise GateError(f"invariant set mismatch: missing={missing} extra={extra}")
+    return [by_id[invariant_id] for invariant_id in required]
+
+
+def build_report(
+    manifest: dict[str, Any], root: Path, platform: str, commit: str, steps: dict[str, Any]
+) -> tuple[dict[str, Any], bool]:
+    if not COMMIT_RE.fullmatch(commit):
+        raise GateError("commit must be an exact 40-character lowercase SHA")
+    invariants = validate_manifest(manifest, root)
+    results: list[dict[str, Any]] = []
+    overall = True
+    for invariant in invariants:
+        evidence_results: list[dict[str, Any]] = []
+        for evidence in invariant["evidence"]:
+            supported = platform in evidence["supported_targets"]
+            outcome = steps.get(evidence["step"], {}).get("outcome", "not_run") if supported else "unsupported"
+            passed = supported and outcome == "success"
+            evidence_results.append(
+                {
+                    "id": evidence["id"],
+                    "class": evidence["evidence_class"],
+                    "step": evidence["step"],
+                    "test_file": evidence["test_file"],
+                    "test_name": evidence["test_name"],
+                    "fixture": evidence.get("fixture"),
+                    "supported_targets": evidence["supported_targets"],
+                    "tested_revision": commit if supported else None,
+                    "result": outcome,
+                    "passed": passed,
+                }
+            )
+        applicable = [item for item in evidence_results if item["result"] != "unsupported"]
+        required_ids = set(invariant["required_evidence_ids"])
+        applicable_required = {item["id"] for item in applicable if item["id"] in required_ids}
+        invariant_passed = bool(applicable) and applicable_required == required_ids and all(
+            item["passed"] for item in applicable if item["id"] in required_ids
+        )
+        overall &= invariant_passed
+        results.append(
+            {
+                "id": invariant["id"],
+                "requirement": invariant["requirement"],
+                "passed": invariant_passed,
+                "evidence": evidence_results,
+            }
+        )
+    return (
+        {
+            "schema_version": 1,
+            "scope": "CORE-01 acceptance evidence mapping",
+            "parent_issue": manifest["parent_issue"],
+            "commit": commit,
+            "platform": platform,
+            "invariants": results,
+            "checks_passed": overall,
+            "acceptance": "not_established_by_this_mapping",
+        },
+        overall,
+    )
+
+
+def write_report(path: Path, report: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=Path, default=MANIFEST)
+    parser.add_argument("--platform", required=True)
+    parser.add_argument("--commit", required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    root = Path.cwd()
+    report: dict[str, Any]
+    passed = False
+    try:
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        steps = json.loads(os.environ.get("CORE_STEP_RESULTS", "{}"))
+        report, passed = build_report(manifest, root, args.platform, args.commit, steps)
+    except (GateError, json.JSONDecodeError, OSError) as error:
+        report = {
+            "schema_version": 1,
+            "scope": "CORE-01 acceptance evidence mapping",
+            "commit": args.commit,
+            "platform": args.platform,
+            "checks_passed": False,
+            "acceptance": "not_established_by_this_mapping",
+            "error": _bounded(str(error)),
+        }
+    write_report(args.output, report)
+    print(json.dumps(report, indent=2))
+    return 0 if passed else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
