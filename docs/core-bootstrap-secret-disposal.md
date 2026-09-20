@@ -49,3 +49,8 @@ The full Linux run preceded the final direct-child-exit cleanup. Its regression
 first failed on retained credentials after a real child exit. The final
 supervisor and fixture run checks that cleanup and the existing process lifecycle
 behavior; the report distinguishes the source covered by each run.
+
+Published source `f455135` in PR #856 passed all four CI jobs in run
+35528056971. Its 303 archived source files and all native allocation artifacts
+match the qualified source. Run 35528057025 completed three bounded ASan parser
+fuzz executions. See [the published report](verification/core-bootstrap-secret-disposal-ci-20260920.json).
