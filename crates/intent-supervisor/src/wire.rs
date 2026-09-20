@@ -207,6 +207,7 @@ pub(crate) struct FramedSocket {
     offset: usize,
     length: usize,
     outgoing: Option<Outgoing>,
+    reserved_outgoing: Option<Outgoing>,
 }
 impl FramedSocket {
     pub(crate) fn new(stream: UnixStream) -> io::Result<Self> {
@@ -218,6 +219,7 @@ impl FramedSocket {
             offset: 0,
             length: 0,
             outgoing: None,
+            reserved_outgoing: None,
         })
     }
     pub(crate) fn read_one(
@@ -266,36 +268,65 @@ impl FramedSocket {
         self.outgoing = Some(Outgoing { bytes, offset: 0 });
         Ok(())
     }
+    /// Reserve one bounded control message behind the frame already being written.
+    /// This never splices bytes into a partial frame; it only guarantees that a
+    /// cancellation notification cannot be rejected merely because application
+    /// control traffic currently occupies the normal slot.
+    pub(crate) fn queue_reserved(&mut self, bytes: Vec<u8>) -> Result<(), SupervisorError> {
+        if bytes.len() > MAX_PACKET_BYTES + 5 {
+            return Err(SupervisorError::Protocol);
+        }
+        if self.outgoing.is_none() {
+            self.outgoing = Some(Outgoing { bytes, offset: 0 });
+            return Ok(());
+        }
+        if self.reserved_outgoing.is_some() {
+            return Err(SupervisorError::QueueFull);
+        }
+        self.reserved_outgoing = Some(Outgoing { bytes, offset: 0 });
+        Ok(())
+    }
     pub(crate) fn idle(&self) -> bool {
-        self.outgoing.is_none()
+        self.outgoing.is_none() && self.reserved_outgoing.is_none()
     }
     pub(crate) fn flush(&mut self, budget: usize) -> io::Result<()> {
-        let Some(outgoing) = self.outgoing.as_mut() else {
-            return Ok(());
-        };
-        let end = outgoing
-            .offset
-            .saturating_add(budget)
-            .min(outgoing.bytes.len());
-        match self.stream.write(&outgoing.bytes[outgoing.offset..end]) {
-            Ok(0) => Err(io::Error::from(io::ErrorKind::WriteZero)),
-            Ok(sent) => {
-                outgoing.offset += sent;
-                if outgoing.offset == outgoing.bytes.len() {
-                    self.outgoing = None;
+        let mut remaining = budget;
+        while remaining > 0 {
+            if self.outgoing.is_none() {
+                self.outgoing = self.reserved_outgoing.take();
+                if self.outgoing.is_none() {
+                    return Ok(());
                 }
-                Ok(())
             }
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-                ) =>
-            {
-                Ok(())
+            let Some(outgoing) = self.outgoing.as_mut() else {
+                continue;
+            };
+            let end = outgoing
+                .offset
+                .saturating_add(remaining)
+                .min(outgoing.bytes.len());
+            match self.stream.write(&outgoing.bytes[outgoing.offset..end]) {
+                Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero)),
+                Ok(sent) => {
+                    outgoing.offset += sent;
+                    remaining = remaining.saturating_sub(sent);
+                    if outgoing.offset == outgoing.bytes.len() {
+                        self.outgoing = None;
+                        continue;
+                    }
+                }
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    return Ok(());
+                }
+                Err(error) => return Err(error),
             }
-            Err(error) => Err(error),
         }
+        Ok(())
     }
     /// Never splice Stop into a partially written frame. Escalation still bypasses this stream.
     pub(crate) fn discard_unstarted(&mut self) -> bool {
@@ -343,6 +374,13 @@ impl std::fmt::Debug for FramedSocket {
                     .as_ref()
                     .map(|m| m.bytes.len().saturating_sub(m.offset)),
             )
+            .field(
+                "reserved_outgoing_bytes",
+                &self
+                    .reserved_outgoing
+                    .as_ref()
+                    .map(|m| m.bytes.len().saturating_sub(m.offset)),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -372,6 +410,42 @@ mod tests {
         assert_eq!(budget.consumed(), 8192);
         assert_eq!(complete, 2);
         drop(senders);
+        Ok(())
+    }
+
+    #[test]
+    fn reserved_control_follows_a_partial_frame_without_waiting_for_an_empty_slot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, peer) = UnixStream::pair()?;
+        let mut sender = FramedSocket::new(stream)?;
+        let mut receiver = FramedSocket::new(peer)?;
+        let first =
+            Frame::new(intent_ipc::FrameLane::Control, vec![1; 5000]).encode(wire_limits())?;
+        let reserved =
+            Frame::new(intent_ipc::FrameLane::Control, vec![2; 8]).encode(wire_limits())?;
+        let duplicate =
+            Frame::new(intent_ipc::FrameLane::Control, vec![3; 8]).encode(wire_limits())?;
+
+        sender.queue(first)?;
+        sender.flush(4096)?;
+        assert!(!sender.idle());
+        sender.queue_reserved(reserved)?;
+        assert!(matches!(
+            sender.queue_reserved(duplicate),
+            Err(SupervisorError::QueueFull)
+        ));
+        sender.flush(4096)?;
+        assert!(sender.idle());
+
+        let mut budget = MAX_PACKET_BYTES * 2;
+        let ReadOutcome::Frame(first) = receiver.read_one(&mut budget)? else {
+            return Err("first frame missing".into());
+        };
+        assert_eq!(first.payload(), &[1; 5000]);
+        let ReadOutcome::Frame(reserved) = receiver.read_one(&mut budget)? else {
+            return Err("reserved frame missing".into());
+        };
+        assert_eq!(reserved.payload(), &[2; 8]);
         Ok(())
     }
 
