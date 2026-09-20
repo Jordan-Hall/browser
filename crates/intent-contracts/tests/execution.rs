@@ -195,8 +195,11 @@ fn compensation_cannot_start_before_original_commit_evidence_is_recorded() -> Re
         },
     });
     assert!(record(data.clone()).is_err());
-    data.compensation.as_mut().ok_or("compensation")?.attempt.started_at =
-        Some(UnixTimestampMicros::try_new(120)?);
+    data.compensation
+        .as_mut()
+        .ok_or("compensation")?
+        .attempt
+        .started_at = Some(UnixTimestampMicros::try_new(120)?);
     assert!(record(data).is_ok());
     Ok(())
 }
