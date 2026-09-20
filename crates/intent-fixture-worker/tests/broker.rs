@@ -1,7 +1,10 @@
 #![cfg(all(target_os = "linux", target_env = "gnu"))]
 #![forbid(unsafe_code)]
 use hmac::{Hmac, Mac};
-use intent_broker::{BrokerError, DispatchTicket, RuntimeBroker};
+use intent_broker::{
+    BrokerError, CancellationFailure, CancellationPersistenceStatus, CancellationTerminationStatus,
+    DispatchTicket, RuntimeBroker,
+};
 use intent_contracts::{
     AccountId, ActionProposalId, BoundedText, CapabilityId, ContentHash, OperationId,
     OutboxMessageId, SchemaVersion, Task, TaskId, UnixTimestampMicros, WorkerInstanceId, Workspace,
@@ -18,6 +21,7 @@ use intent_supervisor::{
     AdmissionLimits, ExecutableImage, ExecutionBoundary, HealthPolicy, Priority, ProcessLimits,
     RestartPolicy, SchedulerLimits, WorkerConfig, WorkerScope, WorkerState,
 };
+use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use std::{
     error::Error,
@@ -568,6 +572,87 @@ fn actual_broker_process_death_preserves_unsent_and_accepted_unknown_boundaries(
             assert_eq!(rows(&p)?.len(), 1);
         }
     }
+    Ok(())
+}
+
+#[test]
+fn cancellation_persistence_failure_is_explicit_fenced_and_recoverable() -> Result {
+    let p = Profile::new()?;
+    let mut b = broker(&p)?;
+    let w = launch(&mut b, &p, "broker-effect-lost-ack", id(12)?, id(13)?)?;
+    ready(&mut b, w)?;
+    let out = stage(&mut b, 32)?;
+    let ticket = b.dispatch(out, w, Duration::from_secs(2))?;
+    let effect_deadline = Instant::now() + Duration::from_secs(3);
+    while rows(&p)?.is_empty() {
+        if Instant::now() >= effect_deadline {
+            return Err("cancellation fixture effect did not arrive".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(state(&b, 32)?, DurableOperationState::Attempting);
+    assert_eq!(revision(&b, 32)?, 3);
+
+    let db = Connection::open(p.root.join("state.sqlite3"))?;
+    db.execute_batch(
+        "CREATE TRIGGER fail_worker_cancel_journal
+         BEFORE INSERT ON operation_journal
+         WHEN NEW.state_detail='worker cancellation requested after dispatch start; outcome retained for reconciliation'
+         BEGIN
+           SELECT RAISE(ABORT, 'injected cancellation journal failure');
+         END;",
+    )?;
+    drop(db);
+
+    let error = match b.cancel_worker(w) {
+        Ok(_) => return Err("journal failure did not surface".into()),
+        Err(error) => error,
+    };
+    match error {
+        BrokerError::Cancellation {
+            status:
+                CancellationFailure {
+                    worker_id,
+                    persistence,
+                    termination,
+                },
+            ..
+        } => {
+            assert_eq!(worker_id, w);
+            assert_eq!(persistence, CancellationPersistenceStatus::Failed);
+            assert_eq!(termination, CancellationTerminationStatus::Requested);
+        }
+        other => return Err(format!("unexpected cancellation error: {other}").into()),
+    }
+    assert!(b.is_fenced());
+    assert!(matches!(
+        b.dispatch(out, w, Duration::from_secs(1)),
+        Err(BrokerError::Blocked)
+    ));
+    assert_eq!(
+        state(&b, 32)?,
+        DurableOperationState::Attempting,
+        "failed cancellation transaction must not claim durable completion"
+    );
+    assert_eq!(revision(&b, 32)?, 3);
+
+    drop(b);
+    let mut next = from_owner(RuntimeOwner::open_profile(&p.root, now()?)?)?;
+    next.plan_startup(128)?;
+    assert_eq!(
+        state(&next, 32)?,
+        DurableOperationState::NeedsReconciliation,
+        "a stale pre-cancellation database must recover the started effect as uncertain"
+    );
+    next.activate_after_planning()?;
+    let rev = revision(&next, 32)?;
+    next.reconcile(evidence(&p, ticket)?, rev)?;
+    assert_eq!(
+        rows(&p)?.len(),
+        1,
+        "reconciliation must not resend the effect"
+    );
+    assert!(!next.is_fenced());
     Ok(())
 }
 

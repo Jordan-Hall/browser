@@ -1,4 +1,7 @@
-use crate::{BrokerError, invocation};
+use crate::{
+    BrokerError, CancellationFailure, CancellationFailureCause, CancellationPersistenceStatus,
+    CancellationTerminationStatus, invocation,
+};
 use intent_contracts::{
     CancellationId, CapabilityId, OperationAttemptId, OperationId, OutboxMessageId, RequestId,
     UnixTimestampMicros, WorkerInstanceId,
@@ -306,7 +309,8 @@ impl RuntimeBroker {
         Ok(ticket)
     }
     /// Latch local revocation before any fallible disk work; persist it before sending Cancel.
-    /// A persistence failure fences all future dispatches, rather than reporting durable success.
+    /// A persistence or termination-request failure fences all future dispatches and returns an
+    /// explicit bounded status rather than implying that cancellation completed durably.
     pub fn cancel_worker(
         &mut self,
         worker: WorkerInstanceId,
@@ -321,16 +325,37 @@ impl RuntimeBroker {
         record.revoked = true;
         let registered = record.lease.is_some();
         let now = self.now()?;
-        if registered && let Err(error) = self.owner.revoke_worker(worker, now) {
-            self.fence();
-            return Err(error.into());
-        }
+        let persistence = if registered {
+            match self.owner.revoke_worker(worker, now) {
+                Ok(()) => CancellationPersistenceStatus::Persisted,
+                Err(error) => {
+                    let termination = self.fence_with_cancellation_status(worker);
+                    return Err(BrokerError::Cancellation {
+                        status: CancellationFailure {
+                            worker_id: worker,
+                            persistence: CancellationPersistenceStatus::Failed,
+                            termination,
+                        },
+                        source: CancellationFailureCause::Persistence(error),
+                    });
+                }
+            }
+        } else {
+            CancellationPersistenceStatus::NotRequired
+        };
         if let Err(error) = self
             .supervisor
             .cancel(worker, CancellationId::from_uuid(worker.as_uuid()))
         {
             self.fence();
-            return Err(error.into());
+            return Err(BrokerError::Cancellation {
+                status: CancellationFailure {
+                    worker_id: worker,
+                    persistence,
+                    termination: CancellationTerminationStatus::Failed,
+                },
+                source: CancellationFailureCause::Termination(error),
+            });
         }
         self.settle_generation(worker, now)
     }
@@ -462,6 +487,30 @@ impl RuntimeBroker {
                 Err(BrokerError::Clock)
             }
         }
+    }
+    fn fence_with_cancellation_status(
+        &mut self,
+        target: WorkerInstanceId,
+    ) -> CancellationTerminationStatus {
+        self.faulted = true;
+        let mut target_status = CancellationTerminationStatus::Failed;
+        for (id, record) in &mut self.workers {
+            if let Some(lease) = &record.lease {
+                lease.revoke();
+            }
+            record.revoked = true;
+            let result = self
+                .supervisor
+                .cancel(*id, CancellationId::from_uuid(id.as_uuid()));
+            if *id == target {
+                target_status = if result.is_ok() {
+                    CancellationTerminationStatus::Requested
+                } else {
+                    CancellationTerminationStatus::Failed
+                };
+            }
+        }
+        target_status
     }
     fn fence(&mut self) {
         self.faulted = true;

@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-03.T05 incremental cancellation persistence-failure contract; not task acceptance",
+  "pr": 835,
+  "base_commit": "3d1f14c5dc15afad73e4302b0c3f60345a3c98c7",
+  "code_commit": "8dad4f760eb13a055761425c5180602d8e5c0560",
+  "code_tree": "5b28115ff6b60ff92fea328ea518fdf0bd213f77",
+  "tested_merge_commit": "cde471a012c20cef4a28a7225058934e2ed6bff6",
+  "source_sha256": {
+    "crates/intent-broker/src/error.rs": "ae09da27192573a397458157556481f23b71291b7455bacc4a12034d6c4ed335",
+    "crates/intent-broker/src/runtime.rs": "af77f30a4755ae0201d5ee22290d673431aec36b805944aa58112d60116b9285",
+    "crates/intent-fixture-worker/Cargo.toml": "b511b4cbbf27cc08b309b470710474065f17ef2f997202bb030c4a1929e1e6fe",
+    "crates/intent-fixture-worker/tests/broker.rs": "63f118c1a91dd69992aafd52c7c9bd890a8272c28865b2958656275cde463371",
+    "Cargo.lock": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "source_blob_sha": {
+    "crates/intent-broker/src/error.rs": "edac8605eb89b84e27c435043967228de6f1ba78",
+    "crates/intent-broker/src/runtime.rs": "4c5b2e5a40942ef43c74d7a4d1617fdc098af278",
+    "crates/intent-fixture-worker/Cargo.toml": "496968c0fca79ed0c370209d5d0b7a0304e9ec93",
+    "crates/intent-fixture-worker/tests/broker.rs": "dcb330fe80bb11f4414006784c90363f3cf571c0",
+    "Cargo.lock": "a944cc5cae19936638bd87025740d0abf3ec3ad3"
+  },
+  "local": {
+    "toolchain": "1.98.1",
+    "locked": true,
+    "workspace_test_results": 409,
+    "ignored_owned_process_helpers": 1,
+    "doctests": 17,
+    "python_tests": 25,
+    "checks": [
+      "workspace and fuzz formatting",
+      "strict workspace Clippy",
+      "workspace targets",
+      "explicit workspace doctests",
+      "fuzz compilation",
+      "actual architecture checker",
+      "contract conformance",
+      "coverage inventory"
+    ],
+    "regression": "A real lost-ack worker performs one external write, deterministic cancellation-intent journal insertion aborts, cancellation reports persistence Failed/termination Requested, dispatch is fenced, durable Attempting revision remains unchanged, restart plans NeedsReconciliation, and exact independently signed evidence verifies without a second external write.",
+    "require_accepted": {
+      "exit_code": 1,
+      "unaccepted_tasks": 37
+    }
+  },
+  "ci": {
+    "run_id": 35486289328,
+    "conclusion": "success",
+    "jobs": {
+      "rust_checks": 106013194361,
+      "ubuntu_24_04": 106013194252,
+      "windows_2025": 106013194290,
+      "macos_15": 106013194329
+    },
+    "artifact_id": 10597680846,
+    "archive_sha256": "5b5fcde29b5999e97265c12fc71547cdd5b0564e8400ac19c74b039d39c537a3"
+  },
+  "fuzz": {
+    "run_id": 35486289269,
+    "conclusion": "success",
+    "jobs": {
+      "frame_decoder": 106013203778,
+      "control_envelope": 106013203889,
+      "record_codec": 106013203897
+    },
+    "artifacts": {
+      "frame_decoder": {
+        "id": 10597404307,
+        "sha256": "0bc77e6c5641baf5613ee7a42e1d112176f70f0e60750597dd855163298a2e9e"
+      },
+      "control_envelope": {
+        "id": 10598000687,
+        "sha256": "8267f30a596571284f476b86d909352d21b632c14a6c49f99168850f47485eaf"
+      },
+      "record_codec": {
+        "id": 10597436014,
+        "sha256": "bec66a34ef8b5a23c57a4b7d60846f6a1e44d8ba5e66033e4d8efcbea3112599"
+      }
+    },
+    "limit": "bounded instrumented parser workflow; not cancellation or production qualification"
+  },
+  "review": {
+    "request_comment": 5747286137,
+    "status": "completed on exact code head with no inline finding; automated review is not independent task acceptance",
+    "independent_task_acceptance": false
+  },
+  "remaining": [
+    "Real filesystem-full/storage-stall/power-loss qualification is not established by deterministic SQLite trigger injection.",
+    "End-to-end acknowledgement/control-queue exhaustion qualification remains open.",
+    "Independent task acceptance remains mandatory; all CORE acceptance flags stay false."
+  ],
+  "accepted": false,
+  "production_ready": false
+}

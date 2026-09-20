@@ -247,6 +247,7 @@ dependencies = [
  "intent-state",
  "intent-supervisor",
  "nix",
+ "rusqlite",
  "serde_json",
  "sha2",
  "uuid",
