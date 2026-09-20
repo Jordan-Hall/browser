@@ -262,3 +262,72 @@ fn projection_refuses_corrupt_missing_and_contradictory_evidence() -> Result {
     }
     Ok(())
 }
+
+#[test]
+fn projection_rejects_same_columns_with_different_local_commit_outcomes() -> Result {
+    let p = Profile::new()?;
+    let mut o = owner(&p)?;
+    let mut local_authority = authority(1)?;
+    local_authority.effect = RecoveryEffect::LocalReversible;
+    o.update_authority(local_authority, t(100)?)?;
+    o.register_worker(worker(21)?, t(100)?)?;
+
+    let mut local = action(30)?;
+    local.effect = RecoveryEffect::LocalReversible;
+    local
+        .operation
+        .binding
+        .as_mut()
+        .ok_or("binding")?
+        .effect_class = intent_contracts::CapabilityEffectClass::LocalReversible;
+    o.prepare_action(local)?;
+    o.approve_action(id(30)?, 0, t(800_000)?, t(100)?)?;
+    let outbox = o.enqueue_action(id(30)?, 1, t(100)?)?;
+    let lease = o.claim_dispatch(outbox, id(21)?, t(700_000)?, t(100)?)?;
+    let sent = o.begin_authorized_dispatch(lease, t(100)?)?;
+    let receipt = digest(b"local receipt");
+    let first = attestation(
+        &sent,
+        ReconciliationVerdict::LocalCommitted {
+            before_revision: digest(b"source-v1"),
+            after_revision: digest(b"after-one"),
+            revision: 1,
+            receipt,
+        },
+    )?;
+    o.reconcile(signed(&first)?, 3, t(100)?)?;
+    assert!(matches!(
+        projected(&o, 30)?.evidence.ok_or("evidence")?.outcome,
+        ExecutionOutcome::LocalCommitted { revision: 1, .. }
+    ));
+
+    o.store.connection.execute_batch(
+        "DROP TRIGGER recovery_evidence_immutable; DROP TRIGGER recovery_evidence_no_delete;",
+    )?;
+    let second = attestation(
+        &sent,
+        ReconciliationVerdict::LocalCommitted {
+            before_revision: digest(b"source-v1"),
+            after_revision: digest(b"after-two"),
+            revision: 2,
+            receipt,
+        },
+    )?;
+    let bytes = serde_json::to_vec(&second)?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(&KEY)?;
+    mac.update(b"intent.read-only-reconciliation.v1\0");
+    mac.update(&bytes);
+    let tag: [u8; 32] = mac.finalize().into_bytes().into();
+    o.store.connection.execute(
+        "INSERT INTO recovery_evidence SELECT ?1,operation_id,attempt_id,verdict,receipt,?2,?3,key_id,?4,?5 FROM recovery_evidence LIMIT 1",
+        params![
+            second.evidence_id.to_string(),
+            &bytes,
+            digest(&bytes).to_hex(),
+            &tag[..],
+            101_i64
+        ],
+    )?;
+    assert!(o.project_operation(id(30)?).is_err());
+    Ok(())
+}
