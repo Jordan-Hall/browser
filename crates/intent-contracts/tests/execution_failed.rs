@@ -17,7 +17,7 @@ fn failed() -> ExecutionObservationData {
 }
 
 #[test]
-fn failed_execution_requires_a_started_attempt() {
+fn failed_execution_requires_a_started_attempt() -> Result<(), Box<dyn std::error::Error>> {
     let mut data = failed();
     assert!(ExecutionObservation::try_from(data.clone()).is_err());
 
@@ -27,7 +27,8 @@ fn failed_execution_requires_a_started_attempt() {
     });
     assert!(ExecutionObservation::try_from(data.clone()).is_err());
 
-    data.attempt.as_mut().expect("attempt").started_at =
-        Some(UnixTimestampMicros::try_new(10).expect("timestamp"));
+    data.attempt.as_mut().ok_or("missing attempt")?.started_at =
+        Some(UnixTimestampMicros::try_new(10)?);
     assert!(ExecutionObservation::try_from(data).is_ok());
+    Ok(())
 }
