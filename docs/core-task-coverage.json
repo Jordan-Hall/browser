@@ -17,11 +17,38 @@
       "parent_issue": 2,
       "title": "Bootstrap the Rust workspace and architectural checks",
       "implementation_prs": [
-        785
+        785,
+        817,
+        822
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Initial host checks pass; independent review and merge remain.",
-      "implementation_evidence": []
+      "status": "accepted",
+      "remaining": "",
+      "implementation_evidence": [
+        {
+          "publication": "published",
+          "commit": "65abb8e13672494832e71e62576e6691f9bd060d",
+          "scope": "Pinned locked workspace and reviewed direct dependency boundary, including actual negative command fixtures and explicit doctest gates",
+          "source_files": [
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "crates/intent-xtask/src/main.rs",
+            ".github/workflows/ci.yml"
+          ],
+          "test_files": [
+            "crates/intent-xtask/tests/architecture_command.rs",
+            "crates/intent-xtask/tests/architecture_resolution.rs",
+            "scripts/tests/test_rust_toolchain.py"
+          ],
+          "verification_report": "docs/verification/core-bootstrap-acceptance-20260920.json"
+        }
+      ],
+      "acceptance_evidence": {
+        "commit": "65abb8e13672494832e71e62576e6691f9bd060d",
+        "reviewer": "Codex gpt-5.6-sol independent task audit; implementation agent artifact cross-check",
+        "review_url": "https://github.com/Jordan-Hall/browser/issues/121#issuecomment-5748908212",
+        "report": "docs/verification/core-bootstrap-acceptance-20260920.json"
+      }
     },
     {
       "issue": 122,
