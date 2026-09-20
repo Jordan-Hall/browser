@@ -70,6 +70,11 @@ impl ExecutionOutcome {
             Self::ProvenNotCommitted { .. } | Self::Inconclusive {} => None,
         }
     }
+
+    #[must_use]
+    const fn is_compensating_write(self) -> bool {
+        matches!(Self::LocalCommitted { .. } | Self::ExternalCommitted { .. })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -214,13 +219,7 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
         }
         let outcome = data.evidence.as_ref().map(|e| e.outcome);
         let committed = outcome.is_some_and(|o| o.committed_reference().is_some());
-        let compensable = outcome.is_some_and(|o| {
-            matches!(
-                o,
-                ExecutionOutcome::LocalCommitted { .. }
-                    | ExecutionOutcome::ExternalCommitted { .. }
-            )
-        });
+        let compensable = outcome.is_some_and(ExecutionOutcome::is_compensating_write);
         let valid = match data.stage {
             S::Verified => committed,
             S::Compensated => compensable,
@@ -261,11 +260,7 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
             {
                 return Err("compensation cannot predate original committed evidence");
             }
-            if compensation
-                .evidence
-                .outcome
-                .committed_reference()
-                .is_none()
+            if !compensation.evidence.outcome.is_compensating_write()
                 || data
                     .attempt
                     .is_some_and(|a| a.id == compensation.attempt.id)
@@ -274,7 +269,7 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
                     .as_ref()
                     .is_some_and(|e| e.evidence_id == compensation.evidence.evidence_id)
             {
-                return Err("compensation requires its own committed attempt and evidence");
+                return Err("compensation requires its own committed write attempt and evidence");
             }
         }
         Ok(Self { data })
