@@ -70,10 +70,11 @@
       "implementation_prs": [
         787,
         813,
-        846
+        846,
+        847
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Full/minimal v1 fixtures and strict imports are implemented in #813; immutable action/source/approval binding is implemented in #846. Provider-target execution, accepted/verified/compensation wire outcomes, compatibility review and independent task acceptance remain.",
+      "remaining": "Full/minimal fixtures and strict imports are implemented in #813; immutable action binding is implemented in #846; checked execution outcomes and canonical import/compatibility cases are verified in #847. Per-family collection and temporal invariants remain after independent review. Trusted provider execution belongs to downstream dispatch work.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -105,6 +106,24 @@
             "crates/intent-state/src/durable_recovery/tests.rs"
           ],
           "verification_report": "docs/verification/core-action-binding-combined-20260920.json"
+        },
+        {
+          "publication": "published",
+          "commit": "3bdd8fbfc6966ddd22fa6c8640966cd886702558",
+          "scope": "Checked read-only durable execution projection, distinct original/compensation evidence, strict canonical imports and earlier-reader compatibility; published CI artifact matches all source blobs, whole-task acceptance remains pending",
+          "source_files": [
+            "crates/intent-contracts/src/execution.rs",
+            "crates/intent-contracts/src/records.rs",
+            "crates/intent-state/src/durable_recovery/projection.rs",
+            "crates/intent-conformance/src/record_fixtures.rs"
+          ],
+          "test_files": [
+            "crates/intent-contracts/tests/execution.rs",
+            "crates/intent-state/src/durable_recovery/tests/projection.rs",
+            "crates/intent-ipc/tests/record_codec.rs",
+            "fixtures/core/execution-records-v1.json"
+          ],
+          "verification_report": "docs/verification/core-operation-projection-ci-20260920.json"
         }
       ]
     },
