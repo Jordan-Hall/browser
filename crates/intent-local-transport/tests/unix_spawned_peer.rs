@@ -13,7 +13,7 @@ use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 type TestResult = Result<(), Box<dyn Error>>;
 const ENDPOINT_ENV: &str = "INTENT_TEST_UNIX_PEER_ENDPOINT";
@@ -43,11 +43,13 @@ struct Endpoint {
 
 impl Endpoint {
     fn new() -> Result<Self, Box<dyn Error>> {
+        let mut nonce = [0; 16];
+        getrandom::fill(&mut nonce).map_err(|error| format!("endpoint entropy: {error}"))?;
         // A short private path also fits macOS's sockaddr_un limit.
         let directory = PathBuf::from("/tmp").join(format!(
-            "intent-peer-{}-{}",
+            "intent-peer-{}-{:032x}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+            u128::from_ne_bytes(nonce)
         ));
         DirBuilder::new().mode(0o700).create(&directory)?;
         Ok(Self {

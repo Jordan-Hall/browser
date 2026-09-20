@@ -27,3 +27,8 @@ See [the scoped evidence](verification/core-unix-post-exec-authentication-202609
 This qualifies the connected-peer and issued-verifier primitives only. The
 fixture exchange and temporary endpoint are not production framing or a native
 Supervisor. Full Windows/macOS supervision and CORE-01.T05 acceptance remain open.
+
+A later macOS rerun exposed a timestamp collision between parallel fixture
+endpoints. Names now use 128 bits of OS randomness while retaining atomic 0700
+directory creation. The equal-clock reproduction and corrected local run are
+recorded in [the fixture follow-up](verification/core-unix-endpoint-uniqueness-20260920.json).

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scope": "Test endpoint uniqueness correction for parallel Unix authentication fixtures; production authentication unchanged",
+  "source_git_blob": "a47041f3cbc9f8a9d24e0d4a05c1db9edd79d3ff",
+  "failed_ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35529428753",
+  "checks": [
+    {
+      "log": "target/unix-post-exec-latest-ci-failure.log",
+      "sha256": "790d62e2d9c1ab8f11daaf8d921f9da375619bab0bd138c310c9b8722f8b7502",
+      "exit_code": 101,
+      "scope": "Native macOS run35529428753: one parent case failed with AlreadyExists before authentication; three other cases passed."
+    },
+    {
+      "log": "target/unix-peer-clock-collision-before.log",
+      "sha256": "524f32ae2181810b10cf0af48a1821b93ac46a032d58ad0d5227c98fada1f47c",
+      "exit_code": 101,
+      "scope": "Deterministic clock-collision control: equal timestamp values make three concurrent endpoint creations fail with AlreadyExists."
+    },
+    {
+      "log": "target/unix-peer-clock-collision-after.log",
+      "sha256": "96d8221ff43b41b823d0ef8aad8bfaa09fb86ea42949844bb46ac6bb4f7f3784",
+      "exit_code": 0,
+      "scope": "Final 128-bit random endpoint names: strict Clippy and four parent/four child cases pass concurrently on Linux."
+    }
+  ],
+  "source_review": "target/unix-peer-clock-collision-review.md",
+  "limits": [
+    "The retained CI log does not record both colliding path strings; the timestamp collision diagnosis is supported by the deterministic equal-clock reproduction.",
+    "Native macOS CI for the corrected fixture remains pending; earlier9d035eb native authentication evidence is retained separately.",
+    "Directory creation remains atomic with mode0700; failure never removes a directory owned by another test."
+  ]
+}
