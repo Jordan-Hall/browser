@@ -1,0 +1,318 @@
+{
+  "schema_version": 1,
+  "parent_issue": 2,
+  "required_invariants": [
+    "CORE-01.AC01",
+    "CORE-01.AC02",
+    "CORE-01.AC03",
+    "CORE-01.AC04",
+    "CORE-01.AC05",
+    "CORE-01.AC06"
+  ],
+  "invariants": [
+    {
+      "id": "CORE-01.AC01",
+      "requirement": "All core records have schema versions and migration tests.",
+      "required_evidence_ids": [
+        "CORE-01.RECORD-FIXTURES",
+        "CORE-01.MIGRATION-CHAIN"
+      ],
+      "evidence": [
+        {
+          "id": "CORE-01.RECORD-FIXTURES",
+          "evidence_class": "conformance",
+          "step": "conformance",
+          "test_file": "crates/intent-conformance/src/record_fixtures.rs",
+          "test_name": "check",
+          "fixture": "fixtures/core/records-v1.json",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "conformance_checks": [
+            "intent.goal_contract",
+            "intent.workspace",
+            "intent.task",
+            "intent.capability",
+            "intent.observation",
+            "intent.evidence",
+            "intent.action_proposal",
+            "intent.approval",
+            "intent.operation",
+            "intent.receipt",
+            "intent.view_definition",
+            "intent.memory_record",
+            "intent.artifact_reference"
+          ]
+        },
+        {
+          "id": "CORE-01.MIGRATION-CHAIN",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-contracts/src/migration.rs",
+          "test_name": "migration_preserves_source_version_and_applies_explicit_chain",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "migration::tests::migration_preserves_source_version_and_applies_explicit_chain",
+          "cargo_target": {
+            "package": "intent-contracts",
+            "kind": "lib"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CORE-01.AC02",
+      "requirement": "Malformed, oversized and unsupported-version messages are rejected safely.",
+      "required_evidence_ids": [
+        "CORE-01.FRAME-POISONING",
+        "CORE-01.OVERSIZED-FRAME",
+        "CORE-01.RECORD-SCHEMA-CLASSIFICATION",
+        "CORE-01.ACTION-HASH-BINDING"
+      ],
+      "evidence": [
+        {
+          "id": "CORE-01.FRAME-POISONING",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/frame.rs",
+          "test_name": "malformed_batch_poisoning_prevents_resume_at_an_unknown_offset",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "frame::tests::malformed_batch_poisoning_prevents_resume_at_an_unknown_offset",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        },
+        {
+          "id": "CORE-01.OVERSIZED-FRAME",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/frame.rs",
+          "test_name": "oversized_length_is_rejected_before_payload_allocation",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "frame::tests::oversized_length_is_rejected_before_payload_allocation",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        },
+        {
+          "id": "CORE-01.RECORD-SCHEMA-CLASSIFICATION",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/tests/record_codec.rs",
+          "test_name": "missing_malformed_and_future_schemas_are_distinct_from_typed_payload_errors",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "missing_malformed_and_future_schemas_are_distinct_from_typed_payload_errors",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "test",
+            "name": "record_codec"
+          }
+        },
+        {
+          "id": "CORE-01.ACTION-HASH-BINDING",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-contracts/tests/hardening.rs",
+          "test_name": "proposal_construction_and_wire_enforce_the_same_hash_binding",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "proposal_construction_and_wire_enforce_the_same_hash_binding",
+          "cargo_target": {
+            "package": "intent-contracts",
+            "kind": "test",
+            "name": "hardening"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CORE-01.AC03",
+      "requirement": "Negotiated compatible versions round-trip without semantic loss.",
+      "required_evidence_ids": [
+        "CORE-01.NEGOTIATION-COMPATIBLE",
+        "CORE-01.NEGOTIATION-OFFER-ROUNDTRIP",
+        "CORE-01.NEGOTIATION-UNSELECTED-REJECTED"
+      ],
+      "evidence": [
+        {
+          "id": "CORE-01.NEGOTIATION-COMPATIBLE",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/negotiation.rs",
+          "test_name": "negotiation_selects_highest_common_version_and_capability_intersection",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "negotiation::tests::negotiation_selects_highest_common_version_and_capability_intersection",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        },
+        {
+          "id": "CORE-01.NEGOTIATION-OFFER-ROUNDTRIP",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/negotiation.rs",
+          "test_name": "offer_round_trip_preserves_ranges_and_capabilities",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "negotiation::tests::offer_round_trip_preserves_ranges_and_capabilities",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        },
+        {
+          "id": "CORE-01.NEGOTIATION-UNSELECTED-REJECTED",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/negotiation.rs",
+          "test_name": "negotiated_session_rejects_unselected_message_version",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "negotiation::tests::negotiated_session_rejects_unselected_message_version",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CORE-01.AC04",
+      "requirement": "Cancellation and deadlines propagate across at least two worker boundaries.",
+      "required_evidence_ids": [
+        "CORE-01.TWO-WORKER-CANCELLATION",
+        "CORE-01.RELIABLE-QUEUE-LIMIT"
+      ],
+      "evidence": [
+        {
+          "id": "CORE-01.TWO-WORKER-CANCELLATION",
+          "evidence_class": "subprocess",
+          "step": "tests",
+          "test_file": "crates/intent-fixture-worker/tests/blocked_progress_cancellation.rs",
+          "test_name": "task_cancellation_crosses_two_real_busy_worker_boundaries",
+          "supported_targets": [
+            "ubuntu-24.04"
+          ],
+          "inventory_name": "task_cancellation_crosses_two_real_busy_worker_boundaries",
+          "cargo_target": {
+            "package": "intent-fixture-worker",
+            "kind": "test",
+            "name": "blocked_progress_cancellation"
+          }
+        },
+        {
+          "id": "CORE-01.RELIABLE-QUEUE-LIMIT",
+          "evidence_class": "unit",
+          "step": "tests",
+          "test_file": "crates/intent-ipc/src/flow.rs",
+          "test_name": "full_reliable_queue_returns_item_instead_of_dropping_it",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "inventory_name": "flow::tests::full_reliable_queue_returns_item_instead_of_dropping_it",
+          "cargo_target": {
+            "package": "intent-ipc",
+            "kind": "lib"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CORE-01.AC05",
+      "requirement": "IPC peer authentication prevents an untrusted local process from impersonating a privileged broker.",
+      "required_evidence_ids": [
+        "CORE-01.REAL-WORKER-AUTH-NEGATIVE"
+      ],
+      "evidence": [
+        {
+          "id": "CORE-01.REAL-WORKER-AUTH-NEGATIVE",
+          "evidence_class": "subprocess",
+          "step": "tests",
+          "test_file": "crates/intent-fixture-worker/tests/supervision.rs",
+          "test_name": "wrong_bootstrap_role_generation_and_replayed_hello_never_gain_authority",
+          "supported_targets": [
+            "ubuntu-24.04"
+          ],
+          "inventory_name": "wrong_bootstrap_role_generation_and_replayed_hello_never_gain_authority",
+          "cargo_target": {
+            "package": "intent-fixture-worker",
+            "kind": "test",
+            "name": "supervision"
+          }
+        }
+      ]
+    },
+    {
+      "id": "CORE-01.AC06",
+      "requirement": "Golden contract fixtures run in CI.",
+      "required_evidence_ids": [
+        "CORE-01.RECORD-FIXTURES"
+      ],
+      "evidence": [
+        {
+          "id": "CORE-01.RECORD-FIXTURES",
+          "evidence_class": "conformance",
+          "step": "conformance",
+          "test_file": "crates/intent-conformance/src/record_fixtures.rs",
+          "test_name": "check",
+          "fixture": "fixtures/core/records-v1.json",
+          "supported_targets": [
+            "ubuntu-24.04",
+            "windows-2025",
+            "macos-15"
+          ],
+          "conformance_checks": [
+            "intent.goal_contract",
+            "intent.workspace",
+            "intent.task",
+            "intent.capability",
+            "intent.observation",
+            "intent.evidence",
+            "intent.action_proposal",
+            "intent.approval",
+            "intent.operation",
+            "intent.receipt",
+            "intent.view_definition",
+            "intent.memory_record",
+            "intent.artifact_reference"
+          ]
+        }
+      ]
+    }
+  ]
+}
