@@ -120,13 +120,18 @@ fn cancellation_crosses_control_while_real_progress_transport_is_backpressured()
     supervisor.submit_immediate(permit, BoundedText::try_new("start progress flood")?)?;
 
     let blocked_deadline = Instant::now() + Duration::from_secs(5);
-    while !marker.exists() {
+    loop {
+        match std::fs::read(&marker) {
+            Ok(contents) if contents == b"progress transport backpressured" => break,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         if Instant::now() >= blocked_deadline {
-            return Err("worker progress socket did not become backpressured".into());
+            return Err("worker progress socket marker did not publish complete backpressure state".into());
         }
         std::thread::sleep(Duration::from_millis(1));
     }
-    assert_eq!(std::fs::read(&marker)?, b"progress transport backpressured");
 
     let started = Instant::now();
     let receipt = supervisor.cancel(id, CancellationId::from_uuid(Uuid::new_v4()))?;
