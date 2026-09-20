@@ -160,7 +160,9 @@ impl RuntimeOwner {
         tx.commit()?;
         Ok(())
     }
-    /// Commit revocation before sending cancellation to the worker. Earlier admitted attempts remain uncertain.
+    /// Durable cancellation linearization point for work that has not started dispatch. Revoke
+    /// the worker and retire its unstarted claims in one writer transaction before notification.
+    /// Already-started attempts are retained for the caller's reconciliation path.
     pub fn revoke_worker(
         &mut self,
         worker: intent_contracts::WorkerInstanceId,
@@ -172,16 +174,64 @@ impl RuntimeOwner {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         current_epoch(&tx, self.epoch, false)?;
         observe_clock(&tx, now)?;
-        if tx.execute(
-            "UPDATE recovery_workers SET revoked=1 WHERE worker_id=?1 AND runtime_epoch=?2",
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM recovery_workers WHERE worker_id=?1 AND runtime_epoch=?2)",
             params![worker.to_string(), self.epoch.to_string()],
-        )? != 1
-        {
+            |row| row.get(0),
+        )?;
+        if !exists {
             return Err(RecoveryError::Missing("current worker"));
         }
         tx.execute(
-            "DELETE FROM recovery_claims WHERE worker_id=?1",
-            [worker.to_string()],
+            "UPDATE recovery_workers SET revoked=1 WHERE worker_id=?1 AND runtime_epoch=?2",
+            params![worker.to_string(), self.epoch.to_string()],
+        )?;
+
+        let claimed = {
+            let mut statement = tx.prepare(
+                "SELECT a.operation_id,a.attempt_id,a.outbox_id \
+                 FROM recovery_claims c JOIN recovery_attempts a ON a.outbox_id=c.outbox_id \
+                 WHERE c.worker_id=?1 AND c.runtime_epoch=?2 AND a.runtime_epoch=?2 \
+                   AND a.started_at_micros IS NULL ORDER BY a.operation_id",
+            )?;
+            statement
+                .query_map(params![worker.to_string(), self.epoch.to_string()], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        for (operation, attempt, outbox) in claimed {
+            let operation_id = dispatch::parse(&operation)?;
+            let attempt_id = dispatch::parse(&attempt)?;
+            let op = load(&tx, operation_id)?;
+            if op.state() != DurableOperationState::DispatchPending
+                || op.attempt_identity() != Some(attempt_id)
+            {
+                return Err(RecoveryError::Integrity("claimed attempt state changed"));
+            }
+            if tx.execute(
+                "UPDATE outbox_messages SET state='failed',lease_owner=NULL,lease_expires_at_micros=NULL, \
+                 failure_detail='cancelled by worker revocation before dispatch',updated_at_micros=?2 \
+                 WHERE outbox_id=?1 AND state IN ('pending','leased')",
+                params![outbox, now.get()],
+            )? != 1
+            {
+                return Err(RecoveryError::Integrity("claimed outbox state changed"));
+            }
+            tx.execute(
+                "DELETE FROM recovery_approval_heads WHERE operation_id=?1",
+                [operation],
+            )?;
+            tx.execute("DELETE FROM recovery_claims WHERE outbox_id=?1", [outbox])?;
+        }
+
+        tx.execute(
+            "DELETE FROM recovery_claims WHERE worker_id=?1 AND runtime_epoch=?2",
+            params![worker.to_string(), self.epoch.to_string()],
         )?;
         tx.commit()?;
         Ok(())
