@@ -20,6 +20,7 @@ REQUIRED_CHECKS = (
     "format",
     "clippy",
     "tests",
+    "test_inventory",
     "doctests",
     "fuzz_compile",
     "architecture",
