@@ -14,6 +14,7 @@ from typing import Any
 MANIFEST = Path("docs/core-01-conformance.json")
 VALID_CLASSES = {"unit", "subprocess", "conformance", "platform"}
 VALID_STEPS = {"tests", "doctests", "conformance", "architecture", "fuzz_compile"}
+TEST_INVENTORY_STEP = "test_inventory"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_ERROR = 512
 
@@ -131,7 +132,12 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> list[dict[str, An
 
 
 def build_report(
-    manifest: dict[str, Any], root: Path, platform: str, commit: str, steps: dict[str, Any]
+    manifest: dict[str, Any],
+    root: Path,
+    platform: str,
+    commit: str,
+    steps: dict[str, Any],
+    test_inventory: set[str],
 ) -> tuple[dict[str, Any], bool]:
     if not COMMIT_RE.fullmatch(commit):
         raise GateError("commit must be an exact 40-character lowercase SHA")
@@ -143,7 +149,18 @@ def build_report(
         for evidence in invariant["evidence"]:
             supported = platform in evidence["supported_targets"]
             outcome = steps.get(evidence["step"], {}).get("outcome", "not_run") if supported else "unsupported"
-            passed = supported and outcome == "success"
+            inventory_result = "not_applicable"
+            if supported and evidence["evidence_class"] in {"unit", "subprocess"}:
+                inventory_outcome = steps.get(TEST_INVENTORY_STEP, {}).get("outcome", "not_run")
+                inventory_result = (
+                    "present" if inventory_outcome == "success" and evidence["test_name"] in test_inventory
+                    else "missing"
+                )
+            passed = (
+                supported
+                and outcome == "success"
+                and inventory_result in {"not_applicable", "present"}
+            )
             evidence_results.append(
                 {
                     "id": evidence["id"],
@@ -155,6 +172,7 @@ def build_report(
                     "supported_targets": evidence["supported_targets"],
                     "tested_revision": commit if supported else None,
                     "result": outcome,
+                    "test_inventory": inventory_result,
                     "passed": passed,
                 }
             )
@@ -190,6 +208,19 @@ def build_report(
     )
 
 
+def parse_test_inventory(path: Path) -> set[str]:
+    tests: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.endswith(": test"):
+            continue
+        qualified = line[: -len(": test")].strip()
+        if qualified:
+            tests.add(qualified.rsplit("::", 1)[-1])
+    if not tests:
+        raise GateError("test inventory contains no executable tests")
+    return tests
+
+
 def write_report(path: Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -203,6 +234,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--platform", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--test-inventory", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -214,7 +246,10 @@ def main() -> int:
     try:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         steps = json.loads(os.environ.get("CORE_STEP_RESULTS", "{}"))
-        report, passed = build_report(manifest, root, args.platform, args.commit, steps)
+        inventory = parse_test_inventory(args.test_inventory)
+        report, passed = build_report(
+            manifest, root, args.platform, args.commit, steps, inventory
+        )
     except (GateError, json.JSONDecodeError, OSError) as error:
         report = {
             "schema_version": 1,
