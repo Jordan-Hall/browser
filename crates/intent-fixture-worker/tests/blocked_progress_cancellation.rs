@@ -128,7 +128,9 @@ fn cancellation_crosses_control_while_real_progress_transport_is_backpressured()
             Err(error) => return Err(error.into()),
         }
         if Instant::now() >= blocked_deadline {
-            return Err("worker progress socket marker did not publish complete backpressure state".into());
+            return Err(
+                "worker progress socket marker did not publish complete backpressure state".into(),
+            );
         }
         std::thread::sleep(Duration::from_millis(1));
     }
