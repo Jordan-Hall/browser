@@ -37,8 +37,10 @@ impl RuntimeOwner {
             let tx = store
                 .connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)?;
+            // Commit the fence before planning. A planning failure cannot reopen dispatch.
             tx.execute("UPDATE runtime_control SET epoch=?1, dispatch_enabled=0, reason='startup recovery required' WHERE singleton=1", [epoch.to_string()])?;
             tx.execute("DELETE FROM recovery_claims", [])?;
+            // Never use old approvals after restart/restore, even when their wall clock has not expired.
             tx.execute("DELETE FROM recovery_approval_heads", [])?;
             if now.get() < 0 {
                 return Err(RecoveryError::Invalid("negative runtime clock"));
@@ -56,12 +58,16 @@ impl RuntimeOwner {
     pub fn epoch(&self) -> Uuid {
         self.epoch
     }
+    /// Trusted application state access. Low-level operation/outbox mutators cannot bypass managed action guards.
     pub fn state(&self) -> &StateStore {
         &self.store
     }
     pub fn state_mut(&mut self) -> &mut StateStore {
         &mut self.store
     }
+
+    /// Require this owner to still be in its startup fence before installing durable archive
+    /// state. This check grants no authority and deliberately refuses a running incarnation.
     pub fn require_workspace_activation_fence(&self) -> Result<(), RecoveryError> {
         current_epoch(&self.store.connection, self.epoch, false)?;
         let enabled: bool = self.store.connection.query_row(
@@ -76,6 +82,7 @@ impl RuntimeOwner {
         }
         Ok(())
     }
+
     pub fn update_authority(
         &mut self,
         input: AuthorityUpdate,
@@ -179,6 +186,7 @@ impl RuntimeOwner {
             "UPDATE recovery_workers SET revoked=1 WHERE worker_id=?1 AND runtime_epoch=?2",
             params![worker.to_string(), self.epoch.to_string()],
         )?;
+
         let claimed = {
             let mut statement = tx.prepare(
                 "SELECT a.operation_id,a.attempt_id,a.outbox_id \
@@ -220,6 +228,7 @@ impl RuntimeOwner {
             )?;
             tx.execute("DELETE FROM recovery_claims WHERE outbox_id=?1", [outbox])?;
         }
+
         tx.execute(
             "DELETE FROM recovery_claims WHERE worker_id=?1 AND runtime_epoch=?2",
             params![worker.to_string(), self.epoch.to_string()],
@@ -230,6 +239,7 @@ impl RuntimeOwner {
 }
 impl Drop for RuntimeOwner {
     fn drop(&mut self) {
+        // A failed shutdown write does not allow a new owner to inherit this epoch: open_profile always fences first.
         let _ = self.store.connection.execute("UPDATE runtime_control SET dispatch_enabled=0,reason='runtime owner stopped' WHERE singleton=1 AND epoch=?1",[self.epoch.to_string()]);
     }
 }
@@ -301,8 +311,10 @@ pub(super) fn managed(db: &Connection, id: OperationId) -> rusqlite::Result<bool
         |r| r.get(0),
     )
 }
+
 #[cfg(test)]
 mod tests;
+
 pub(super) fn effect_name(effect: intent_recovery::RecoveryEffect) -> &'static str {
     match effect {
         intent_recovery::RecoveryEffect::ReadOnly => "read_only",
