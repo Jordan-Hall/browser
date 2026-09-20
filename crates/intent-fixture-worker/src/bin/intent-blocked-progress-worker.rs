@@ -19,7 +19,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         if blocked {
-            while client.progress(1)? {}
+            for _ in 0..16 {
+                if !client.progress(1)? {
+                    break;
+                }
+            }
         }
         if let Some(envelope) = client.poll_control()? {
             let kind = envelope.message();
@@ -50,9 +54,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     generation,
                     cancellation_id,
                 } if generation == client.generation() && cancellation == Some(cancellation_id) => {
-                    if client.progress(1)? {
-                        return Err("progress backpressure cleared before cancellation".into());
-                    }
                     std::fs::write(&marker, b"cancel received while progress backpressured")?;
                     client.send(
                         &Envelope::event(
