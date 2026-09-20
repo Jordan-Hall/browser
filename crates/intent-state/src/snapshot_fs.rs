@@ -280,8 +280,14 @@ mod tests {
             attempts.set(attempts.get() + 1);
             Err(TryLockError::WouldBlock)
         });
-        assert!(result.is_err(), "persistent lock contention unexpectedly succeeded");
-        assert_eq!(result.err().map(|error| error.kind()), Some(io::ErrorKind::Other));
+        assert!(
+            result.is_err(),
+            "persistent lock contention unexpectedly succeeded"
+        );
+        assert_eq!(
+            result.err().map(|error| error.kind()),
+            Some(io::ErrorKind::Other)
+        );
         assert_eq!(attempts.get(), PROFILE_LOCK_RETRIES + 1);
     }
 }
