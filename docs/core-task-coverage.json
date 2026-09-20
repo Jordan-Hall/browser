@@ -187,10 +187,13 @@
       "title": "Build bounded wire framing and errors",
       "implementation_prs": [
         788,
-        813
+        813,
+        823,
+        824,
+        850
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "#813 pins the existing JSON error spellings and adds bounded record imports with schema-first, duplicate-key and unknown-field checks. Extended parser qualification, compatibility review and independent task acceptance remain.",
+      "remaining": "Framing poison/EOF behavior (#823), aggregate read budgets (#824), strict canonical parsing (#813), and measured encoder allocation (#850) are CI-qualified. Whole-task compatibility review reproduced silent discard of nested Event message fields; that parser gap, final compatibility evidence and main acceptance remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -205,6 +208,20 @@
           "scope": "Exact v1 schema and migration validation plus bounded parser-fuzz infrastructure in #813. Execution results are recorded on the PR; these files do not establish full task or production acceptance.",
           "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
           "verification_report": "docs/verification/core-record-validation-20260918.json"
+        },
+        {
+          "publication": "published",
+          "commit": "f6d9d871560411ffa8ab66da6f93efc9c890008f",
+          "scope": "Dedicated requested-allocation probe at three limits, materializing positive control and local full-buffer mutation; full workspace and all three native CI jobs passed; exact native samples/source blobs retained",
+          "source_files": [
+            "crates/intent-ipc/tests/encoder_allocations.rs",
+            "crates/intent-ipc/tests/support/allocation_meter.rs",
+            ".github/workflows/ci.yml"
+          ],
+          "test_files": [
+            "crates/intent-ipc/tests/encoder_allocations.rs"
+          ],
+          "verification_report": "docs/verification/core-encoder-allocation-ci-20260920.json"
         }
       ]
     },
