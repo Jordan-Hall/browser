@@ -1,4 +1,4 @@
-#![cfg(unix)]
+#![cfg(all(target_os = "linux", target_env = "gnu"))]
 #![forbid(unsafe_code)]
 
 use intent_contracts::{
