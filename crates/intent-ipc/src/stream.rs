@@ -50,6 +50,7 @@ pub struct StreamEndpoint<T> {
     queue: PriorityQueue<StreamEvent<T>>,
     cancellations: CancellationRegistry,
     pending_cancel_acks: BTreeSet<CancellationRegistration>,
+    pending_local_cancel_acks: BTreeSet<CancellationRegistration>,
 }
 
 impl<T> StreamEndpoint<T> {
@@ -59,6 +60,7 @@ impl<T> StreamEndpoint<T> {
             queue: PriorityQueue::new(queue_limits),
             cancellations: CancellationRegistry::new(max_cancellations),
             pending_cancel_acks: BTreeSet::new(),
+            pending_local_cancel_acks: BTreeSet::new(),
         }
     }
 
@@ -132,9 +134,16 @@ impl<T> StreamEndpoint<T> {
         &mut self,
         registration: CancellationRegistration,
     ) -> Result<(), StreamError<T>> {
-        self.cancellations
+        match self
+            .cancellations
             .state(registration)
-            .map_err(StreamError::Cancellation)?;
+            .map_err(StreamError::Cancellation)?
+        {
+            CancellationState::Active => {}
+            CancellationState::Cancelled { .. } => {
+                return Err(StreamError::CancellationInactive(registration));
+            }
+        }
         if self.queue.has_reserved(|event| {
             matches!(
                 event,
@@ -143,6 +152,7 @@ impl<T> StreamEndpoint<T> {
                 } if *queued == registration
             )
         }) {
+            self.pending_local_cancel_acks.insert(registration);
             return Ok(());
         }
         self.queue
@@ -150,7 +160,36 @@ impl<T> StreamEndpoint<T> {
                 DeliveryClass::ReservedControl,
                 StreamEvent::Cancel { registration },
             )
-            .map_err(StreamError::Enqueue)
+            .map_err(StreamError::Enqueue)?;
+        self.pending_local_cancel_acks.insert(registration);
+        Ok(())
+    }
+
+    /// Consume the peer acknowledgement for a locally initiated cancellation.
+    /// Until that acknowledgement arrives the registration is not dispatch-safe,
+    /// even though the durable cancellation record remains Active so an ACK can
+    /// be distinguished from an independently received Cancel. Duplicate ACKs
+    /// after the transition are harmless.
+    pub fn accept_cancel_ack(
+        &mut self,
+        registration: CancellationRegistration,
+        at: UnixTimestampMicros,
+    ) -> Result<(), StreamError<T>> {
+        let state = self
+            .cancellations
+            .state(registration)
+            .map_err(StreamError::Cancellation)?;
+        if self.pending_local_cancel_acks.contains(&registration) {
+            self.cancellations
+                .cancel(registration, at)
+                .map_err(StreamError::Cancellation)?;
+            self.pending_local_cancel_acks.remove(&registration);
+            return Ok(());
+        }
+        match state {
+            CancellationState::Cancelled { .. } => Ok(()),
+            CancellationState::Active => Err(StreamError::UnexpectedCancellationAck(registration)),
+        }
     }
 
     /// Apply cancellation before attempting to queue its acknowledgement.
@@ -202,6 +241,9 @@ impl<T> StreamEndpoint<T> {
         if self.pending_cancel_acks.contains(&registration) {
             return Err(StreamError::CancellationAckPending(registration));
         }
+        if self.pending_local_cancel_acks.contains(&registration) {
+            return Err(StreamError::CancellationAckReceiptPending(registration));
+        }
         if self
             .queue
             .has_any(|event| event.registration() == registration)
@@ -217,7 +259,8 @@ impl<T> StreamEndpoint<T> {
     /// predicate for a registered generation.
     #[must_use]
     pub fn is_active(&self, registration: CancellationRegistration) -> bool {
-        self.cancellations.is_active(registration)
+        !self.pending_local_cancel_acks.contains(&registration)
+            && self.cancellations.is_active(registration)
     }
 
     #[must_use]
@@ -231,8 +274,7 @@ impl<T> StreamEndpoint<T> {
     #[must_use]
     pub fn pop_next(&mut self) -> Option<(DeliveryClass, StreamEvent<T>)> {
         while let Some((class, event)) = self.queue.pop_next() {
-            if event.is_cancellation_control() || self.cancellations.is_active(event.registration())
-            {
+            if event.is_cancellation_control() || self.is_active(event.registration()) {
                 return Some((class, event));
             }
         }
@@ -245,11 +287,14 @@ impl<T> StreamEndpoint<T> {
     }
 
     fn require_active(&self, registration: CancellationRegistration) -> Result<(), StreamError<T>> {
-        match self
+        let state = self
             .cancellations
             .state(registration)
-            .map_err(StreamError::Cancellation)?
-        {
+            .map_err(StreamError::Cancellation)?;
+        if self.pending_local_cancel_acks.contains(&registration) {
+            return Err(StreamError::CancellationInactive(registration));
+        }
+        match state {
             CancellationState::Active => Ok(()),
             CancellationState::Cancelled { .. } => {
                 Err(StreamError::CancellationInactive(registration))
@@ -265,6 +310,8 @@ pub enum StreamError<T> {
     Enqueue(EnqueueError<StreamEvent<T>>),
     CancellationAppliedAckPending(EnqueueError<StreamEvent<T>>),
     CancellationAckPending(CancellationRegistration),
+    CancellationAckReceiptPending(CancellationRegistration),
+    UnexpectedCancellationAck(CancellationRegistration),
     CancellationEventsPending(CancellationRegistration),
     CancellationInactive(CancellationRegistration),
 }
@@ -284,6 +331,16 @@ impl<T> fmt::Display for StreamError<T> {
             Self::CancellationAckPending(registration) => write!(
                 formatter,
                 "cancellation acknowledgement is pending for {}",
+                registration.cancellation_id()
+            ),
+            Self::CancellationAckReceiptPending(registration) => write!(
+                formatter,
+                "peer cancellation acknowledgement has not been received for {}",
+                registration.cancellation_id()
+            ),
+            Self::UnexpectedCancellationAck(registration) => write!(
+                formatter,
+                "unexpected cancellation acknowledgement for {}",
                 registration.cancellation_id()
             ),
             Self::CancellationEventsPending(registration) => write!(
@@ -461,6 +518,7 @@ mod tests {
             ))
         );
         assert_eq!(endpoint.pop_next(), None);
+        endpoint.accept_cancel_ack(registration, now)?;
         endpoint.retire_cancellation(registration)?;
         Ok(())
     }
@@ -667,6 +725,65 @@ mod tests {
     }
 
     #[test]
+    fn locally_initiated_cancellations_require_ack_and_reuse_capacity() -> Result<(), Box<dyn Error>>
+    {
+        let limits = QueueLimits::try_new(1, 1, 1, 1)?;
+        let mut endpoint = StreamEndpoint::<u8>::new(limits, 1);
+        let now = UnixTimestampMicros::try_new(123)?;
+
+        for sequence in 0_u128..8 {
+            let id = CancellationId::from_str(&format!(
+                "00000000-0000-0000-0000-{:012x}",
+                0x2000 + sequence
+            ))?;
+            let registration = registration(id, 0x201)?;
+            endpoint.register_cancellation(registration)?;
+            endpoint.enqueue_reliable(registration, 7)?;
+            endpoint.enqueue_cancel(registration)?;
+
+            assert!(!endpoint.is_active(registration));
+            assert!(!endpoint.is_cancelled(registration));
+            assert!(matches!(
+                endpoint.enqueue_reliable(registration, 8),
+                Err(StreamError::CancellationInactive(pending)) if pending == registration
+            ));
+            assert!(matches!(
+                endpoint.retire_cancellation(registration),
+                Err(StreamError::CancellationAckReceiptPending(pending)) if pending == registration
+            ));
+            assert_eq!(
+                endpoint.pop_next(),
+                Some((
+                    DeliveryClass::ReservedControl,
+                    StreamEvent::Cancel { registration }
+                ))
+            );
+            assert_eq!(endpoint.pop_next(), None);
+
+            endpoint.accept_cancel_ack(registration, now)?;
+            endpoint.accept_cancel_ack(registration, now)?;
+            assert!(endpoint.is_cancelled(registration));
+            endpoint.retire_cancellation(registration)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unexpected_ack_does_not_cancel_active_work() -> Result<(), Box<dyn Error>> {
+        let mut endpoint = StreamEndpoint::<u8>::new(QueueLimits::try_new(1, 1, 1, 1)?, 1);
+        let registration = registration(cancellation_id()?, 0x301)?;
+        let now = UnixTimestampMicros::try_new(123)?;
+        endpoint.register_cancellation(registration)?;
+        assert!(matches!(
+            endpoint.accept_cancel_ack(registration, now),
+            Err(StreamError::UnexpectedCancellationAck(unexpected)) if unexpected == registration
+        ));
+        assert!(endpoint.is_active(registration));
+        assert!(!endpoint.is_cancelled(registration));
+        Ok(())
+    }
+
+    #[test]
     fn retirement_fences_late_generations_and_reuses_registry_capacity()
     -> Result<(), Box<dyn Error>> {
         let limits = QueueLimits::try_new(1, 1, 1, 1)?;
@@ -693,6 +810,11 @@ mod tests {
             ))
         );
         endpoint.accept_cancel(old, now)?;
+        assert!(matches!(
+            endpoint.retire_cancellation(old),
+            Err(StreamError::CancellationAckReceiptPending(pending)) if pending == old
+        ));
+        endpoint.accept_cancel_ack(old, now)?;
         assert!(matches!(
             endpoint.retire_cancellation(old),
             Err(StreamError::CancellationEventsPending(pending)) if pending == old
