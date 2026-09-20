@@ -26,7 +26,7 @@ class CoreConformanceGateTests(unittest.TestCase):
         }
         self.commit = "a" * 40
         self.inventory = {
-            item["test_name"]
+            item["inventory_name"]
             for invariant in self.manifest["invariants"]
             for item in invariant["evidence"]
             if item["evidence_class"] in {"unit", "subprocess"}
@@ -105,6 +105,11 @@ class CoreConformanceGateTests(unittest.TestCase):
         with self.assertRaises(GATE.GateError):
             GATE.validate_manifest(manifest, ROOT)
 
+        manifest = copy.deepcopy(self.manifest)
+        del manifest["invariants"][0]["evidence"][1]["inventory_name"]
+        with self.assertRaises(GATE.GateError):
+            GATE.validate_manifest(manifest, ROOT)
+
     def test_inconsistent_reused_evidence_id_is_rejected(self):
         manifest = copy.deepcopy(self.manifest)
         manifest["invariants"][-1]["evidence"][0]["step"] = "tests"
@@ -135,7 +140,7 @@ class CoreConformanceGateTests(unittest.TestCase):
             with self.assertRaises(GATE.GateError):
                 GATE.parse_test_inventory(path)
             path.write_text("module::real_case: test\n")
-            self.assertEqual(GATE.parse_test_inventory(path), {"real_case"})
+            self.assertEqual(GATE.parse_test_inventory(path), {"module::real_case"})
 
     def test_failure_report_is_written_atomically(self):
         with tempfile.TemporaryDirectory() as directory:
