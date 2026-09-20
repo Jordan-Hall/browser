@@ -421,11 +421,7 @@ fn compensated_original_rejects_later_decisive_duplicate() -> Result {
             receipt: digest(b"compensation receipt"),
         },
     )?;
-    o.reconcile(
-        signed(&compensation_evidence)?,
-        rev(&o, 31)?,
-        t(150)?,
-    )?;
+    o.reconcile(signed(&compensation_evidence)?, rev(&o, 31)?, t(150)?)?;
     let before = projected(&o, 30)?;
     assert_eq!(before.stage, ExecutionStage::Compensated);
     let count_before: i64 = o.store.connection.query_row(
@@ -435,10 +431,7 @@ fn compensated_original_rejects_later_decisive_duplicate() -> Result {
     )?;
 
     let late = attestation(&original, ReconciliationVerdict::Committed { receipt })?;
-    assert!(
-        o.reconcile(signed(&late)?, rev(&o, 30)?, t(151)?)
-            .is_err()
-    );
+    assert!(o.reconcile(signed(&late)?, rev(&o, 30)?, t(151)?).is_err());
     let count_after: i64 = o.store.connection.query_row(
         "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
         [id::<OperationId>(30)?.to_string()],
