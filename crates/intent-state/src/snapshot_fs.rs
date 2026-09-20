@@ -5,10 +5,12 @@ use nix::{
     unistd::{UnlinkatFlags, geteuid, unlinkat},
 };
 use std::{
-    fs::File,
+    fs::{File, TryLockError},
     io,
     os::{fd::AsRawFd, unix::fs::MetadataExt},
     path::{Component, Path, PathBuf},
+    thread,
+    time::Duration,
 };
 use uuid::Uuid;
 
@@ -16,6 +18,21 @@ const DIRECTORY_FLAGS: OFlag = OFlag::O_RDONLY
     .union(OFlag::O_DIRECTORY)
     .union(OFlag::O_NOFOLLOW)
     .union(OFlag::O_CLOEXEC);
+const PROFILE_LOCK_RETRIES: usize = 16;
+const PROFILE_LOCK_RETRY_DELAY: Duration = Duration::from_millis(1);
+
+fn retry_profile_lock(mut attempt: impl FnMut() -> Result<(), TryLockError>) -> io::Result<()> {
+    for retry in 0..=PROFILE_LOCK_RETRIES {
+        match attempt() {
+            Ok(()) => return Ok(()),
+            Err(TryLockError::WouldBlock) if retry < PROFILE_LOCK_RETRIES => {
+                thread::sleep(PROFILE_LOCK_RETRY_DELAY);
+            }
+            Err(error) => return Err(io::Error::other(error.to_string())),
+        }
+    }
+    unreachable!("bounded lock retry loop always returns")
+}
 
 #[derive(Debug)]
 pub(crate) struct Directory(File);
@@ -117,9 +134,7 @@ impl Directory {
     }
 
     pub fn lock_profile(&self) -> io::Result<File> {
-        self.0
-            .try_lock()
-            .map_err(|error| io::Error::other(error.to_string()))?;
+        retry_profile_lock(|| self.0.try_lock())?;
         let file = File::from(openat(
             &self.0,
             "state.sqlite3",
@@ -140,8 +155,7 @@ impl Directory {
                 "profile database must be a private, singly linked regular file",
             ));
         }
-        file.try_lock()
-            .map_err(|error| io::Error::other(error.to_string()))?;
+        retry_profile_lock(|| file.try_lock())?;
         self.sync()?;
         Ok(file)
     }
@@ -236,4 +250,44 @@ pub(crate) fn check_name(name: &str) -> io::Result<()> {
 
 fn invalid(detail: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, detail)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PROFILE_LOCK_RETRIES, retry_profile_lock};
+    use std::{cell::Cell, fs::TryLockError, io};
+
+    #[test]
+    fn transient_profile_lock_contention_is_retried() -> io::Result<()> {
+        let attempts = Cell::new(0_usize);
+        retry_profile_lock(|| {
+            let attempt = attempts.get();
+            attempts.set(attempt + 1);
+            if attempt < 2 {
+                Err(TryLockError::WouldBlock)
+            } else {
+                Ok(())
+            }
+        })?;
+        assert_eq!(attempts.get(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn persistent_profile_lock_contention_still_fails_closed() {
+        let attempts = Cell::new(0_usize);
+        let result = retry_profile_lock(|| {
+            attempts.set(attempts.get() + 1);
+            Err(TryLockError::WouldBlock)
+        });
+        assert!(
+            result.is_err(),
+            "persistent lock contention unexpectedly succeeded"
+        );
+        assert_eq!(
+            result.err().map(|error| error.kind()),
+            Some(io::ErrorKind::Other)
+        );
+        assert_eq!(attempts.get(), PROFILE_LOCK_RETRIES + 1);
+    }
 }
