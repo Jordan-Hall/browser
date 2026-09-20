@@ -92,8 +92,12 @@ impl WorkerClient {
         }
     }
     pub fn send(&mut self, envelope: &Envelope<ControlMessage>) -> Result<(), SupervisorError> {
-        self.control
-            .queue(encode_envelope(envelope, Some(&self.codec))?)?;
+        let bytes = encode_envelope(envelope, Some(&self.codec))?;
+        if matches!(envelope.payload(), ControlMessage::Cancelled { .. }) {
+            self.control.queue_reserved(bytes)?;
+        } else {
+            self.control.queue(bytes)?;
+        }
         self.control.flush(4096)?;
         Ok(())
     }
@@ -134,5 +138,68 @@ impl WorkerClient {
         )?)?;
         self.progress.flush(4096)?;
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wire::{decode, offer, wire_limits};
+    use intent_contracts::{CancellationId, TraceId};
+    use intent_ipc::{Envelope, Frame, FrameLane};
+    use uuid::Uuid;
+
+    #[test]
+    fn cancellation_ack_queues_behind_a_partially_written_control_frame()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (worker_control, peer_control) = UnixStream::pair()?;
+        let (worker_progress, _peer_progress) = UnixStream::pair()?;
+        let codec = ControlCodec::negotiate(&offer()?)?;
+        let generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
+        let mut client = WorkerClient {
+            generation,
+            codec,
+            control: FramedSocket::new(worker_control)?,
+            progress: FramedSocket::new(worker_progress)?,
+            heartbeat: 0,
+            progress_sequence: 0,
+        };
+        let filler = Frame::new(FrameLane::Control, vec![7; 5000]).encode(wire_limits())?;
+        client.control.queue(filler)?;
+        client.control.flush(4096)?;
+        assert!(!client.control.idle());
+
+        let trace = TraceId::from_uuid(Uuid::new_v4());
+        let cancellation_id = CancellationId::from_uuid(Uuid::new_v4());
+        client.send(
+            &Envelope::event(
+                trace,
+                ControlMessage::Cancelled {
+                    generation,
+                    cancellation_id,
+                },
+            )
+            .with_cancellation_id(cancellation_id),
+        )?;
+
+        let mut peer = FramedSocket::new(peer_control)?;
+        let mut budget = 16 * 1024;
+        let first = peer.read_one(&mut budget)?;
+        assert!(matches!(first, ReadOutcome::Frame(frame) if frame.payload() == vec![7; 5000]));
+        let second = peer.read_one(&mut budget)?;
+        let ReadOutcome::Frame(frame) = second else {
+            return Err("reserved cancellation acknowledgement was not delivered".into());
+        };
+        let envelope: Envelope<ControlMessage> = decode(&frame, Some(&client.codec))?;
+        assert_eq!(envelope.trace_id(), trace);
+        assert_eq!(envelope.cancellation_id(), Some(cancellation_id));
+        assert!(matches!(
+            envelope.into_payload(),
+            ControlMessage::Cancelled {
+                generation: actual_generation,
+                cancellation_id: actual_cancellation,
+            } if actual_generation == generation && actual_cancellation == cancellation_id
+        ));
+        Ok(())
     }
 }
