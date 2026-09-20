@@ -3,12 +3,29 @@ use intent_contracts::{CancellationId, RequestId, SchemaVersion, TraceId, UnixTi
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EnvelopeKind {
     Request { request_id: RequestId },
     Response { request_id: RequestId },
     Event,
+}
+
+impl<'de> Deserialize<'de> for EnvelopeKind {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+        enum WireKind {
+            Request { request_id: RequestId },
+            Response { request_id: RequestId },
+            Event {},
+        }
+        Ok(match WireKind::deserialize(deserializer)? {
+            WireKind::Request { request_id } => Self::Request { request_id },
+            WireKind::Response { request_id } => Self::Response { request_id },
+            WireKind::Event {} => Self::Event,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

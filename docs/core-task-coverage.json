@@ -98,8 +98,8 @@
         847,
         849
       ],
-      "status": "accepted",
-      "remaining": "",
+      "status": "implemented_pending_acceptance",
+      "remaining": "Full/minimal fixtures, immutable action binding, checked execution outcomes and per-family invariants are implemented. Independent whole-task review approved combined source 37c996f, and its exact-source CI passed. PRs #847 and #849 must merge before final main acceptance; trusted provider execution remains downstream work.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -178,13 +178,7 @@
           ],
           "verification_report": "docs/verification/core-records-combined-20260920.json"
         }
-      ],
-      "acceptance_evidence": {
-        "commit": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
-        "reviewer": "Separate Codex whole-task acceptance reviewer; refreshed all six changed task files against approved37c996f",
-        "review_url": "https://github.com/Jordan-Hall/browser/issues/123#issuecomment-5751468206",
-        "report": "docs/verification/core-records-main-acceptance-20260920.json"
-      }
+      ]
     },
     {
       "issue": 124,
@@ -193,10 +187,14 @@
       "title": "Build bounded wire framing and errors",
       "implementation_prs": [
         788,
-        813
+        813,
+        823,
+        824,
+        850,
+        851
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "#813 pins the existing JSON error spellings and adds bounded record imports with schema-first, duplicate-key and unknown-field checks. Extended parser qualification, compatibility review and independent task acceptance remain.",
+      "remaining": "Framing, EOF/poisoning, aggregate read budgets, strict canonical parsing, measured encoder allocation and strict nested Event fields are implemented. Independent task review approved source 3c82332; exact-source workspace, native and fuzz CI passed. The prerequisite PR stack must merge before final main acceptance.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -211,6 +209,33 @@
           "scope": "Exact v1 schema and migration validation plus bounded parser-fuzz infrastructure in #813. Execution results are recorded on the PR; these files do not establish full task or production acceptance.",
           "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
           "verification_report": "docs/verification/core-record-validation-20260918.json"
+        },
+        {
+          "publication": "published",
+          "commit": "f6d9d871560411ffa8ab66da6f93efc9c890008f",
+          "scope": "Dedicated requested-allocation probe at three limits, materializing positive control and local full-buffer mutation; full workspace and all three native CI jobs passed; exact native samples/source blobs retained",
+          "source_files": [
+            "crates/intent-ipc/tests/encoder_allocations.rs",
+            "crates/intent-ipc/tests/support/allocation_meter.rs",
+            ".github/workflows/ci.yml"
+          ],
+          "test_files": [
+            "crates/intent-ipc/tests/encoder_allocations.rs"
+          ],
+          "verification_report": "docs/verification/core-encoder-allocation-ci-20260920.json"
+        },
+        {
+          "publication": "published",
+          "commit": "3c82332aeddd9bdae44c3609d669360c952790d2",
+          "scope": "Strict Event metadata with unchanged valid forms; finite v1 compatibility review; all 276 archived source blobs and 54 source entries per native artifact matched; independent whole-task approval subject to merge",
+          "source_files": [
+            "crates/intent-ipc/src/envelope.rs",
+            "docs/core-wire-compatibility.md"
+          ],
+          "test_files": [
+            "crates/intent-ipc/tests/hardening.rs"
+          ],
+          "verification_report": "docs/verification/core-bounded-wire-ci-20260920.json"
         }
       ]
     },
@@ -1380,10 +1405,11 @@
       "implementation_evidence": []
     }
   ],
-  "reviewed_remote_head": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
+  "reviewed_remote_head": "5cdcd5ef71940cd3bcc129cbd02ac68c20aa7ce7",
   "current_source": {
     "publication": "published",
-    "commit": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
-    "scope": "Integrated main after PRs #847 and #849. T01, T02 and T03 are accepted; remaining task status and evidence are recorded individually. Overall CORE remains incomplete."
+    "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
+    "implementation_pr": 813,
+    "scope": "Record and migration validation on the implemented broker/recovery stack. All task acceptance remains open."
   }
 }
