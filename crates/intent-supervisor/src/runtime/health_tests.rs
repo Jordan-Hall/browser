@@ -1,6 +1,6 @@
 use super::*;
 use intent_ipc::{Frame, FrameLane};
-use std::{error::Error, os::unix::net::UnixStream};
+use std::{error::Error, io::Write, os::unix::net::UnixStream};
 
 fn policy() -> HealthPolicy {
     HealthPolicy {

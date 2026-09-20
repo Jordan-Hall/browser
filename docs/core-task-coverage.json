@@ -252,7 +252,7 @@
         854
       ],
       "status": "partially_implemented",
-      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Issued move-only verifiers and connected peer observation are published in #854 at 5f94b12 with qualified exact-source CI, real Windows pipes and a Linux silent-peer mutation control. Secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Issued move-only verifiers and connected peer observation are published in #854 at 5f94b12 with qualified exact-source CI, real Windows pipes and a Linux silent-peer mutation control. Owned bootstrap token and enumerated application-buffer disposal are locally verified; publication and exact-source CI remain pending. JSON/compiler/kernel copies are outside that claim. Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -323,6 +323,23 @@
           "scope": "Issued verifier and connected observation API; no public caller-created observed evidence or token-to-verifier constructor; not whole-task acceptance.",
           "verification_report": "docs/verification/core-authentication-api-20260920.json",
           "commit": "5f94b126a05b2ab7d410cfe7b32cc55938e1a740"
+        },
+        {
+          "publication": "unpublished",
+          "scope": "Best-effort erasure of owned typed tokens, bounded handshake output and enumerated receive/partial-decoder storage; no whole-memory or platform-supervisor acceptance.",
+          "source_files": [
+            "crates/intent-local-transport/src/auth.rs",
+            "crates/intent-ipc/src/erasing_bytes.rs",
+            "crates/intent-ipc/src/secret_frame.rs",
+            "crates/intent-supervisor/src/wire.rs"
+          ],
+          "test_files": [
+            "crates/intent-ipc/src/disposal_tests.rs",
+            "crates/intent-local-transport/src/auth/tests.rs",
+            "crates/intent-supervisor/src/wire/disposal_tests.rs",
+            "crates/intent-fixture-worker/tests/startup_expiry.rs"
+          ],
+          "verification_report": "docs/verification/core-bootstrap-secret-disposal-20260920.json"
         }
       ]
     },

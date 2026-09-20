@@ -8,13 +8,18 @@ mod codec;
 mod document_import;
 mod document_syntax;
 mod envelope;
+mod erasing_bytes;
 mod error;
+
+#[cfg(test)]
+mod disposal_tests;
 mod flow;
 mod frame;
 mod legacy_import;
 mod limits;
 mod negotiation;
 mod record_codec;
+mod secret_frame;
 mod stream;
 mod strict_json;
 
@@ -24,7 +29,7 @@ pub use cancellation::{
 };
 pub use codec::ControlCodec;
 pub use document_import::{CoreDocumentImport, ReadOnlyCoreDocument, import_core_document};
-pub use envelope::{Envelope, EnvelopeKind, decode_control, encode_control};
+pub use envelope::{Envelope, EnvelopeKind, decode_control, decode_control_owned, encode_control};
 pub use error::{WireError, WireErrorCode};
 pub use flow::{
     ArtifactDispatch, CreditError, DeliveryClass, EnqueueError, EnqueueErrorKind, MAX_FLOW_CREDITS,
@@ -39,6 +44,7 @@ pub use negotiation::{
     VersionChangeError, negotiate_protocol, validate_version_change,
 };
 pub use record_codec::{CoreRecord, CoreRecordKind, decode_core_record};
+pub use secret_frame::SecretFrame;
 pub use stream::{StreamEndpoint, StreamError, StreamEvent};
 
 /// Stable schema-family identifier for IPC envelopes.

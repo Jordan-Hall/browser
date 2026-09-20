@@ -1,3 +1,4 @@
+use crate::erasing_bytes::ErasingBytes;
 use crate::{Frame, FrameLane, WireError, WireErrorCode, WireLimits};
 use intent_contracts::{CancellationId, RequestId, SchemaVersion, TraceId, UnixTimestampMicros};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -138,22 +139,40 @@ pub fn decode_control<T: DeserializeOwned>(
     frame: &Frame,
     limits: WireLimits,
 ) -> Result<Envelope<T>, WireError> {
-    if frame.lane() != FrameLane::Control {
+    decode_control_parts(frame.lane(), frame.payload(), limits)
+}
+
+/// Consumes a frame and erases its owned payload after strict decoding, including errors.
+pub fn decode_control_owned<T: DeserializeOwned>(
+    frame: Frame,
+    limits: WireLimits,
+) -> Result<Envelope<T>, WireError> {
+    let lane = frame.lane();
+    let payload = ErasingBytes::new(frame.into_payload());
+    decode_control_parts(lane, &payload, limits)
+}
+
+fn decode_control_parts<T: DeserializeOwned>(
+    lane: FrameLane,
+    payload: &[u8],
+    limits: WireLimits,
+) -> Result<Envelope<T>, WireError> {
+    if lane != FrameLane::Control {
         return Err(WireError::new(
             WireErrorCode::WrongLane,
             "typed envelopes can only be decoded from the control lane",
         ));
     }
 
-    if frame.payload().len() > limits.max_control_frame_bytes {
+    if payload.len() > limits.max_control_frame_bytes {
         return Err(WireError::new(
             WireErrorCode::FrameTooLarge,
             "received control frame exceeds configured limit",
         ));
     }
 
-    preflight_json_structure(frame.payload(), limits.max_json_depth)?;
-    let value = crate::strict_json::decode(frame.payload(), limits)?;
+    preflight_json_structure(payload, limits.max_json_depth)?;
+    let value = crate::strict_json::decode(payload, limits)?;
     validate_json_value(&value, limits)?;
 
     let schema_value = value.get("schema_version").cloned().ok_or_else(|| {

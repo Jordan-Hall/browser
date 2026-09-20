@@ -1,6 +1,78 @@
 use super::*;
 use std::error::Error;
 
+thread_local! {
+    static DISPOSALS: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub(super) fn observe_disposal(bytes: &[u8]) {
+    DISPOSALS.with(|events| {
+        events
+            .borrow_mut()
+            .push(bytes.iter().all(|byte| *byte == 0))
+    });
+}
+
+fn take_disposals() -> Vec<bool> {
+    DISPOSALS.with(|events| std::mem::take(&mut *events.borrow_mut()))
+}
+
+#[test]
+fn consumed_and_abandoned_verifiers_erase_their_owned_token() -> Result<(), Box<dyn Error>> {
+    for valid in [true, false] {
+        let (mut hello, mut verifier) = fixture()?;
+        if !valid {
+            hello.role = WorkerRole::PolicyBroker;
+        }
+        take_disposals();
+        assert_eq!(verifier.consume_hello(&hello).is_ok(), valid);
+        assert_eq!(take_disposals(), vec![true]);
+        drop(verifier);
+        assert!(take_disposals().is_empty());
+        drop(hello);
+        assert_eq!(take_disposals(), vec![true]);
+    }
+    let (proof, pending) = issue_worker_authentication(instance()?, WorkerRole::BrowserWorker)
+        .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    take_disposals();
+    drop(pending);
+    assert_eq!(take_disposals(), vec![true]);
+    drop(proof);
+    assert_eq!(take_disposals(), vec![true]);
+    Ok(())
+}
+
+#[test]
+fn observation_failure_retains_the_live_secret_until_owner_disposal() -> Result<(), Box<dyn Error>>
+{
+    let (hello, verifier) = fixture()?;
+    take_disposals();
+    assert!(
+        verifier
+            .check_observed(Err(PeerCredentialError::InvalidProcessId))
+            .is_err()
+    );
+    assert!(take_disposals().is_empty());
+    assert!(verifier.launch.is_some());
+    drop(verifier);
+    assert_eq!(take_disposals(), vec![true]);
+    drop(hello);
+    Ok(())
+}
+
+#[test]
+fn malformed_token_arrays_dispose_of_partially_decoded_storage() {
+    for text in [
+        "[171,172]".to_owned(),
+        format!("[{}]", vec!["171"; 33].join(",")),
+        "[171,256]".to_owned(),
+    ] {
+        take_disposals();
+        assert!(serde_json::from_str::<BootstrapToken>(&text).is_err());
+        assert_eq!(take_disposals(), vec![true]);
+    }
+}
+
 fn instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
     Ok("018f47f7-5a86-7c00-8000-000000000501".parse()?)
 }

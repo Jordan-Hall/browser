@@ -1,3 +1,4 @@
+use crate::erasing_bytes::ErasingBytes;
 use crate::{WireError, WireErrorCode, WireLimits};
 use serde::{Deserialize, Serialize};
 use std::mem;
@@ -54,13 +55,7 @@ impl Frame {
     }
 
     pub fn encode(&self, limits: WireLimits) -> Result<Vec<u8>, WireError> {
-        validate_length(self.lane, self.payload.len(), limits)?;
-        let payload_len = u32::try_from(self.payload.len()).map_err(|_| {
-            WireError::new(
-                WireErrorCode::FrameTooLarge,
-                "frame payload length cannot be represented by the wire format",
-            )
-        })?;
+        let header = encode_header(self.lane, self.payload.len(), limits)?;
 
         let mut encoded = Vec::new();
         encoded
@@ -71,8 +66,7 @@ impl Frame {
                     "failed to reserve encoded frame buffer",
                 )
             })?;
-        encoded.push(self.lane as u8);
-        encoded.extend_from_slice(&payload_len.to_be_bytes());
+        encoded.extend_from_slice(&header);
         encoded.extend_from_slice(&self.payload);
         Ok(encoded)
     }
@@ -112,7 +106,7 @@ pub struct FrameDecoder {
     header_len: usize,
     current_lane: Option<FrameLane>,
     current_payload_len: usize,
-    payload: Vec<u8>,
+    payload: ErasingBytes,
     poisoned: bool,
 }
 
@@ -125,7 +119,7 @@ impl FrameDecoder {
             header_len: 0,
             current_lane: None,
             current_payload_len: 0,
-            payload: Vec::new(),
+            payload: ErasingBytes::new(Vec::new()),
             poisoned: false,
         }
     }
@@ -216,7 +210,7 @@ impl FrameDecoder {
                         "decoder lost lane while completing frame",
                     )
                 })?;
-                frames.push(Frame::new(lane, mem::take(&mut self.payload)));
+                frames.push(Frame::new(lane, mem::take(&mut *self.payload)));
                 self.reset_frame_state();
             }
         }
@@ -265,7 +259,7 @@ impl FrameDecoder {
         self.header_len = 0;
         self.current_lane = None;
         self.current_payload_len = 0;
-        self.payload = Vec::new();
+        self.payload = ErasingBytes::new(Vec::new());
     }
 
     fn poisoned_error() -> WireError {
@@ -274,6 +268,22 @@ impl FrameDecoder {
             "frame decoder is poisoned after a previous framing error",
         )
     }
+}
+
+pub(crate) fn encode_header(
+    lane: FrameLane,
+    payload_len: usize,
+    limits: WireLimits,
+) -> Result<[u8; FRAME_HEADER_BYTES], WireError> {
+    validate_length(lane, payload_len, limits)?;
+    let length = u32::try_from(payload_len).map_err(|_| {
+        WireError::new(
+            WireErrorCode::FrameTooLarge,
+            "frame payload length cannot be represented by the wire format",
+        )
+    })?;
+    let bytes = length.to_be_bytes();
+    Ok([lane as u8, bytes[0], bytes[1], bytes[2], bytes[3]])
 }
 
 fn validate_length(

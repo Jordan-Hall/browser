@@ -126,6 +126,16 @@ fn gated_startup(gate_at: &str, expected: StartupOutcome) -> TestResult {
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+    let completed = std::fs::read(markers.0.join("completed"))?;
+    assert!(
+        completed == b"sent"
+            || (completed == b"closed"
+                && matches!(
+                    expected,
+                    StartupOutcome::Revoked | StartupOutcome::Disconnected
+                )),
+        "unexpected gated send outcome: {completed:?}"
+    );
     supervisor.poll();
     if expected == StartupOutcome::Admitted {
         while supervisor.snapshot(id)?.state == WorkerState::Starting {

@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+zeroize.workspace = true
 getrandom.workspace = true
 intent-contracts = { path = "../intent-contracts" }
 serde.workspace = true

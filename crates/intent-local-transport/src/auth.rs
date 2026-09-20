@@ -4,12 +4,52 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
 use subtle::ConstantTimeEq;
+use zeroize::Zeroize;
 
 pub const BOOTSTRAP_TOKEN_BYTES: usize = 32;
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct BootstrapToken([u8; BOOTSTRAP_TOKEN_BYTES]);
+
+impl Drop for BootstrapToken {
+    fn drop(&mut self) {
+        self.0.zeroize();
+        #[cfg(test)]
+        tests::observe_disposal(&self.0);
+    }
+}
+
+impl<'de> Deserialize<'de> for BootstrapToken {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct TokenVisitor;
+        impl<'de> serde::de::Visitor<'de> for TokenVisitor {
+            type Value = BootstrapToken;
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an array of 32 bytes")
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut token = BootstrapToken([0; BOOTSTRAP_TOKEN_BYTES]);
+                for index in 0..BOOTSTRAP_TOKEN_BYTES {
+                    token.0[index] = seq
+                        .next_element()?
+                        .ok_or_else(|| serde::de::Error::invalid_length(index, &self))?;
+                }
+                if seq.next_element::<serde::de::IgnoredAny>()?.is_some() {
+                    return Err(serde::de::Error::invalid_length(
+                        BOOTSTRAP_TOKEN_BYTES + 1,
+                        &self,
+                    ));
+                }
+                Ok(token)
+            }
+        }
+        deserializer.deserialize_tuple(BOOTSTRAP_TOKEN_BYTES, TokenVisitor)
+    }
+}
 
 impl BootstrapToken {
     fn matches(&self, other: &Self) -> bool {
@@ -161,9 +201,8 @@ pub fn issue_worker_authentication(
     instance_id: WorkerInstanceId,
     role: WorkerRole,
 ) -> Result<(BootstrapToken, UnboundWorkerVerifier), getrandom::Error> {
-    let mut bytes = [0_u8; BOOTSTRAP_TOKEN_BYTES];
-    getrandom::fill(&mut bytes)?;
-    let token = BootstrapToken(bytes);
+    let mut token = BootstrapToken([0; BOOTSTRAP_TOKEN_BYTES]);
+    getrandom::fill(&mut token.0)?;
     let verifier = UnboundWorkerVerifier {
         launch: WorkerLaunch {
             instance_id,

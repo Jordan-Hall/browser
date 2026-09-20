@@ -5,7 +5,10 @@ use crate::{
     SupervisorError, WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
     observation::observe_unreaped,
     platform::ManagedChild,
-    wire::{FramedSocket, ReadBudget, ReadOutcome, decode, encode_envelope, encode_event, offer},
+    wire::{
+        FramedSocket, ReadBudget, ReadOutcome, decode, encode_bootstrap_event, encode_envelope,
+        encode_event, offer,
+    },
 };
 use intent_contracts::{
     BoundedText, CancellationId, ContentHash, RequestId, SchemaVersion, TaskId, TraceId,
@@ -27,7 +30,7 @@ use nix::{
 use std::{
     collections::BTreeMap,
     fs::File,
-    io::{self, Write},
+    io,
     os::{
         fd::AsRawFd,
         unix::{net::UnixListener, process::ExitStatusExt},
@@ -317,7 +320,7 @@ impl Lane {
             ReadOutcome::Pending => Ok(AuthenticationProgress::Pending),
             ReadOutcome::Closed => Err(SupervisorError::Protocol),
             ReadOutcome::Frame(frame) => {
-                let envelope: Envelope<ControlMessage> = decode(&frame, None)?;
+                let envelope: Envelope<ControlMessage> = decode(frame, None)?;
                 if envelope.message() != EnvelopeKind::Event {
                     return Err(SupervisorError::Protocol);
                 }
@@ -336,6 +339,7 @@ impl Lane {
                 let identity = auth
                     .authenticate_unix(&hello.identity, &socket.stream)
                     .map_err(|_| SupervisorError::Protocol)?;
+                drop(hello);
                 let welcome = encode_event(
                     ControlMessage::Welcome {
                         generation,
@@ -428,6 +432,11 @@ impl Entry {
         self.cancel_id = Some(cancellation);
         self.control.authenticator = None;
         self.progress.authenticator = None;
+        for lane in [&mut self.control, &mut self.progress] {
+            if lane.identity.is_none() {
+                lane.socket = None;
+            }
+        }
         if let Some(socket) = self.control.socket.as_mut() {
             socket.discard_unstarted();
         }
@@ -460,6 +469,10 @@ impl Entry {
             self.exit_signal = exit.signal();
             self.lease.revoke();
             self.reaped = true;
+            for lane in [&mut self.control, &mut self.progress] {
+                lane.authenticator = None;
+                lane.socket = None;
+            }
             if self.stop_at.is_none() {
                 self.failure = Some(WorkerFailure::OsExit);
             }
@@ -614,7 +627,7 @@ impl Entry {
                 }
                 ReadOutcome::Frame(frame) => frame,
             };
-            let envelope: Envelope<ControlMessage> = decode(&frame, self.control.codec.as_ref())?;
+            let envelope: Envelope<ControlMessage> = decode(frame, self.control.codec.as_ref())?;
             let kind = envelope.message();
             let cancellation = envelope.cancellation_id();
             match envelope.into_payload() {
@@ -711,7 +724,7 @@ impl Entry {
                 ReadOutcome::Pending | ReadOutcome::Closed => break,
                 ReadOutcome::Frame(frame) => frame,
             };
-            let envelope: Envelope<ProgressMessage> = decode(&frame, self.progress.codec.as_ref())?;
+            let envelope: Envelope<ProgressMessage> = decode(frame, self.progress.codec.as_ref())?;
             if envelope.message() != EnvelopeKind::Event {
                 return Err(SupervisorError::Protocol);
             }
@@ -836,8 +849,8 @@ impl Supervisor {
                 )
                 .map_err(|_| SupervisorError::InvalidConfiguration("handshake timeout overflow"))?,
             };
-            let bootstrap = encode_event(packet, None)?;
-            if bootstrap.len() > 4096 {
+            let bootstrap = encode_bootstrap_event(packet)?;
+            if bootstrap.as_bytes().len() > 4096 {
                 return Err(SupervisorError::InvalidConfiguration(
                     "bootstrap exceeds one pipe budget",
                 ));
@@ -857,9 +870,7 @@ impl Supervisor {
                     .map_err(|_| SupervisorError::Protocol)?;
             let control_auth = control_pending.bind(expected);
             let progress_auth = progress_pending.bind(expected);
-            stdin
-                .ok_or(SupervisorError::InvalidState)?
-                .write_all(&bootstrap)?;
+            bootstrap.write_all(&mut stdin.ok_or(SupervisorError::InvalidState)?)?;
             let lane = |name, listener, authenticator| Lane {
                 name,
                 listener,

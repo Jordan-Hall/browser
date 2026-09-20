@@ -16,6 +16,36 @@ fn send(stream: &mut UnixStream, message: ControlMessage) -> Result<(), Box<dyn 
     Ok(())
 }
 
+fn record_send(
+    directory: &Path,
+    result: &Result<(), Box<dyn Error>>,
+) -> Result<(), Box<dyn Error>> {
+    let outcome = match result {
+        Ok(()) => b"sent".as_slice(),
+        Err(error)
+            if error.downcast_ref::<std::io::Error>().is_some_and(|error| {
+                matches!(
+                    error.kind(),
+                    std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::NotConnected
+                )
+            }) =>
+        {
+            b"closed".as_slice()
+        }
+        Err(_) => return Ok(()),
+    };
+    complete(directory, outcome)?;
+    Ok(())
+}
+
+fn complete(directory: &Path, outcome: &[u8]) -> Result<(), Box<dyn Error>> {
+    std::fs::write(directory.join("completed.tmp"), outcome)?;
+    std::fs::rename(directory.join("completed.tmp"), directory.join("completed"))?;
+    Ok(())
+}
+
 fn receive(stream: &mut UnixStream) -> Result<Envelope<ControlMessage>, Box<dyn Error>> {
     let mut decoder = FrameDecoder::new(wire_limits());
     loop {
@@ -62,7 +92,7 @@ pub fn run(packet: BootstrapPacket, directory: &str, gate_at: &str) -> Result<()
         std::fs::write(directory.join("control-authenticated"), b"authenticated")?;
         await_release(directory)?;
         drop(control);
-        std::fs::write(directory.join("completed"), b"closed")?;
+        complete(directory, b"closed")?;
         std::thread::sleep(Duration::from_secs(5));
         return Ok(());
     }
@@ -76,10 +106,11 @@ pub fn run(packet: BootstrapPacket, directory: &str, gate_at: &str) -> Result<()
         if stage == gate_at {
             await_release(directory)?;
         }
-        send(stream, ControlMessage::Hello(hello))?;
+        let sent = send(stream, ControlMessage::Hello(hello));
         if stage == gate_at {
-            std::fs::write(directory.join("completed"), b"sent")?;
+            record_send(directory, &sent)?;
         }
+        sent?;
         if !matches!(receive(stream)?.payload(), ControlMessage::Welcome { generation: id, selected }
             if *id == generation && *selected == SchemaVersion::V1)
         {
@@ -93,10 +124,11 @@ pub fn run(packet: BootstrapPacket, directory: &str, gate_at: &str) -> Result<()
     if gate_at == "ready" {
         await_release(directory)?;
     }
-    send(&mut control, ControlMessage::Ready { generation })?;
+    let sent = send(&mut control, ControlMessage::Ready { generation });
     if gate_at == "ready" {
-        std::fs::write(directory.join("completed"), b"sent")?;
+        record_send(directory, &sent)?;
     }
+    sent?;
     let cancellation = receive(&mut control)?;
     if let ControlMessage::Cancel {
         generation: id,
