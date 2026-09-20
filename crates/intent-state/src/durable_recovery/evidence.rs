@@ -203,7 +203,7 @@ impl RuntimeOwner {
         if !valid_key {
             return Err(RecoveryError::Denied("evidence trust key was revoked"));
         }
-        let previous:Option<(String,Option<String>)>=tx.query_row("SELECT verdict,receipt FROM recovery_evidence WHERE attempt_id=?1 AND verdict!='inconclusive' ORDER BY recorded_at_micros,evidence_id LIMIT 1",[binding.attempt_id.to_string()],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+        let previous:Option<(String,Option<String>,Vec<u8>)>=tx.query_row("SELECT verdict,receipt,payload FROM recovery_evidence WHERE attempt_id=?1 AND verdict!='inconclusive' ORDER BY recorded_at_micros,evidence_id LIMIT 1",[binding.attempt_id.to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
         let (effect, source): (String, String) = tx.query_row(
             "SELECT effect,source_revision FROM recovery_actions WHERE operation_id=?1",
             [op.operation_id().to_string()],
@@ -261,12 +261,17 @@ impl RuntimeOwner {
                 DurableOperationState::NeedsReconciliation,
             ),
         };
-        if let Some((old, old_receipt)) = &previous
+        if let Some((old, old_receipt, old_payload)) = &previous
             && verdict != "inconclusive"
-            && (old != verdict || old_receipt != &receipt)
         {
-            return Err(RecoveryError::Conflict(
-                "contradictory final evidence; manual investigation required",
+            let old_value: ReadOnlyAttestation = serde_json::from_slice(old_payload)?;
+            if old != verdict || old_receipt != &receipt || old_value.verdict != value.verdict {
+                return Err(RecoveryError::Conflict(
+                    "contradictory final evidence; manual investigation required",
+                ));
+            }
+            return Err(RecoveryError::Denied(
+                "attempt already has decisive outcome evidence",
             ));
         }
         if !matches!(
@@ -313,6 +318,11 @@ impl RuntimeOwner {
         if verdict == "committed" {
             let origin:Option<(String,String,String)>=tx.query_row("SELECT original_operation_id,original_attempt_id,original_receipt FROM recovery_actions WHERE operation_id=?1 AND original_operation_id IS NOT NULL",[op.operation_id().to_string()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
             if let Some((original, attempt, receipt)) = origin {
+                if matches!(value.verdict, ReconciliationVerdict::ReadCompleted { .. }) {
+                    return Err(RecoveryError::Denied(
+                        "compensation requires committed write evidence",
+                    ));
+                }
                 let original = load(&tx, parse(&original)?)?;
                 if !matches!(
                     original.state(),
