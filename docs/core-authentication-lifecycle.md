@@ -46,3 +46,9 @@ Public low-level authentication APIs, secret disposal and Windows/macOS
 supervisor authentication still need implementation or qualification. Hostile
 same-user containment remains SEC-04 work. None of these cases treats a portable
 job with Linux-only tests disabled as authentication evidence for that platform.
+
+Published source `bbb64eb` in PR #853 passed all four jobs in CI run
+35521290308. The archived workspace source matches that commit, and each
+native allocation artifact matches its 55 source entries with four valid
+samples. The full workspace run includes the approval-expiry fixture
+correction from #852. See [the published CI report](verification/core-authentication-lifecycle-ci-20260920.json).

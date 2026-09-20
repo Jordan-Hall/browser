@@ -247,10 +247,11 @@
       "implementation_prs": [
         789,
         805,
-        852
+        852,
+        853
       ],
       "status": "partially_implemented",
-      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Local actual-child cases now qualify revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Publication of these cases, public low-level authentication hardening, secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
+      "remaining": "Linux child authentication and absolute startup-admission expiry are published in #852 at 299be1e with qualified exact-source CI. Actual-child cases published in #853 at bbb64eb with qualified exact-source CI cover revoked startup, handshake disconnect, rejected foreign-peer/owner admission, worker Cancel rejection and heartbeat generation binding. Public low-level authentication hardening, secret disposal, Windows/macOS supervisor authentication and independent acceptance remain. Hostile same-user containment belongs to SEC-04.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -293,7 +294,7 @@
           "commit": "299be1e1fe75f56290c004a18ab444a61cbb1e18"
         },
         {
-          "publication": "unpublished",
+          "publication": "published",
           "source_files": [
             "crates/intent-fixture-worker/src/main.rs",
             "crates/intent-fixture-worker/src/startup_gate.rs"
@@ -303,7 +304,8 @@
             "crates/intent-fixture-worker/tests/supervision.rs"
           ],
           "scope": "Linux actual-child authentication lifecycle cases with owner-preservation and foreign-heartbeat mutation controls; production supervisor unchanged; no whole-task acceptance.",
-          "verification_report": "docs/verification/core-authentication-lifecycle-20260920.json"
+          "verification_report": "docs/verification/core-authentication-lifecycle-20260920.json",
+          "commit": "bbb64eb8ab2975f03db9acdd636082ddda7aa994"
         }
       ]
     },
