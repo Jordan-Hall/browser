@@ -205,6 +205,7 @@ impl TryFrom<ExecutionObservationData> for ExecutionObservation {
             S::Attempting
             | S::Accepted
             | S::Verified
+            | S::Failed
             | S::NeedsReconciliation
             | S::Compensating
             | S::Compensated
