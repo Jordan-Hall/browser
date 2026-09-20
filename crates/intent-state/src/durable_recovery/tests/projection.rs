@@ -396,13 +396,14 @@ fn reconciliation_rejects_same_receipt_with_different_local_commit_metadata() ->
 }
 
 #[test]
-fn compensated_original_rejects_later_decisive_duplicate() -> Result {
+fn compensation_creation_freezes_original_decisive_evidence() -> Result {
     let p = Profile::new()?;
     let mut o = owner(&p)?;
     let original = started(&mut o, 30)?;
     let receipt = digest(b"original receipt");
     let first = attestation(&original, ReconciliationVerdict::Committed { receipt })?;
     o.reconcile(signed(&first)?, 3, t(100)?)?;
+    let before = projected(&o, 30)?;
 
     let mut compensation = action(31)?;
     compensation.compensation = Some(CompensationOrigin {
@@ -415,23 +416,14 @@ fn compensated_original_rejects_later_decisive_duplicate() -> Result {
     let outbox = o.enqueue_action(id(31)?, 1, t(100)?)?;
     let lease = o.claim_dispatch(outbox, id(20)?, t(200)?, t(100)?)?;
     let compensation_attempt = o.begin_authorized_dispatch(lease, t(100)?)?;
-    let compensation_evidence = attestation(
-        &compensation_attempt,
-        ReconciliationVerdict::Committed {
-            receipt: digest(b"compensation receipt"),
-        },
-    )?;
-    o.reconcile(signed(&compensation_evidence)?, rev(&o, 31)?, t(150)?)?;
-    let before = projected(&o, 30)?;
-    assert_eq!(before.stage, ExecutionStage::Compensated);
+
     let count_before: i64 = o.store.connection.query_row(
         "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
         [id::<OperationId>(30)?.to_string()],
         |r| r.get(0),
     )?;
-
     let late = attestation(&original, ReconciliationVerdict::Committed { receipt })?;
-    assert!(o.reconcile(signed(&late)?, rev(&o, 30)?, t(151)?).is_err());
+    assert!(o.reconcile(signed(&late)?, rev(&o, 30)?, t(101)?).is_err());
     let count_after: i64 = o.store.connection.query_row(
         "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
         [id::<OperationId>(30)?.to_string()],
@@ -439,5 +431,90 @@ fn compensated_original_rejects_later_decisive_duplicate() -> Result {
     )?;
     assert_eq!(count_after, count_before);
     assert_eq!(projected(&o, 30)?, before);
+
+    let compensation_evidence = attestation(
+        &compensation_attempt,
+        ReconciliationVerdict::Committed {
+            receipt: digest(b"compensation receipt"),
+        },
+    )?;
+    o.reconcile(signed(&compensation_evidence)?, rev(&o, 31)?, t(150)?)?;
+    let compensated = projected(&o, 30)?;
+    assert_eq!(compensated.stage, ExecutionStage::Compensated);
+
+    let later = attestation(&original, ReconciliationVerdict::Committed { receipt })?;
+    assert!(o.reconcile(signed(&later)?, rev(&o, 30)?, t(151)?).is_err());
+    assert_eq!(projected(&o, 30)?, compensated);
+    Ok(())
+}
+
+#[test]
+fn read_completion_cannot_complete_a_managed_compensation() -> Result {
+    let p = Profile::new()?;
+    let mut o = owner(&p)?;
+    let original = started(&mut o, 30)?;
+    let receipt = digest(b"original receipt");
+    o.reconcile(
+        signed(&attestation(
+            &original,
+            ReconciliationVerdict::Committed { receipt },
+        )?)?,
+        3,
+        t(100)?,
+    )?;
+
+    let mut read_authority = authority(0)?;
+    read_authority.capability_id = id(14)?;
+    read_authority.effect = RecoveryEffect::ReadOnly;
+    o.update_authority(read_authority, t(100)?)?;
+    let mut read_worker = worker(21)?;
+    read_worker.capabilities = vec![id(14)?];
+    o.register_worker(read_worker, t(100)?)?;
+
+    let mut compensation = action(31)?;
+    compensation.operation.capability_id = id(14)?;
+    compensation.effect = RecoveryEffect::ReadOnly;
+    let binding = compensation
+        .operation
+        .binding
+        .as_mut()
+        .ok_or("binding")?;
+    binding.capability_id = id(14)?;
+    binding.effect_class = intent_contracts::CapabilityEffectClass::ReadOnly;
+    compensation.compensation = Some(CompensationOrigin {
+        operation_id: id(30)?,
+        attempt_id: original.attempt_id(),
+        receipt,
+    });
+    o.prepare_action(compensation)?;
+    o.approve_action(id(31)?, 0, t(800_000)?, t(100)?)?;
+    let outbox = o.enqueue_action(id(31)?, 1, t(100)?)?;
+    let lease = o.claim_dispatch(outbox, id(21)?, t(700_000)?, t(100)?)?;
+    let attempt = o.begin_authorized_dispatch(lease, t(100)?)?;
+    let read = ReadOnlyAttestation {
+        schema_version: 1,
+        evidence_id: Uuid::new_v4(),
+        binding: AttemptBinding {
+            operation_id: attempt.operation_id(),
+            account_id: id(12)?,
+            capability_id: id(14)?,
+            arguments_hash: digest(attempt.payload()),
+            attempt_id: attempt.attempt_id(),
+        },
+        verdict: ReconciliationVerdict::ReadCompleted {
+            capture: digest(b"read capture"),
+        },
+        observed_at: t(100)?,
+        valid_until: t(600_000)?,
+    };
+    assert!(o.reconcile(signed(&read)?, rev(&o, 31)?, t(100)?).is_err());
+    let evidence_count: i64 = o.store.connection.query_row(
+        "SELECT COUNT(*) FROM recovery_evidence WHERE operation_id=?1",
+        [id::<OperationId>(31)?.to_string()],
+        |r| r.get(0),
+    )?;
+    assert_eq!(evidence_count, 0);
+    assert_eq!(projected(&o, 31)?.stage, ExecutionStage::Attempting);
+    assert_eq!(projected(&o, 30)?.stage, ExecutionStage::Verified);
     Ok(())
 }
