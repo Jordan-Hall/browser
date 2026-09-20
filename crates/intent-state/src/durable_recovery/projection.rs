@@ -59,6 +59,16 @@ fn timestamp(value: i64) -> Result<UnixTimestampMicros, RecoveryError> {
     UnixTimestampMicros::try_new(value).map_err(|_| RecoveryError::Integrity("stored outcome time"))
 }
 
+fn compensation_origin_receipt(outcome: ExecutionOutcome) -> Option<ContentHash> {
+    match outcome {
+        ExecutionOutcome::LocalCommitted { receipt, .. }
+        | ExecutionOutcome::ExternalCommitted { receipt } => Some(receipt),
+        ExecutionOutcome::ReadCompleted { .. }
+        | ExecutionOutcome::ProvenNotCommitted { .. }
+        | ExecutionOutcome::Inconclusive {} => None,
+    }
+}
+
 type EvidenceRow = (
     String,
     String,
@@ -198,9 +208,9 @@ fn validate_origin(
     let evidence = load_evidence(db, &original, attempt, &effect, &source)?.ok_or(
         RecoveryError::Integrity("compensation original evidence is missing"),
     )?;
-    if evidence.outcome.committed_reference() != Some(original_receipt) {
+    if compensation_origin_receipt(evidence.outcome) != Some(original_receipt) {
         return Err(RecoveryError::Integrity(
-            "compensation original receipt differs from evidence",
+            "compensation original receipt is not backed by write evidence",
         ));
     }
     Ok(())
@@ -389,4 +399,39 @@ fn load_compensation(
             .clone()
             .ok_or(RecoveryError::Integrity("verified compensation evidence"))?,
     })
+}
+
+#[cfg(test)]
+mod origin_evidence_tests {
+    use super::*;
+
+    #[test]
+    fn compensation_origin_receipt_requires_a_write_commit() {
+        let read = ContentHash::from_bytes([1; 32]);
+        assert_eq!(
+            compensation_origin_receipt(ExecutionOutcome::ReadCompleted { capture: read }),
+            None
+        );
+        assert_eq!(
+            compensation_origin_receipt(ExecutionOutcome::ProvenNotCommitted { observation: read }),
+            None
+        );
+
+        let external = ContentHash::from_bytes([2; 32]);
+        assert_eq!(
+            compensation_origin_receipt(ExecutionOutcome::ExternalCommitted { receipt: external }),
+            Some(external)
+        );
+
+        let local = ContentHash::from_bytes([3; 32]);
+        assert_eq!(
+            compensation_origin_receipt(ExecutionOutcome::LocalCommitted {
+                before_revision: ContentHash::from_bytes([4; 32]),
+                after_revision: ContentHash::from_bytes([5; 32]),
+                revision: 1,
+                receipt: local,
+            }),
+            Some(local)
+        );
+    }
 }
