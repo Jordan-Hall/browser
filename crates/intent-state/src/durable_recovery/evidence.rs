@@ -270,21 +270,9 @@ impl RuntimeOwner {
                     "contradictory final evidence; manual investigation required",
                 ));
             }
-            let compensation_exists: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM recovery_actions WHERE original_operation_id=?1)",
-                [op.operation_id().to_string()],
-                |r| r.get(0),
-            )?;
-            if compensation_exists {
-                return Err(RecoveryError::Denied(
-                    "original decisive evidence is frozen once compensation exists",
-                ));
-            }
-            if op.state() == DurableOperationState::Compensated {
-                return Err(RecoveryError::Denied(
-                    "compensated operation cannot accept later final evidence",
-                ));
-            }
+            return Err(RecoveryError::Denied(
+                "attempt already has decisive outcome evidence",
+            ));
         }
         if !matches!(
             op.state(),
