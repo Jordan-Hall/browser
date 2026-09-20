@@ -2,11 +2,10 @@
 
 #[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use intent_contracts::{TraceId, UnixTimestampMicros};
+    use intent_contracts::UnixTimestampMicros;
     use intent_ipc::{Envelope, EnvelopeKind};
     use intent_supervisor::{ControlMessage, worker::WorkerClient};
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-    use uuid::Uuid;
 
     let marker = std::env::args()
         .nth(1)
@@ -77,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     client.send(&late_response.take().ok_or("missing withheld result")?)?;
                     client.send(
                         &Envelope::event(
-                            TraceId::from_uuid(Uuid::new_v4()),
+                            trace,
                             ControlMessage::Cancelled {
                                 generation,
                                 cancellation_id,
