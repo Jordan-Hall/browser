@@ -306,10 +306,7 @@ fn cancellation_stall_child() -> Result {
     }
     fs::write(profile.root.join("cancel-entered"), b"entered")?;
     let result = broker.cancel_worker(worker);
-    fs::write(
-        profile.root.join("cancel-returned"),
-        format!("{result:?}"),
-    )?;
+    fs::write(profile.root.join("cancel-returned"), format!("{result:?}"))?;
     Err("cancel_worker returned while the journal writer lock was held".into())
 }
 
@@ -363,7 +360,9 @@ fn process_death_while_cancellation_persistence_is_stalled_recovers_without_rese
     let entered_deadline = Instant::now() + Duration::from_secs(3);
     while !profile.root.join("cancel-entered").is_file() {
         if let Some(status) = child.0.try_wait()? {
-            return Err(format!("broker child exited before entering cancellation: {status}").into());
+            return Err(
+                format!("broker child exited before entering cancellation: {status}").into(),
+            );
         }
         if Instant::now() >= entered_deadline {
             return Err("broker child never entered stalled cancellation".into());
@@ -403,9 +402,10 @@ fn process_death_while_cancellation_persistence_is_stalled_recovers_without_rese
     assert!(!next.plan_startup(128)?.remaining);
     assert_eq!(state(&next)?, DurableOperationState::NeedsReconciliation);
     next.activate_after_planning()?;
-    assert!(next
-        .dispatch(old_outbox, old_worker, Duration::from_secs(1))
-        .is_err());
+    assert!(
+        next.dispatch(old_outbox, old_worker, Duration::from_secs(1))
+            .is_err()
+    );
     let binding: AttemptBinding = serde_json::from_value(rows(&profile)?[0]["binding"].clone())?;
     let ticket = DispatchTicket {
         operation_id: binding.operation_id,
