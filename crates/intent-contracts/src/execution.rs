@@ -73,7 +73,10 @@ impl ExecutionOutcome {
 
     #[must_use]
     const fn is_compensating_write(self) -> bool {
-        matches!(Self::LocalCommitted { .. } | Self::ExternalCommitted { .. })
+        matches!(
+            self,
+            Self::LocalCommitted { .. } | Self::ExternalCommitted { .. }
+        )
     }
 }
 
