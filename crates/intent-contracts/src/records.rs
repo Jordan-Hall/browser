@@ -606,6 +606,9 @@ impl Approval {
     deny_unknown_fields
 )]
 pub enum OperationState {
+    Execution {
+        observation: Box<crate::ExecutionObservation>,
+    },
     Prepared,
     Dispatching,
     NeedsReconciliation {
@@ -622,43 +625,124 @@ pub enum OperationState {
     Cancelled,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Operation {
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
     id: OperationId,
     action_proposal_id: ActionProposalId,
     account_id: AccountId,
-    idempotency_key: BoundedText<256>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    idempotency_key: Option<BoundedText<256>>,
     state: OperationState,
     #[serde(default)]
     last_reconciled_at: Option<UnixTimestampMicros>,
 }
 
 impl Operation {
-    #[must_use]
-    pub const fn new(
+    pub fn new(
         id: OperationId,
         action_proposal_id: ActionProposalId,
         account_id: AccountId,
         idempotency_key: BoundedText<256>,
         state: OperationState,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, &'static str> {
+        let record = Self {
             schema_version: SchemaVersion::V1,
             id,
             action_proposal_id,
             account_id,
-            idempotency_key,
+            idempotency_key: Some(idempotency_key),
             state,
             last_reconciled_at: None,
-        }
+        };
+        record.validate()?;
+        Ok(record)
     }
 
     #[must_use]
     pub const fn state(&self) -> &OperationState {
         &self.state
+    }
+
+    pub fn from_execution(
+        id: OperationId,
+        action_proposal_id: ActionProposalId,
+        account_id: AccountId,
+        observation: crate::ExecutionObservation,
+    ) -> Result<Self, &'static str> {
+        observation.validate_operation(id)?;
+        let last_reconciled_at = observation.last_reconciled_at();
+        Ok(Self {
+            schema_version: SchemaVersion::V1,
+            id,
+            action_proposal_id,
+            account_id,
+            idempotency_key: None,
+            state: OperationState::Execution {
+                observation: Box::new(observation),
+            },
+            last_reconciled_at,
+        })
+    }
+
+    #[must_use]
+    pub fn execution(&self) -> Option<&crate::ExecutionObservation> {
+        match &self.state {
+            OperationState::Execution { observation } => Some(observation),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn idempotency_key(&self) -> Option<&BoundedText<256>> {
+        self.idempotency_key.as_ref()
+    }
+
+    fn validate(&self) -> Result<(), &'static str> {
+        if let Some(observation) = self.execution() {
+            if self.idempotency_key.is_some() {
+                return Err("execution observation has no recorded idempotency key");
+            }
+            observation.validate_operation(self.id)?;
+            if self.last_reconciled_at != observation.last_reconciled_at() {
+                return Err("operation reconciliation time contradicts execution evidence");
+            }
+        } else if self.idempotency_key.is_none() {
+            return Err("legacy operation requires its recorded idempotency key");
+        }
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for Operation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireOperation {
+            #[serde(deserialize_with = "deserialize_v1_schema")]
+            schema_version: SchemaVersion,
+            id: OperationId,
+            action_proposal_id: ActionProposalId,
+            account_id: AccountId,
+            #[serde(default)]
+            idempotency_key: Option<BoundedText<256>>,
+            state: OperationState,
+            #[serde(default)]
+            last_reconciled_at: Option<UnixTimestampMicros>,
+        }
+        let wire = WireOperation::deserialize(deserializer)?;
+        let record = Self {
+            schema_version: wire.schema_version,
+            id: wire.id,
+            action_proposal_id: wire.action_proposal_id,
+            account_id: wire.account_id,
+            idempotency_key: wire.idempotency_key,
+            state: wire.state,
+            last_reconciled_at: wire.last_reconciled_at,
+        };
+        record.validate().map_err(serde::de::Error::custom)?;
+        Ok(record)
     }
 }
 
