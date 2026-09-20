@@ -56,11 +56,35 @@
       "parent_issue": 2,
       "title": "Define typed identities and value objects",
       "implementation_prs": [
-        786
+        786,
+        819,
+        845
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Wire representation and provider-resource validation require baseline sign-off.",
-      "implementation_evidence": []
+      "status": "accepted",
+      "remaining": "",
+      "implementation_evidence": [
+        {
+          "publication": "published",
+          "commit": "b1dbae6787a1d83485329e00485a662f59a63478",
+          "scope": "Typed identities and value objects with non-empty provider/account/resource validation, exact string-backed i128 money, checked executable spend/narrowing policy and deterministic direct/wire/storage boundary regressions.",
+          "source_files": [
+            "crates/intent-contracts/src/ids.rs",
+            "crates/intent-contracts/src/values.rs"
+          ],
+          "test_files": [
+            "crates/intent-contracts/tests/provider_identifiers.rs",
+            "crates/intent-ipc/tests/generated_money.rs",
+            "crates/intent-ipc/tests/hardening.rs"
+          ],
+          "verification_report": "docs/verification/core-typed-values-acceptance-20260920.json"
+        }
+      ],
+      "acceptance_evidence": {
+        "commit": "b1dbae6787a1d83485329e00485a662f59a63478",
+        "reviewer": "Whole-task acceptance audit on issue #122; exact-main artifact and review-history cross-check",
+        "review_url": "https://github.com/Jordan-Hall/browser/issues/122#issuecomment-5748987713",
+        "report": "docs/verification/core-typed-values-acceptance-20260920.json"
+      }
     },
     {
       "issue": 123,

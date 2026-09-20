@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "scope": "Whole-task acceptance of CORE-01.T02 at the verified main commit",
+  "commit": "b1dbae6787a1d83485329e00485a662f59a63478",
+  "platform": "Ubuntu 24.04 primary CI host; native Windows 2025 and macOS 15 checks also passed",
+  "accepted_task_issues": [
+    122
+  ],
+  "checks": {
+    "non_interchangeable_id_compile_fail_doctests": "success",
+    "provider_resource_constructor_and_deserialize_validation": "success",
+    "canonical_exact_i128_money_wire_representation": "success",
+    "generated_direct_envelope_goal_and_storage_roundtrips": "success",
+    "deterministic_i128_and_narrowing_boundaries": "success",
+    "spend_amount_negative_and_unknown_scale_policy": "success",
+    "timestamp_byte_size_currency_text_and_hash_runtime_validation": "success",
+    "native_linux_windows_macos_ci": "success",
+    "bounded_parser_fuzz_evidence": "success",
+    "historical_review_thread_reconciliation": "success",
+    "independent_whole_task_acceptance_audit": "success"
+  },
+  "reviewer": "Whole-task acceptance audit on issue #122; exact-head Codex PR review is supplemental",
+  "review_url": "https://github.com/Jordan-Hall/browser/issues/122#issuecomment-5748987713",
+  "main_ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35507003570",
+  "main_artifact_id": 10604561090,
+  "main_artifact_name": "core-verification-35507003570-1",
+  "main_artifact_sha256": "2c71fd3b678be50d3556389f9398ed8c13b47e5b330c92da49cb2e33e7f24c93",
+  "main_source_archive_sha256": "57556bff92a6750c0fe88777c54d7dad457150673c5b7242d51caec2fff6ded6",
+  "main_source_files_retained": 295,
+  "money_boundary_ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35503481739",
+  "money_boundary_fuzz_run": "https://github.com/Jordan-Hall/browser/actions/runs/35503481647",
+  "money_boundary_artifact_id": 10603700249,
+  "money_boundary_artifact_sha256": "6fef848cc551aaf8b9d962ef57414d0b8ee3c38797fe10ebc7e7ffcda997233a",
+  "typed_values_verification": "docs/verification/core-typed-values-20260919.json",
+  "money_boundary_verification": "docs/verification/core-money-boundaries-20260920.json",
+  "historical_review_thread": "https://github.com/Jordan-Hall/browser/pull/786#discussion_r4038815448",
+  "exact_head_codex_review": "https://github.com/Jordan-Hall/browser/pull/845#issuecomment-5749136768",
+  "limits": [
+    "Acceptance covers issue 122 only and does not grant permission or provider authority to any identifier.",
+    "The parser fuzz jobs are bounded smoke evidence rather than exhaustive parser qualification.",
+    "Supervisor containment, provider effects, storage power-loss qualification and later CORE task acceptance remain outside this task.",
+    "Production readiness remains false; 35 CORE tasks still need acceptance."
+  ]
+}
