@@ -13,3 +13,8 @@ serde_json = { workspace = true, features = ["raw_value"] }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "encoder_allocations"
+path = "tests/encoder_allocations.rs"
+harness = false
