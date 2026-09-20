@@ -233,7 +233,11 @@ fn started_attempt_records_cancellation_intent_before_transport_settlement() -> 
         .load_operation(id::<OperationId>(40)?)?
         .ok_or("operation")?;
     assert_eq!(intent.state(), DurableOperationState::Attempting);
-    assert_eq!(intent.revision(), 4, "revocation must durably journal cancellation intent before notification");
+    assert_eq!(
+        intent.revision(),
+        4,
+        "revocation must durably journal cancellation intent before notification"
+    );
     owner.revoke_worker(id(20)?, t(101)?)?;
     assert_eq!(
         owner
@@ -279,7 +283,10 @@ fn restart_after_started_cancellation_intent_never_revives_the_attempt() -> Resu
         .state()
         .load_operation(id::<OperationId>(41)?)?
         .ok_or("operation")?;
-    assert_eq!(recovered.state(), DurableOperationState::NeedsReconciliation);
+    assert_eq!(
+        recovered.state(),
+        DurableOperationState::NeedsReconciliation
+    );
     assert!(next.activate_after_planning(t(102)?).is_ok());
     Ok(())
 }
