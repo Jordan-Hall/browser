@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "scope": "Whole-task acceptance of CORE-01.T01 at the verified main commit",
+  "commit": "65abb8e13672494832e71e62576e6691f9bd060d",
+  "platform": "Ubuntu 24.04 initial CI host; native Windows 2025 and macOS 15 checks also passed",
+  "accepted_task_issues": [
+    121
+  ],
+  "checks": {
+    "clean_checkout_locked_build": "success",
+    "reviewed_direct_dependency_policy_and_scope": "success",
+    "real_command_forbidden_dependency_fixtures": "success",
+    "committed_unchanged_lockfiles": "success",
+    "explicit_doctests_and_negative_mutation": "success",
+    "immutable_ci_action_revisions": "success",
+    "single_toolchain_source_and_drift_regressions": "success",
+    "compiler_target_and_source_identity": "success",
+    "independent_whole_task_review": "success"
+  },
+  "reviewer": "Codex gpt-5.6-sol independent task audit; implementation agent artifact cross-check",
+  "review_url": "https://github.com/Jordan-Hall/browser/issues/121#issuecomment-5748908212",
+  "ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35499569391",
+  "artifact_id": 10600869119,
+  "artifact_name": "core-verification-35499569391-1",
+  "source_files_matched": 237,
+  "source_archive_sha256": "31b1c93145bf2411257378648f6e3f2911978ce973f11053259bd306cd459581",
+  "verification_sha256": "af502f019338c6e97810a63ea627a270703f694d48f662ac53f9bbf95cd14cce",
+  "lockfile_sha256": {
+    "Cargo.lock": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "actual_compiler": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "source_evidence": [
+    "docs/architecture/dependency-rules.md",
+    "crates/intent-xtask/src/main.rs",
+    "crates/intent-xtask/tests/architecture_command.rs",
+    "crates/intent-xtask/tests/architecture_resolution.rs",
+    "scripts/rust_toolchain.py",
+    "scripts/tests/test_rust_toolchain.py",
+    ".github/workflows/ci.yml",
+    "docs/verification/core-architecture-resolution-20260919.json"
+  ],
+  "negative_doctest_evidence": "The retained architecture-resolution report records exit 101 when a compile-fail example was made valid, followed by a passing run after exact restoration",
+  "limits": [
+    "Acceptance covers issue 121 only",
+    "Transitive supply-chain, process containment, provider effects and power-loss qualification remain outside this task",
+    "Production readiness remains false; 36 CORE tasks still need acceptance"
+  ]
+}

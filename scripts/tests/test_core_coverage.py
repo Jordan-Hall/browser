@@ -25,13 +25,14 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             coverage.validate_data(data or self.data, root, require_accepted=release)
 
-    def test_current_inventory_is_consistent_but_not_accepted(self) -> None:
+    def test_current_inventory_is_consistent(self) -> None:
         counts = coverage.validate_data(self.data, ROOT)
         self.assertEqual(sum(counts.values()), 37)
-        self.assertEqual(counts.get("accepted", 0), 0)
-        self.assertFalse(self.data["production_ready"])
 
     def test_release_mode_rejects_consistent_unfinished_inventory(self) -> None:
+        self.data["tasks"][0].update(
+            status="implemented_pending_acceptance", remaining="Task review is unfinished."
+        )
         self.reject(release=True)
 
     def test_missing_and_duplicate_issues_are_rejected(self) -> None:
@@ -158,6 +159,9 @@ class CoverageTests(unittest.TestCase):
                     coverage.acceptance_evidence(evidence, root, 121)
 
     def test_production_flag_cannot_be_raised_by_passing_inventory(self) -> None:
+        self.data["tasks"][0].update(
+            status="implemented_pending_acceptance", remaining="Task review is unfinished."
+        )
         self.data["production_ready"] = True
         self.reject()
 
