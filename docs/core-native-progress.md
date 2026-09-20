@@ -1,5 +1,11 @@
 # CORE native implementation checkpoint
 
+## 2026-09-20 published cancellation verification
+
+[PR #843](https://github.com/Jordan-Hall/browser/pull/843) passed all remote checks on source `ceb2ac1501a2fa34b54de9b9193b406d86f3233c`: strict Rust checks, workspace tests and doctests, native Linux/Windows/macOS jobs, the conformance evidence map, and all three parser fuzz jobs. The retained archive matches all 242 source files at that head. [The CI report](verification/core-cancellation-ci-20260920.json) records the tested merge, runs, compiler and artifact hashes.
+
+This establishes remote verification for the published changes. Earlier local host-contention failures remain recorded below. Windows and macOS CI do not run the Linux-only supervisor scenarios, and this evidence does not establish whole-task acceptance or production latency.
+
 ## 2026-09-20 fixture final-message observation
 
 Main through PRs #840 and #841 is merged at `ca712c2`. The blocked-progress and stale-result fixtures now wait for the parent to observe their final messages before exiting. Both former fixed-sleep races were reproduced with a 30 ms parent delay. The stale-result test also seals both executable images before launch, so replacement setup cannot consume cancellation grace. Stop deadlines and stale-result rejection assertions remain unchanged.

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "pr": 843,
+  "source_commit": "ceb2ac1501a2fa34b54de9b9193b406d86f3233c",
+  "tested_merge_commit": "18dbf64cc5a3e7b5668c9b1b302570116c8b2134",
+  "base_commit": "65abb8e13672494832e71e62576e6691f9bd060d",
+  "scope": "Executed verification of outbound cancellation and process-fixture corrections; not whole-task acceptance",
+  "ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35501923707",
+  "fuzz_run": "https://github.com/Jordan-Hall/browser/actions/runs/35501923725",
+  "checks": {
+    "checkout": "success",
+    "toolchain": "success",
+    "dependencies": "success",
+    "lockfiles": "success",
+    "core_coverage": "success",
+    "format": "success",
+    "clippy": "success",
+    "tests": "success",
+    "test_inventory": "success",
+    "doctests": "success",
+    "fuzz_compile": "success",
+    "architecture": "success",
+    "conformance": "success",
+    "conformance_map": "success"
+  },
+  "native_matrix": {
+    "ubuntu-24.04": "success",
+    "windows-2025": "success",
+    "macos-15": "success"
+  },
+  "fuzz_jobs": {
+    "frame_decoder": "success",
+    "control_envelope": "success",
+    "record_codec": "success"
+  },
+  "artifact_id": 10601884345,
+  "source_files_matched": 242,
+  "source_archive_sha256": "ff961fdb06c28b30e4aee0ccd74bdef2458a45f0e4f34e5ad6253a67b93294b2",
+  "verification_sha256": "2a92cf05db917311da2c038040d1033528d4cb9926f4cc787ccfcc255edda3f4",
+  "lockfile_sha256": {
+    "Cargo.lock": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+    "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+  },
+  "actual_compiler": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "review": "Independent scoped source reviews found no blocking issue in outbound cancellation, broker deadline separation or final-message fixture handshakes",
+  "limits": [
+    "Native matrix success does not implement or qualify a Windows/macOS supervisor; process tests are Linux-only",
+    "Earlier local host-contention failures remain in the fixture and broker reports; remote success is separate evidence",
+    "No production latency, provider effect, power-loss or whole-task acceptance claimed"
+  ]
+}

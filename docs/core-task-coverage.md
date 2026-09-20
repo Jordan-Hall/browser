@@ -60,4 +60,4 @@ Both task and workspace checkpoint implementations are retained. See `docs/branc
 
 ## Measured cancellation backpressure
 
-An unpublished CORE-01.T07 regression now verifies cancellation acknowledgement before measured progress backlogs drain in two real Linux workers. Both flood fixtures use parent-observed acknowledgements before exit, replacing their fixed-sleep assumption. The [verification report](verification/core-progress-backpressure-20260919.json) records the final serial checks, mutation rejection and remaining concurrent-load limitation on top of merged PR #824. No task status is promoted by this evidence.
+[PR #843](https://github.com/Jordan-Hall/browser/pull/843) verifies cancellation acknowledgement before measured progress backlogs drain in two real Linux workers. Its fixtures wait for parent-observed final messages before exit. The [CI report](verification/core-cancellation-ci-20260920.json) records successful remote native checks and parser fuzz jobs at the exact source head. Earlier local timing failures remain in their original reports. No whole-task acceptance follows from this increment.
