@@ -50,7 +50,7 @@ fn config(
         Priority::Background,
         ProcessLimits::new(128 * 1024 * 1024, 10, 64, 100)?,
         health,
-        Duration::from_secs(10),
+        Duration::from_secs(60),
         RestartPolicy::never(),
         ExecutionBoundary::CooperativeLocal,
     )
