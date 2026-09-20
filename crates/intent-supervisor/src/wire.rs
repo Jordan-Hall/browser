@@ -180,9 +180,6 @@ impl ReadBudget {
         self.remaining = self
             .remaining
             .saturating_sub(allowance.saturating_sub(local));
-        // A reduced allowance is not a scheduling block until it is exhausted
-        // without producing a frame. Buffered frames and WouldBlock with unused
-        // bytes must not extend a worker's health deadline.
         if allowance < socket_budget && local == 0 && matches!(&result, Ok(ReadOutcome::Pending)) {
             self.blocked_reads = self.blocked_reads.saturating_add(1);
         }
@@ -272,6 +269,9 @@ impl FramedSocket {
             }
             return Err(SupervisorError::QueueFull);
         }
+        if self.reserved_outgoing.is_some() {
+            return Err(SupervisorError::QueueFull);
+        }
         self.outgoing = Some(Outgoing { bytes, offset: 0 });
         self.reserve_next = false;
         Ok(())
@@ -334,16 +334,12 @@ impl FramedSocket {
         }
         Ok(())
     }
-    /// Never splice Stop into a partially written frame. Escalation still bypasses this stream.
     pub(crate) fn discard_unstarted(&mut self) -> bool {
         if self
             .outgoing
             .as_ref()
             .is_some_and(|message| message.offset != 0)
         {
-            // A partially written frame cannot be spliced or discarded. Mark the
-            // next queue operation as the one bounded reserved control slot so
-            // stop/cancel can be scheduled immediately behind those bytes.
             self.reserve_next = true;
             return false;
         }
@@ -438,15 +434,21 @@ mod tests {
         let duplicate =
             Frame::new(intent_ipc::FrameLane::Control, vec![6; 8]).encode(wire_limits())?;
 
+        let remaining_primary = first.len() - 4096;
         sender.queue(first)?;
         sender.flush(4096)?;
         sender.queue_reserved(acknowledgement)?;
         assert!(matches!(
-            sender.queue_reserved(duplicate),
+            sender.queue_reserved(duplicate.clone()),
             Err(SupervisorError::QueueFull)
         ));
-
-        sender.flush(4096)?;
+        sender.flush(remaining_primary)?;
+        assert!(sender.outgoing.is_none());
+        assert!(sender.reserved_outgoing.is_some());
+        assert!(matches!(
+            sender.queue(duplicate),
+            Err(SupervisorError::QueueFull)
+        ));
         sender.flush(4096)?;
         let mut budget = 16 * 1024;
         let first = receiver.read_one(&mut budget)?;
