@@ -233,6 +233,13 @@ fn late_result_from_revoked_worker_cannot_authorize_replacement_dispatch() -> Te
             matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
         })
     })?;
+    let terminal = broker.worker_snapshot(old)?;
+    assert!(
+        terminal.late_messages >= 1,
+        "the revoked worker must deliver its withheld result after replacement readiness"
+    );
+    assert!(terminal.cancellation_acknowledged);
+    assert!(!terminal.stop_escalated);
     assert_eq!(state(&broker)?, DurableOperationState::NeedsReconciliation);
     assert!(
         broker
