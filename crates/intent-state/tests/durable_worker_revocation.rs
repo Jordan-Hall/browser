@@ -141,20 +141,19 @@ fn worker_revocation_cancels_its_unstarted_claim_before_notification() -> Result
         .state()
         .load_operation(id::<OperationId>(30)?)?
         .ok_or("operation")?;
-    assert_eq!(operation.state(), DurableOperationState::Cancelled);
-    assert_eq!(operation.revision(), 3);
-    assert_eq!(
-        owner
-            .state()
-            .operation_journal(id(30)?)?
-            .last()
-            .map(|entry| entry.to_state()),
-        Some(DurableOperationState::Cancelled)
-    );
+    assert_eq!(operation.state(), DurableOperationState::DispatchPending);
+    assert_eq!(operation.revision(), 2);
     assert!(
         owner
             .claim_dispatch(outbox, id(20)?, t(200)?, t(101)?)
             .is_err()
+    );
+    owner.register_worker(worker(21)?, t(101)?)?;
+    assert!(
+        owner
+            .claim_dispatch(outbox, id(21)?, t(200)?, t(101)?)
+            .is_err(),
+        "retired claim must require a fresh approval/outbox before replacement dispatch"
     );
     owner.revoke_worker(id(20)?, t(102)?)?;
     assert_eq!(
@@ -163,12 +162,12 @@ fn worker_revocation_cancels_its_unstarted_claim_before_notification() -> Result
             .load_operation(id::<OperationId>(30)?)?
             .ok_or("operation")?
             .revision(),
-        3
+        2
     );
     Ok(())
 }
 #[test]
-fn worker_revocation_only_cancels_operations_claimed_by_that_generation() -> Result {
+fn worker_revocation_only_retires_claims_bound_to_that_generation() -> Result {
     let profile = Profile::new()?;
     let mut owner = owner(&profile)?;
     let unrelated = pending(&mut owner, 30)?;
@@ -191,10 +190,15 @@ fn worker_revocation_only_cancels_operations_claimed_by_that_generation() -> Res
             .load_operation(id::<OperationId>(31)?)?
             .ok_or("claimed operation")?
             .state(),
-        DurableOperationState::Cancelled
+        DurableOperationState::DispatchPending
     );
 
     owner.register_worker(worker(21)?, t(101)?)?;
+    assert!(
+        owner
+            .claim_dispatch(claimed, id(21)?, t(200)?, t(101)?)
+            .is_err()
+    );
     let replacement = owner.claim_dispatch(unrelated, id(21)?, t(200)?, t(101)?)?;
     let _attempt = owner.begin_authorized_dispatch(replacement, t(101)?)?;
     assert_eq!(
