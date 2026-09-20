@@ -85,6 +85,72 @@ fn until(
 }
 
 #[test]
+fn cancellation_notification_is_not_starved_by_an_occupied_control_slot() -> TestResult {
+    let marker =
+        std::env::temp_dir().join(format!("intent-control-backpressure-{}", Uuid::new_v4()));
+    let health = HealthPolicy {
+        stop_grace: Duration::from_millis(750),
+        terminate_grace: Duration::from_millis(750),
+        ..HealthPolicy::default()
+    };
+    let scope = scope();
+    let capability = capability();
+    let mut supervisor = supervisor()?;
+    let id = supervisor.launch(
+        image()?,
+        config(scope, capability, health)?,
+        &[marker.to_string_lossy().into_owned()],
+    )?;
+    let ready = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+        matches!(snapshot.state, WorkerState::Ready | WorkerState::Failed)
+    })?;
+    if ready.state != WorkerState::Ready {
+        return Err(format!("worker did not become ready: {ready:?}").into());
+    }
+
+    let lease = supervisor.lease(id)?;
+    let request = RequestId::from_uuid(Uuid::new_v4());
+    let permit = lease.admit(
+        request,
+        lease.scope(),
+        capability,
+        MessageFamily::LifecycleControl,
+        Instant::now() + Duration::from_secs(5),
+    )?;
+    supervisor.submit_immediate(permit, BoundedText::try_new("x".repeat(4096))?)?;
+
+    let receipt = supervisor.cancel(id, CancellationId::from_uuid(Uuid::new_v4()))?;
+    assert!(receipt.newly_revoked);
+    supervisor.poll();
+
+    let marker_deadline = Instant::now() + Duration::from_millis(300);
+    loop {
+        match std::fs::read(&marker) {
+            Ok(contents) if contents == b"cancel received while progress backpressured" => break,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        if Instant::now() >= marker_deadline {
+            return Err(
+                "cancel notification remained behind the occupied control slot until another supervisor poll"
+                    .into(),
+            );
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    let stopped = until(&mut supervisor, id, Duration::from_secs(5), |snapshot| {
+        matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
+    })?;
+    assert!(stopped.cancellation_acknowledged);
+    assert!(!stopped.stop_escalated);
+    assert_eq!(supervisor.retire(id)?.unresolved_requests, vec![request]);
+    std::fs::remove_file(&marker)?;
+    Ok(())
+}
+
+#[test]
 fn cancellation_crosses_control_while_real_progress_transport_is_backpressured() -> TestResult {
     let marker =
         std::env::temp_dir().join(format!("intent-progress-backpressure-{}", Uuid::new_v4()));
