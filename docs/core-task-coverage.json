@@ -346,6 +346,14 @@
             "crates/intent-fixture-worker/tests/startup_expiry.rs"
           ],
           "verification_report": "docs/verification/core-bootstrap-secret-disposal-20260920.json"
+        },
+        {
+          "publication": "unpublished",
+          "scope": "Post-exec connected Unix peer primitive, including real child PID/UID/GID, foreign connector, credential mismatch and reuse. Native macOS verification pending; no platform supervisor claim.",
+          "test_files": [
+            "crates/intent-local-transport/tests/unix_spawned_peer.rs"
+          ],
+          "verification_report": "docs/verification/core-unix-post-exec-authentication-20260920.json"
         }
       ]
     },
