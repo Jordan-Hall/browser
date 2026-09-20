@@ -105,6 +105,7 @@ fn add_artifact(
 }
 fn prepared(store: &mut StateStore) -> Result<crate::DurableOperation> {
     Ok(store.create_operation(NewDurableOperation {
+        binding: None,
         operation_id: id(10)?,
         task_id: id(2)?,
         action_proposal_id: id(11)?,

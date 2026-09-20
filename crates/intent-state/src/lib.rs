@@ -75,6 +75,7 @@ pub use checkpoints::{
 };
 mod inbox;
 mod migrations;
+mod operation_binding;
 mod operations;
 mod outbox;
 mod provider_recovery;
@@ -438,7 +439,7 @@ mod tests {
     fn file_store_bootstraps_wal_migrations_and_identity() -> Result<(), Box<dyn Error>> {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
-        assert_eq!(store.schema_version()?, 11);
+        assert_eq!(store.schema_version()?, 12);
         assert_eq!(store.journal_mode()?.to_ascii_lowercase(), "wal");
         assert!(store.foreign_keys_enabled()?);
         store.integrity_check()?;

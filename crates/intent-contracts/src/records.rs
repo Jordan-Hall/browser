@@ -8,6 +8,7 @@ use crate::values::{
     UnixTimestampMicros,
 };
 use crate::version::{SchemaVersion, deserialize_v1_schema};
+use crate::{ActionBinding, ActionContext};
 use serde::{Deserialize, Serialize};
 
 mod proposal_validation;
@@ -491,6 +492,9 @@ impl Evidence {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActionProposalDescriptor {
+    pub context: ActionContext,
+    pub target_resource: Option<AccountQualifiedResourceId>,
+    pub expires_at: Option<UnixTimestampMicros>,
     pub canonical_arguments: ArtifactReference,
     pub effect_class: CapabilityEffectClass,
     pub approval_requirement: ApprovalRequirement,
@@ -498,6 +502,8 @@ pub struct ActionProposalDescriptor {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionProposal {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context: Option<ActionContext>,
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
     id: ActionProposalId,
@@ -525,16 +531,17 @@ impl ActionProposal {
     ) -> Self {
         let arguments_hash = descriptor.canonical_arguments.content_hash();
         Self {
+            context: Some(descriptor.context),
             schema_version: SchemaVersion::V1,
             id,
             task_id,
             capability_id,
             account_id,
-            target_resource: None,
+            target_resource: descriptor.target_resource,
             canonical_arguments: descriptor.canonical_arguments,
             arguments_hash,
             effect_class: descriptor.effect_class,
-            expires_at: None,
+            expires_at: descriptor.expires_at,
             approval_requirement: descriptor.approval_requirement,
         }
     }
@@ -565,9 +572,10 @@ pub enum ApprovalState {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Approval {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exact_binding: Option<ActionBinding>,
     #[serde(deserialize_with = "deserialize_v1_schema")]
     schema_version: SchemaVersion,
     id: ApprovalId,
@@ -578,17 +586,13 @@ pub struct Approval {
 
 impl Approval {
     #[must_use]
-    pub const fn new(
-        id: ApprovalId,
-        action_proposal_id: ActionProposalId,
-        exact_arguments_hash: ContentHash,
-        state: ApprovalState,
-    ) -> Self {
+    pub fn new(id: ApprovalId, proposal: &ActionProposal, state: ApprovalState) -> Self {
         Self {
             schema_version: SchemaVersion::V1,
             id,
-            action_proposal_id,
-            exact_arguments_hash,
+            action_proposal_id: proposal.action_proposal_id(),
+            exact_arguments_hash: proposal.arguments_hash(),
+            exact_binding: proposal.binding(),
             state,
         }
     }

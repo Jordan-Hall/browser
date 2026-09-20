@@ -32,7 +32,6 @@ pub struct RecoverableAction {
     pub operation: NewDurableOperation,
     pub scope: ArtifactScope,
     pub effect: RecoveryEffect,
-    pub source_revision: ContentHash,
     pub destination: BoundedText<512>,
     pub message_kind: BoundedText<128>,
     pub payload: Vec<u8>,

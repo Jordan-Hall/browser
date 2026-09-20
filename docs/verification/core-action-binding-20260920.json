@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "scope": "Partial CORE-01.T03 action authorization binding implementation",
+  "base_commit": "c11a600636a9f08b24d2de8460a5f0ff0320c231",
+  "compiler": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "source_git_blobs": {
+    "crates/intent-broker/tests/workspace_activation.rs": "bf011675a65444331c4821fa46291c89431e681d",
+    "crates/intent-contracts/src/action_binding.rs": "2f8d5ff925a8f1029e569bfb85d3ed1a9fa19d70",
+    "crates/intent-contracts/src/lib.rs": "23c17d02703bde00fdf72fa08d69beadd8afb517",
+    "crates/intent-contracts/src/records.rs": "734880367622f62c3451fc24d57785e74823d5e7",
+    "crates/intent-contracts/src/records/proposal_validation.rs": "d43d5f5e79a7207d754d1ec6c4ad3447d5ca9f06",
+    "crates/intent-contracts/src/records/state_accessors.rs": "e6d2927de294f632b97699245f2f075357254d07",
+    "crates/intent-contracts/tests/action_binding.rs": "1d681c90a6c65b874bff656a7657a17f876f9ae0",
+    "crates/intent-contracts/tests/hardening.rs": "f04ac75c0faa555802d965bf263d8a5eb156bd30",
+    "crates/intent-fixture-worker/tests/broker.rs": "a309e7e5e99b590cd669657729978213f8d97b54",
+    "crates/intent-fixture-worker/tests/broker_stale_result.rs": "3d491aef971ed90bf8b69fc70d5bc98fc3782cd4",
+    "crates/intent-fixture-worker/tests/cancellation_stall.rs": "6bde876d0d5984c83b5d1f4c3b184c695a8d7248",
+    "crates/intent-state/src/authorized_dispatch.rs": "1d30109939fee97ec65aeae76044124c2e424913",
+    "crates/intent-state/src/authorized_dispatch/tests/rejection_regressions.rs": "0c130fb00a2769ba76f1d41a0669ec07c9f733d8",
+    "crates/intent-state/src/checkpoints/tests.rs": "b82992bbbc51e79711fe81f6d4f751e1e4a5d7d4",
+    "crates/intent-state/src/consolidation_migration_tests.rs": "1caf8c85ea629f78be6ff455c83dc56240f867ab",
+    "crates/intent-state/src/durable_recovery/dispatch.rs": "69ae406d0456df99858c2fc6717423c02f1e2552",
+    "crates/intent-state/src/durable_recovery/planner.rs": "ae7b4bb00568afb069353fda4dae77a729b47dc9",
+    "crates/intent-state/src/durable_recovery/tests.rs": "7cbec56d26aa322853088687b209f70ada378b8a",
+    "crates/intent-state/src/durable_recovery/types.rs": "8cb588d60bb4faff0ad9cd475dfb19364c8d68ec",
+    "crates/intent-state/src/hardening_tests.rs": "4abc97a8adc70e82201d006cfc7600b526ae3de4",
+    "crates/intent-state/src/lib.rs": "884fc0b3d9c745d4a3d4f43b094db72f03c9329a",
+    "crates/intent-state/src/migrations.rs": "0302615640bd050cf7f892b25959e40f8bed6f72",
+    "crates/intent-state/src/operation_binding.rs": "954935c56d41f1d89fe3bc3129b17161bc1e824d",
+    "crates/intent-state/src/operations.rs": "3ae781278e70430a164227a5e08ee393a7a90da2",
+    "crates/intent-state/src/outbox_parts/tests.rs": "62b3f6461dcc906b45e486bd8d6a9d36dc2437b2",
+    "crates/intent-state/src/provider_recovery/tests.rs": "9ab67e8a08d7d4ce4074f81bcf898875e806fd66",
+    "crates/intent-state/src/snapshots/tests.rs": "1b516be5f49cbf51074c1193d05f09a8768ad0c5",
+    "crates/intent-state/src/test_support.rs": "b21348b3fa53433fbb500aa945f85365e504541d",
+    "crates/intent-state/src/workspace_checkpoints/tests.rs": "83caeeb4a4197b210bf8f6d0610d424229708b07",
+    "crates/intent-state/tests/durable_worker_revocation.rs": "10a977fce21637744b517f304473d304ef37ea47"
+  },
+  "checks": [
+    {
+      "log": "target/action-binding-contracts.log",
+      "exit_code": 101,
+      "scope": "Intermediate UTF-8 byte-limit fixture failure; corrected and verified later",
+      "sha256": "cecea1a74976d74d122fe68b4b612bc0fc183062c450476fc39ab60513ee1489"
+    },
+    {
+      "log": "target/action-binding-state-first.log",
+      "exit_code": 101,
+      "scope": "Intermediate binding/migration test expectations needed updates",
+      "sha256": "bdf3ab041124ddee4dffe3914ea586e2a518587841f3030e0092e1bf249781e1"
+    },
+    {
+      "log": "target/action-binding-state-second.log",
+      "exit_code": 0,
+      "scope": "Windows contracts, IPC and storage suites before final import validation",
+      "sha256": "f34b65cbe0dbe1729bd6f93578d4734fdbd3e1316179f8b1a96bc582d2d56db3"
+    },
+    {
+      "log": "target/action-binding-linux-first.log",
+      "exit_code": 101,
+      "scope": "Compensation fixture did not yet bind its replacement payload",
+      "sha256": "179aa12b702cacdd508b1388844d21b35c411842704bc653b6e6980acc42c253"
+    },
+    {
+      "log": "target/action-binding-linux-second.log",
+      "exit_code": 0,
+      "scope": "Linux strict lint plus contracts, storage and broker tests",
+      "sha256": "851533a4f61021752913f7c5bde3a7d111e3fae21124a8e9ec6e4e0a8fa11d24"
+    },
+    {
+      "log": "target/action-binding-windows-clippy.log",
+      "exit_code": 101,
+      "scope": "Including the unchanged Linux-only supervisor in Windows strict lint exposed dead-code errors",
+      "sha256": "e2cd32ba23ae0f6eb589af18160bdb001b456e033e19b7f69c13790fa7d8a6a6"
+    },
+    {
+      "log": "target/action-binding-windows-clippy-scoped.log",
+      "exit_code": 0,
+      "scope": "Windows strict lint for contracts and storage",
+      "sha256": "60cf2c583dee836af1489d399cd1fab392e8ac1ed89447e6f18a15d325bb550f"
+    },
+    {
+      "log": "target/action-binding-windows-final.log",
+      "exit_code": 0,
+      "scope": "Windows contracts and storage suites before final import validation",
+      "sha256": "f2053a7a9275841300195fb5c0ba7242b2238308719cdd45bb07f698e7030348"
+    },
+    {
+      "log": "target/action-binding-approval-recheck.log",
+      "exit_code": 0,
+      "scope": "Nineteen dispatch-binding regressions after approval validation",
+      "sha256": "80bc77a796e4f05b3dde3462b163a0fa5918c754046197ecb74e8a6073e5a4c4"
+    },
+    {
+      "log": "target/action-binding-contract-import-recheck.log",
+      "exit_code": 0,
+      "scope": "Four contract binding and import tests",
+      "sha256": "1419a6d6a524ccf5fe0a5846b36c96529e3a49a81a5aa4c852083803f2f2216b"
+    },
+    {
+      "log": "target/action-binding-linux-workspace.log",
+      "exit_code": 101,
+      "scope": "Full workspace on c11a600 passed all targets except the existing blocked-progress ACK race addressed in PR843",
+      "sha256": "40488b3ed9e777d44cefc97b8c5bfed49ea3d9699cc6fb13ad6f5d3287ceccb8"
+    },
+    {
+      "log": "target/action-binding-final-targets.log",
+      "exit_code": 0,
+      "scope": "Final contracts/IPC/storage tests, workspace doctests, architecture and conformance before the final replacement guard",
+      "sha256": "2e935c99fef1d83aeafcd619da8d42907e210a19b0cd2c891dd061dd0acf276c"
+    },
+    {
+      "log": "target/action-binding-replacement-before.log",
+      "exit_code": 101,
+      "scope": "Expected negative mutation: old creation guard permitted INSERT OR REPLACE",
+      "sha256": "7b60cd72077577a620dad488921e3ee56cc826e5d791d692d07d64cf1f7a53f8"
+    },
+    {
+      "log": "target/action-binding-replacement-after.log",
+      "exit_code": 0,
+      "scope": "Creation guard restored exactly; replacement regression passed",
+      "sha256": "9c4937f5d44c23f49968017bda258180b7d063007b0e8213f33925acc47a1636"
+    },
+    {
+      "log": "target/action-binding-replacement-recheck.log",
+      "exit_code": 0,
+      "scope": "Nineteen dispatch-binding tests with replacement guard",
+      "sha256": "9135a31c313578011006b4aaabc5f0c3f32fc22bc024246b21dc036d290735bf"
+    }
+  ],
+  "independent_review": {
+    "design_base": "Structural binding candidate B; gpt-5.6-luna cross-judge preferred B 23/25 over A 21/25",
+    "implementation_reviewer": "gpt-5.6-sol",
+    "findings_resolved": [
+      "Legacy retrofit/loaded identity validation",
+      "Explicit canonicalization enforcement",
+      "Planner source consistency",
+      "Versioned private storage codec"
+    ],
+    "final_delta": "Approval import validation and compatibility documentation reviewed without findings; parent subsequently proved and fixed SQLite replacement bypass"
+  },
+  "delivery": "Will stack on PR843 to include the independently verified cancellation fixture fix; combined-stack verification remains to be recorded",
+  "limits": [
+    "No whole-task acceptance or issue closure",
+    "Targeted runtime execution remains refused without trusted provider mapping",
+    "Only ExactBytesV1 is supported; no provider byte transformation",
+    "Legacy records are retained unbound and cannot receive new dispatch authority",
+    "Wire accepted/verified/compensation outcome alignment remains unfinished",
+    "Earlier unsuccessful runs remain recorded separately"
+  ]
+}

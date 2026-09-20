@@ -149,8 +149,9 @@ fn broker(profile: &Profile) -> Result<RuntimeBroker> {
 }
 
 fn action() -> Result<RecoverableAction> {
-    Ok(RecoverableAction {
+    let mut action = RecoverableAction {
         operation: NewDurableOperation {
+            binding: None,
             operation_id: id(30)?,
             task_id: id(2)?,
             action_proposal_id: ActionProposalId::from_uuid(Uuid::new_v4()),
@@ -162,13 +163,33 @@ fn action() -> Result<RecoverableAction> {
         },
         scope: ArtifactScope::try_new("cancel-stall-scope")?,
         effect: RecoveryEffect::ExternalWrite,
-        source_revision: hash(b"source-v1"),
+
         destination: BoundedText::try_new("fixture://external-ledger")?,
         message_kind: BoundedText::try_new("append")?,
         payload: PAYLOAD.to_vec(),
         deadline: future()?,
         compensation: None,
-    })
+    };
+    action.operation.binding = Some(intent_contracts::ActionBinding {
+        task_id: action.operation.task_id,
+        account_id: action.operation.account_id,
+        capability_id: action.operation.capability_id,
+        target_resource: None,
+        canonical_arguments: intent_contracts::ArtifactReference::new(
+            intent_contracts::ArtifactId::from_uuid(action.operation.action_proposal_id.as_uuid()),
+            action.operation.arguments_hash,
+            intent_contracts::ByteSize::from_bytes(action.payload.len() as u64),
+            BoundedText::try_new("application/octet-stream")?,
+        ),
+        context: intent_contracts::ActionContext {
+            source_revision: hash(b"source-v1"),
+            canonicalization: intent_contracts::CanonicalizationVersion::ExactBytesV1,
+        },
+        effect_class: intent_contracts::CapabilityEffectClass::IrreversibleOrUncertain,
+        approval_requirement: intent_contracts::ApprovalRequirement::Always,
+        expires_at: Some(action.deadline),
+    });
+    Ok(action)
 }
 
 fn stage(broker: &mut RuntimeBroker) -> Result<OutboxMessageId> {
