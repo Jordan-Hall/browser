@@ -69,10 +69,11 @@
       "title": "Specify durable core record schemas",
       "implementation_prs": [
         787,
-        813
+        813,
+        846
       ],
       "status": "implemented_pending_acceptance",
-      "remaining": "Full/minimal v1 fixtures for all 13 families and nested unknown-field rejection are implemented in #813. Complete authority semantics, compatibility review and independent task acceptance remain.",
+      "remaining": "Full/minimal v1 fixtures and strict imports are implemented in #813; immutable action/source/approval binding is implemented in #846. Provider-target execution, accepted/verified/compensation wire outcomes, compatibility review and independent task acceptance remain.",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -88,6 +89,22 @@
           "scope": "Exact v1 schema and migration validation plus bounded parser-fuzz infrastructure in #813. Execution results are recorded on the PR; these files do not establish full task or production acceptance.",
           "commit": "e089adf217c35866b37f0fbe0cb2ade29a8102b5",
           "verification_report": "docs/verification/core-record-validation-20260918.json"
+        },
+        {
+          "publication": "published",
+          "commit": "03236325e705684decb3f4fa55bc47f56a47e920",
+          "scope": "Complete material binding across proposals, approvals, durable storage and current runtime dispatch; no whole-task acceptance",
+          "source_files": [
+            "crates/intent-contracts/src/action_binding.rs",
+            "crates/intent-state/src/operation_binding.rs",
+            "crates/intent-state/src/durable_recovery/dispatch.rs"
+          ],
+          "test_files": [
+            "crates/intent-contracts/tests/action_binding.rs",
+            "crates/intent-state/src/authorized_dispatch/tests/rejection_regressions.rs",
+            "crates/intent-state/src/durable_recovery/tests.rs"
+          ],
+          "verification_report": "docs/verification/core-action-binding-combined-20260920.json"
         }
       ]
     },
