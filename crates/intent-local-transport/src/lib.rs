@@ -18,4 +18,4 @@ pub use auth::{
 pub use peer::{ExpectedPeer, PeerCredentialError};
 
 #[cfg(windows)]
-pub use peer::verify_named_pipe_server;
+pub use peer::{create_current_user_named_pipe, verify_named_pipe_server};
