@@ -175,7 +175,7 @@ fn process_uses_current_principal(process_id: u32) -> Result<bool, PeerCredentia
         {
             return Err(os_error());
         }
-        if returned as usize < size_of::<TOKEN_USER>() {
+        if (returned as usize) < size_of::<TOKEN_USER>() {
             return Err(PeerCredentialError::Os(-1));
         }
         Ok(buffer)
