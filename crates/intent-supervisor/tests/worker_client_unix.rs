@@ -150,20 +150,18 @@ fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
     fs::set_permissions(&endpoints.progress, fs::Permissions::from_mode(0o600))?;
 
     let generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
-    let (control_token, control_pending) =
-        issue_worker_channel_authentication(
-            generation,
-            WorkerRole::FixtureWorker,
-            WorkerChannel::Control,
-        )
-        .map_err(|error| format!("control bootstrap entropy: {error}"))?;
-    let (progress_token, progress_pending) =
-        issue_worker_channel_authentication(
-            generation,
-            WorkerRole::FixtureWorker,
-            WorkerChannel::Progress,
-        )
-        .map_err(|error| format!("progress bootstrap entropy: {error}"))?;
+    let (control_token, control_pending) = issue_worker_channel_authentication(
+        generation,
+        WorkerRole::FixtureWorker,
+        WorkerChannel::Control,
+    )
+    .map_err(|error| format!("control bootstrap entropy: {error}"))?;
+    let (progress_token, progress_pending) = issue_worker_channel_authentication(
+        generation,
+        WorkerRole::FixtureWorker,
+        WorkerChannel::Progress,
+    )
+    .map_err(|error| format!("progress bootstrap entropy: {error}"))?;
     let scope = WorkerScope {
         task_id: TaskId::from_uuid(Uuid::new_v4()),
         account_id: AccountId::from_uuid(Uuid::new_v4()),
