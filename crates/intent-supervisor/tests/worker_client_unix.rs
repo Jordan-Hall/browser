@@ -1,25 +1,29 @@
-#![cfg(unix)]
+#![cfg(any(target_os = "linux", target_vendor = "apple"))]
 
 use intent_contracts::{AccountId, BoundedText, SchemaVersion, TaskId, TraceId, WorkerInstanceId};
 use intent_ipc::{
     ControlCodec, Envelope, Frame, FrameLane, ProtocolOffer, ProtocolRange, decode_control_owned,
 };
-use intent_local_transport::{WorkerHello, WorkerRole, issue_worker_authentication};
+use intent_local_transport::{
+    ExpectedPeer, WorkerHello, WorkerRole, issue_worker_authentication,
+};
 use intent_supervisor::{
     BootstrapPacket, ChannelHello, ChannelKind, ControlMessage, WorkerScope, wire_limits,
     worker::WorkerClient,
 };
+use nix::unistd::{getegid, geteuid};
 use std::error::Error;
 use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
-use std::thread;
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use uuid::Uuid;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_BOOTSTRAP_BYTES: u64 = 16 * 1024;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -51,6 +55,15 @@ impl Drop for EndpointPair {
         let _ = fs::remove_file(&self.control);
         let _ = fs::remove_file(&self.progress);
         let _ = fs::remove_dir(&self.directory);
+    }
+}
+
+struct ChildGuard(Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
     }
 }
 
@@ -111,7 +124,24 @@ fn write_welcome(
 }
 
 #[test]
-fn worker_client_completes_two_lane_bootstrap_on_unix() -> TestResult {
+#[ignore = "launched by worker_client_authenticates_real_child_on_both_unix_lanes"]
+fn worker_client_child() -> TestResult {
+    let mut bootstrap = Vec::new();
+    std::io::stdin()
+        .take(MAX_BOOTSTRAP_BYTES + 1)
+        .read_to_end(&mut bootstrap)?;
+    if bootstrap.len() as u64 > MAX_BOOTSTRAP_BYTES {
+        return Err("oversized worker bootstrap".into());
+    }
+    let packet: BootstrapPacket = serde_json::from_slice(&bootstrap)?;
+    let generation = packet.control.identity.instance_id();
+    let client = WorkerClient::connect(packet)?;
+    assert_eq!(client.generation(), generation);
+    Ok(())
+}
+
+#[test]
+fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
     let endpoints = EndpointPair::new()?;
     let control_listener = UnixListener::bind(&endpoints.control)?;
     let progress_listener = UnixListener::bind(&endpoints.progress)?;
@@ -119,10 +149,10 @@ fn worker_client_completes_two_lane_bootstrap_on_unix() -> TestResult {
     fs::set_permissions(&endpoints.progress, fs::Permissions::from_mode(0o600))?;
 
     let generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
-    let (control_token, _control_verifier) =
+    let (control_token, control_pending) =
         issue_worker_authentication(generation, WorkerRole::FixtureWorker)
             .map_err(|error| format!("control bootstrap entropy: {error}"))?;
-    let (progress_token, _progress_verifier) =
+    let (progress_token, progress_pending) =
         issue_worker_authentication(generation, WorkerRole::FixtureWorker)
             .map_err(|error| format!("progress bootstrap entropy: {error}"))?;
     let scope = WorkerScope {
@@ -145,12 +175,32 @@ fn worker_client_completes_two_lane_bootstrap_on_unix() -> TestResult {
         scope,
         handshake_timeout_millis: u32::try_from(IO_TIMEOUT.as_millis())?,
     };
+    let bootstrap = serde_json::to_vec(&packet)?;
+    if bootstrap.len() as u64 > MAX_BOOTSTRAP_BYTES {
+        return Err("fixture bootstrap exceeds its private stdin bound".into());
+    }
 
-    let worker = thread::spawn(move || {
-        WorkerClient::connect(packet)
-            .map(|client| client.generation())
-            .map_err(|error| error.to_string())
-    });
+    let mut child = ChildGuard(
+        Command::new(std::env::current_exe()?)
+            .args(["--exact", "worker_client_child", "--ignored", "--nocapture"])
+            .stdin(Stdio::piped())
+            .spawn()?,
+    );
+    assert_ne!(child.0.id(), std::process::id());
+    child
+        .0
+        .stdin
+        .take()
+        .ok_or("missing child bootstrap stdin")?
+        .write_all(&bootstrap)?;
+
+    let expected = ExpectedPeer::unix_process(
+        child.0.id(),
+        geteuid().as_raw(),
+        getegid().as_raw(),
+    )?;
+    let mut control_verifier = control_pending.bind(expected);
+    let mut progress_verifier = progress_pending.bind(expected);
 
     let (mut control, _) = control_listener.accept()?;
     let (mut progress, _) = progress_listener.accept()?;
@@ -158,15 +208,21 @@ fn worker_client_completes_two_lane_bootstrap_on_unix() -> TestResult {
         stream.set_read_timeout(Some(IO_TIMEOUT))?;
         stream.set_write_timeout(Some(IO_TIMEOUT))?;
     }
+    control_verifier.check_unix_peer(&control)?;
+    progress_verifier.check_unix_peer(&progress)?;
 
     let control_hello = read_bootstrap_hello(&mut control)?;
     let progress_hello = read_bootstrap_hello(&mut progress)?;
     assert_eq!(control_hello.channel, ChannelKind::Control);
     assert_eq!(progress_hello.channel, ChannelKind::Progress);
-    assert_eq!(control_hello.identity.instance_id(), generation);
-    assert_eq!(progress_hello.identity.instance_id(), generation);
-    assert_eq!(control_hello.identity.role(), WorkerRole::FixtureWorker);
-    assert_eq!(progress_hello.identity.role(), WorkerRole::FixtureWorker);
+    let control_identity =
+        control_verifier.authenticate_unix(&control_hello.identity, &control)?;
+    let progress_identity =
+        progress_verifier.authenticate_unix(&progress_hello.identity, &progress)?;
+    assert_eq!(control_identity.instance_id(), generation);
+    assert_eq!(progress_identity.instance_id(), generation);
+    assert_eq!(control_identity.role(), WorkerRole::FixtureWorker);
+    assert_eq!(progress_identity.role(), WorkerRole::FixtureWorker);
 
     let control_codec = ControlCodec::negotiate(&control_hello.offer)?;
     let progress_codec = ControlCodec::negotiate(&progress_hello.offer)?;
@@ -179,11 +235,8 @@ fn worker_client_completes_two_lane_bootstrap_on_unix() -> TestResult {
         ready.into_payload(),
         ControlMessage::Ready { generation: actual } if actual == generation
     ));
-    assert_eq!(
-        worker
-            .join()
-            .map_err(|_| "worker client thread panicked")??,
-        generation
-    );
+
+    let status = child.0.wait()?;
+    assert!(status.success(), "worker client child failed: {status}");
     Ok(())
 }
