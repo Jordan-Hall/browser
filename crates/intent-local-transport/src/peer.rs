@@ -40,6 +40,7 @@ pub enum PeerCredentialError {
     Os(i32),
     InvalidProcessId,
     Mismatch,
+    PrincipalMismatch,
 }
 
 impl fmt::Display for PeerCredentialError {
@@ -52,6 +53,9 @@ impl fmt::Display for PeerCredentialError {
             Self::InvalidProcessId => formatter.write_str("peer process id was invalid"),
             Self::Mismatch => {
                 formatter.write_str("connected peer differs from the expected process")
+            }
+            Self::PrincipalMismatch => {
+                formatter.write_str("connected peer runs as a different Windows principal")
             }
         }
     }
@@ -108,6 +112,106 @@ pub(crate) fn unix_peer_credentials(
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
+fn process_uses_current_principal(process_id: u32) -> Result<bool, PeerCredentialError> {
+    use std::mem::{size_of, size_of_val};
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        Security::{
+            EqualSid, GetTokenInformation, IsValidSid, PSID, SECURITY_MAX_SID_SIZE, TOKEN_QUERY,
+            TOKEN_USER, TokenUser,
+        },
+        System::Threading::{
+            OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+        },
+    };
+
+    struct OwnedHandle(HANDLE);
+    impl Drop for OwnedHandle {
+        fn drop(&mut self) {
+            // SAFETY: each non-null handle is owned by this wrapper and closed exactly once.
+            let _ = unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    const TOKEN_BUFFER_BYTES: usize = size_of::<TOKEN_USER>() + SECURITY_MAX_SID_SIZE as usize;
+
+    #[repr(align(16))]
+    struct TokenBuffer([u8; TOKEN_BUFFER_BYTES]);
+
+    fn os_error() -> PeerCredentialError {
+        PeerCredentialError::Os(std::io::Error::last_os_error().raw_os_error().unwrap_or(-1))
+    }
+
+    fn token_user(process_id: u32) -> Result<TokenBuffer, PeerCredentialError> {
+        // SAFETY: OpenProcess is called with a nonzero PID and query-only access; the returned
+        // handle is immediately transferred into OwnedHandle when non-null.
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) };
+        if process.is_null() {
+            return Err(os_error());
+        }
+        let process = OwnedHandle(process);
+        let mut raw_token: HANDLE = std::ptr::null_mut();
+        // SAFETY: process owns a live process handle and raw_token points to writable storage.
+        if unsafe { OpenProcessToken(process.0, TOKEN_QUERY, &mut raw_token) } == 0 {
+            return Err(os_error());
+        }
+        if raw_token.is_null() {
+            return Err(PeerCredentialError::Os(-1));
+        }
+        let token = OwnedHandle(raw_token);
+        let mut buffer = TokenBuffer([0; TOKEN_BUFFER_BYTES]);
+        let mut returned = 0_u32;
+        // SAFETY: TokenBuffer is suitably aligned and remains live for the call; its complete
+        // writable byte range is supplied. TokenUser is a query-only token information class.
+        if unsafe {
+            GetTokenInformation(
+                token.0,
+                TokenUser,
+                buffer.0.as_mut_ptr().cast(),
+                u32::try_from(size_of_val(&buffer.0)).map_err(|_| PeerCredentialError::Os(-1))?,
+                &mut returned,
+            )
+        } == 0
+        {
+            return Err(os_error());
+        }
+        if returned as usize < size_of::<TOKEN_USER>() {
+            return Err(PeerCredentialError::Os(-1));
+        }
+        Ok(buffer)
+    }
+
+    fn sid(buffer: &TokenBuffer) -> Result<PSID, PeerCredentialError> {
+        // SAFETY: token_user accepted only buffers containing at least TOKEN_USER bytes, and the
+        // OS-owned SID pointer refers into that still-live buffer for the duration of this check.
+        let sid = unsafe { (*(buffer.0.as_ptr().cast::<TOKEN_USER>())).User.Sid };
+        if sid.is_null() || unsafe { IsValidSid(sid) } == 0 {
+            return Err(PeerCredentialError::Os(-1));
+        }
+        Ok(sid)
+    }
+
+    if process_id == 0 {
+        return Err(PeerCredentialError::InvalidProcessId);
+    }
+    let peer = token_user(process_id)?;
+    let current = token_user(std::process::id())?;
+    let peer_sid = sid(&peer)?;
+    let current_sid = sid(&current)?;
+    // SAFETY: both validated SID pointers remain backed by live TokenBuffer values.
+    Ok(unsafe { EqualSid(peer_sid, current_sid) } != 0)
+}
+
+#[cfg(windows)]
+fn require_current_windows_principal(process_id: u32) -> Result<(), PeerCredentialError> {
+    if !process_uses_current_principal(process_id)? {
+        return Err(PeerCredentialError::PrincipalMismatch);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
 pub(crate) fn named_pipe_client_credentials<H: std::os::windows::io::AsRawHandle>(
     pipe: &H,
 ) -> Result<ObservedPeer, PeerCredentialError> {
@@ -125,6 +229,7 @@ pub(crate) fn named_pipe_client_credentials<H: std::os::windows::io::AsRawHandle
     if process_id == 0 {
         return Err(PeerCredentialError::InvalidProcessId);
     }
+    require_current_windows_principal(process_id)?;
 
     Ok(ObservedPeer::Windows { process_id })
 }
@@ -148,6 +253,7 @@ fn named_pipe_server_credentials<H: std::os::windows::io::AsRawHandle>(
     if process_id == 0 {
         return Err(PeerCredentialError::InvalidProcessId);
     }
+    require_current_windows_principal(process_id)?;
 
     Ok(ObservedPeer::Windows { process_id })
 }
@@ -213,6 +319,25 @@ mod tests {
                 gid: nix::unistd::getegid().as_raw(),
             }
         );
+        Ok(())
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn expected_windows_process_must_be_nonzero() {
+        assert_eq!(
+            ExpectedPeer::windows_process(0),
+            Err(PeerCredentialError::InvalidProcessId)
+        );
+    }
+
+    #[test]
+    fn current_windows_process_principal_matches_itself() -> Result<(), PeerCredentialError> {
+        assert!(process_uses_current_principal(std::process::id())?);
         Ok(())
     }
 }
