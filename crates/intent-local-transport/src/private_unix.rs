@@ -37,6 +37,7 @@ mod tests {
     use super::*;
     use std::fs::DirBuilder;
     use std::os::unix::fs::DirBuilderExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     struct TestDirectory(PathBuf);
 
@@ -48,12 +49,11 @@ mod tests {
     }
 
     fn directory(mode: u32) -> io::Result<TestDirectory> {
-        let mut nonce = [0_u8; 16];
-        getrandom::fill(&mut nonce).map_err(io::Error::other)?;
+        static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+        let sequence = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "intent-private-listener-{}-{:032x}",
-            std::process::id(),
-            u128::from_ne_bytes(nonce)
+            "intent-private-listener-{}-{sequence}",
+            std::process::id()
         ));
         DirBuilder::new().mode(0o700).create(&path)?;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))?;
