@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "scope": "Whole-task acceptance of CORE-01.T03 at verified main; not overall CORE readiness",
+  "commit": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
+  "platform": "Ubuntu24.04 primary CI; native Windows2025 and macOS15 checks also passed",
+  "accepted_task_issues": [
+    123
+  ],
+  "checks": {
+    "canonical_record_families_and_full_minimal_roundtrips": "success",
+    "optional_account_scope_and_unresolved_outcome_preservation": "success",
+    "strict_schema_import_and_authority_rejection": "success",
+    "exact_action_approval_operation_outbox_binding": "success",
+    "record_collection_time_and_state_invariants": "success",
+    "failed_attempt_and_committed_write_compensation_rules": "success",
+    "immutable_decisive_evidence_and_exact_projection": "success",
+    "pre_freeze_v1_compatibility": "success",
+    "refreshed_independent_whole_task_review": "success",
+    "exact_main_source_archive_and_lockfiles": "success",
+    "native_linux_windows_macos_ci": "success"
+  },
+  "reviewer": "Separate Codex whole-task acceptance reviewer; refreshed all six changed task files against approved37c996f",
+  "review_url": "https://github.com/Jordan-Hall/browser/issues/123#issuecomment-5751468206",
+  "review_report": "docs/verification/core-records-main-review-20260920.md",
+  "main_ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35524771552",
+  "main_artifact_id": 10609880220,
+  "main_artifact_name": "core-verification-35524771552-1",
+  "main_artifact_sha256": "4a44cffb56db105b831010588e32e1c0941abcc3171d480df8110bcee593c799",
+  "artifact_verification": {
+    "commit": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
+    "source_files_matched": 270,
+    "compiler": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "source_archive_sha256": "f0e207a5eabd14131d3ded054544767f20548c8628822e53ebe77dbcd2b96735",
+    "verification_sha256": "23a2ba08af035d187c8c809a285c0070bce84076863b6781d792c88f8d66fe70",
+    "lockfile_sha256": {
+      "Cargo.lock": "e4c40cbcdf2e6e9799656518579f7122fc3a74f8efca66b31c23e7912fc66571",
+      "fuzz/Cargo.lock": "530417e779c1a591199d78cc3516fcfff92d396b7aa43e0f2066ffb9f87a3641"
+    }
+  },
+  "ci_jobs": [
+    {
+      "name": "Rust checks",
+      "conclusion": "success"
+    },
+    {
+      "name": "Native contracts and storage (ubuntu-24.04)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Native contracts and storage (windows-2025)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Native contracts and storage (macos-15)",
+      "conclusion": "success"
+    }
+  ],
+  "prior_review_source": "37c996fa28a9f04707817ddd0f17cae37b4d5b30",
+  "prior_report": "docs/verification/core-records-combined-20260920.json",
+  "limits": [
+    "Accepts issue123 only; overall CORE remains incomplete and production_ready remains false.",
+    "Trusted provider-target execution remains downstream dispatch work.",
+    "The exact-main run compiled fuzz targets; this report does not claim a new main parser-fuzz execution.",
+    "Current-main changes narrow invalid records without adding wire fields under the documented pre-freeze1.0 compatibility decision."
+  ]
+}
