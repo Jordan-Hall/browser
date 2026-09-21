@@ -255,7 +255,6 @@ fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
     Ok(())
 }
 
-
 #[test]
 fn real_child_rejects_a_control_launch_record_bound_to_progress_lane() -> TestResult {
     let endpoints = EndpointPair::new()?;
