@@ -3,13 +3,13 @@
 use intent_contracts::WorkerInstanceId;
 use intent_local_transport::{
     AuthenticationError, ExpectedPeer, MessageFamily, WorkerHello, WorkerRole,
-    issue_worker_authentication,
+    create_private_unix_listener, issue_worker_authentication,
 };
 use nix::unistd::{getegid, geteuid};
 use std::error::Error;
 use std::fs::DirBuilder;
 use std::io::{self, Read, Write};
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -152,7 +152,11 @@ enum HelloCase {
 fn authentication_case(case: HelloCase) -> TestResult {
     let deadline = Instant::now() + TIMEOUT;
     let endpoint = Endpoint::new()?;
-    let listener = UnixListener::bind(&endpoint.path)?;
+    let listener = create_private_unix_listener(&endpoint.path)?;
+    assert_eq!(
+        std::fs::symlink_metadata(&endpoint.path)?.permissions().mode() & 0o777,
+        0o600
+    );
     listener.set_nonblocking(true)?;
     let (token, pending) = issue_worker_authentication(instance()?, WorkerRole::BrowserWorker)
         .map_err(|error| format!("bootstrap entropy: {error}"))?;

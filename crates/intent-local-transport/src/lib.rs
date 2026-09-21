@@ -9,6 +9,8 @@ same-user credentials alone are not treated as a strong sandbox boundary.
 
 mod auth;
 mod peer;
+#[cfg(unix)]
+mod private_unix;
 
 pub use auth::{
     AuthenticationError, BOOTSTRAP_TOKEN_BYTES, BootstrapToken, MessageFamily,
@@ -16,6 +18,9 @@ pub use auth::{
     issue_worker_authentication,
 };
 pub use peer::{ExpectedPeer, PeerCredentialError};
+
+#[cfg(unix)]
+pub use private_unix::create_private_unix_listener;
 
 #[cfg(windows)]
 pub use peer::{create_current_user_named_pipe, verify_named_pipe_server};
