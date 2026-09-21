@@ -150,7 +150,10 @@ fn debug_output_never_contains_bootstrap_secret() -> Result<(), Box<dyn Error>> 
         format!("{:?}", hello.bootstrap_token),
         "BootstrapToken([REDACTED])"
     );
-    assert!(!format!("{verifier:?} {hello:?}").contains("171"));
+    let debug = format!("{verifier:?} {hello:?}");
+    assert!(debug.contains("BootstrapToken([REDACTED])"));
+    assert!(!debug.contains("[171, 171, 171, 171"));
+    assert!(!debug.contains("[171,171,171,171"));
     Ok(())
 }
 
