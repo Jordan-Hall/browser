@@ -199,8 +199,8 @@
         850,
         851
       ],
-      "status": "implemented_pending_acceptance",
-      "remaining": "Framing, EOF/poisoning, aggregate read budgets, strict canonical parsing, measured encoder allocation and strict nested Event fields are implemented. Independent task review approved source 3c82332; exact-source workspace, native and fuzz CI passed. The prerequisite PR stack must merge before final main acceptance.",
+      "status": "accepted",
+      "remaining": "",
       "implementation_evidence": [
         {
           "publication": "published",
@@ -243,7 +243,13 @@
           ],
           "verification_report": "docs/verification/core-bounded-wire-ci-20260920.json"
         }
-      ]
+      ],
+      "acceptance_evidence": {
+        "commit": "36e07abeba73a785dd0ef8d7a98457ff203ec8bc",
+        "reviewer": "Independent finite whole-task review at 3c82332 with resolved review history and current-main acceptance reconciliation",
+        "review_url": "https://github.com/Jordan-Hall/browser/issues/124#issuecomment-5759553833",
+        "report": "docs/verification/core-bounded-wire-main-acceptance-prep-20260921.json"
+      }
     },
     {
       "issue": 125,
@@ -1493,10 +1499,10 @@
       "implementation_evidence": []
     }
   ],
-  "reviewed_remote_head": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
+  "reviewed_remote_head": "36e07abeba73a785dd0ef8d7a98457ff203ec8bc",
   "current_source": {
     "publication": "published",
-    "commit": "15ef9cc1ed7a4576d1e3b8f2603e6a6fdc6eca8a",
-    "scope": "Integrated main after PRs #847 and #849. T01, T02 and T03 are accepted; remaining task status and evidence are recorded individually. Overall CORE remains incomplete."
+    "commit": "36e07abeba73a785dd0ef8d7a98457ff203ec8bc",
+    "scope": "Integrated main after PR #855. T01, T02, T03 and T04 are accepted; remaining task status and evidence are recorded individually. Overall CORE remains incomplete."
   }
 }

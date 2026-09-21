@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "scope": "PR #858 current-main reconciliation and incremental Windows credential buffer/name-bound repairs; not task acceptance",
+  "pr": 858,
+  "base_main": "6ec30cc4f71cb09ae3dc20812ab96ffa4f072a23",
+  "prior_pr_head": "beac7ccfe7b4f0491bbc958be46f634492bca698",
+  "prior_pr_tree": "944f4f9e0361a9e645847afa8f05fdd092b2481b",
+  "source_sha256": {
+    "crates/intent-local-transport/src/peer.rs": "bfec333115c94650c2c4bcb69cdfacb582eb8f2b3816a6f093d37bfd86eed350",
+    "crates/intent-local-transport/src/peer/pipe_name_tests.rs": "8c51b2bc9dc310e83211da86f2befd3b3dbf11a8a0a188bcdeebde2e49b69081",
+    "crates/intent-local-transport/tests/windows_named_pipe.rs": "5b7ec7c4b6754421e452565b7275960a3ff08b62c9586b4d1bd70a50872389e9",
+    "docs/core-task-coverage.json": "9be3566a1af1cb1227191040eef52e193f8ebf4bb3f2e5a6fd400bdf6ce55581",
+    "docs/core-task-coverage.md": "e41a90456bfc009f4e5512bd68e02acf31fff238b94d6915c99cdf86e5f83a49",
+    "docs/verification/core-bounded-wire-main-acceptance-prep-20260921.json": "031650dffa9473f2604a68c566dafb3c63bc31cff6fc0ff8de5ae96be3929591"
+  },
+  "local": {
+    "toolchain": "rustc 1.98.1",
+    "baseline_format_exit": 1,
+    "corrected_format_exit": 0,
+    "python_tests": 51,
+    "python_skipped": 0,
+    "isolated_production_helper_tests": 4,
+    "isolated_unbounded_mutation_failed_tests": 1,
+    "isolated_scope": "Exact standard-library-only bounded_pipe_name and PeerCredentialError source plus committed test file compiled with pinned rustc; not workspace or native Windows execution. The first probe-generation attempt duplicated the module declaration and failed compilation; the corrected probe passed and the unbounded mutation failed.",
+    "cargo_tests": "Not executed: locked offline resolution failed because existing vendor artifact lacks zeroize 1.9.0 (exit 101). No substitute dependency or lockfile change was made.",
+    "coverage": "37 tasks, 4 accepted, 2 blocked, 11 implemented_pending_acceptance, 20 partially_implemented",
+    "require_accepted_exit": 1,
+    "unaccepted_tasks": 33
+  },
+  "fixes": [
+    "Preserve current-main T01-T04 acceptance and all PR T05 implementation evidence in a normal merge; retain every distinct decision row.",
+    "Allocate Windows TOKEN_USER buffer before the OS writes its interior SID pointer; return a Box so ownership moves do not relocate backing bytes.",
+    "Correct LocalFree import to windows-sys 0.61.2 Foundation module.",
+    "Bound pipe-name enumeration to 257 UTF-16 units, rejecting names over 256, nonlocal or empty endpoints, embedded NUL and nested separators.",
+    "Add Windows allocation-move regression and retain real-child named-pipe tests; fix formatter and unused test import."
+  ],
+  "pending": [
+    "Exact published-head Linux/Windows/macOS CI and parser fuzz.",
+    "Fresh Codex review and all outstanding code findings.",
+    "Whole-task platform supervision, endpoint qualification and independent acceptance."
+  ],
+  "production_ready": false,
+  "accepted": false
+}

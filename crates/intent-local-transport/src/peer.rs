@@ -127,16 +127,12 @@ struct WindowsTokenBuffer([u8; WINDOWS_TOKEN_BUFFER_BYTES]);
 
 #[cfg(windows)]
 fn windows_os_error() -> PeerCredentialError {
-    PeerCredentialError::Os(
-        std::io::Error::last_os_error()
-            .raw_os_error()
-            .unwrap_or(-1),
-    )
+    PeerCredentialError::Os(std::io::Error::last_os_error().raw_os_error().unwrap_or(-1))
 }
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
-fn windows_token_user(process_id: u32) -> Result<WindowsTokenBuffer, PeerCredentialError> {
+fn windows_token_user(process_id: u32) -> Result<Box<WindowsTokenBuffer>, PeerCredentialError> {
     use std::mem::{size_of, size_of_val};
     use windows_sys::Win32::{
         Foundation::{CloseHandle, HANDLE},
@@ -171,7 +167,9 @@ fn windows_token_user(process_id: u32) -> Result<WindowsTokenBuffer, PeerCredent
         return Err(PeerCredentialError::Os(-1));
     }
     let token = OwnedHandle(raw_token);
-    let mut buffer = WindowsTokenBuffer([0; WINDOWS_TOKEN_BUFFER_BYTES]);
+    // TOKEN_USER contains a SID pointer into this allocation. Allocate before the OS fills it;
+    // moving the owning Box must not relocate the bytes or leave that pointer on an old stack.
+    let mut buffer = Box::new(WindowsTokenBuffer([0; WINDOWS_TOKEN_BUFFER_BYTES]));
     let mut returned = 0_u32;
     // SAFETY: WindowsTokenBuffer is suitably aligned and remains live for the call; its complete
     // writable byte range is supplied. TokenUser is a query-only token information class.
@@ -187,7 +185,7 @@ fn windows_token_user(process_id: u32) -> Result<WindowsTokenBuffer, PeerCredent
     {
         return Err(windows_os_error());
     }
-    if (returned as usize) < size_of::<TOKEN_USER>() {
+    if (returned as usize) < size_of::<TOKEN_USER>() || returned as usize > buffer.0.len() {
         return Err(PeerCredentialError::Os(-1));
     }
     Ok(buffer)
@@ -230,7 +228,7 @@ impl Drop for OwnedLocalSecurityDescriptor {
     fn drop(&mut self) {
         // SAFETY: ConvertStringSecurityDescriptorToSecurityDescriptorW allocated this pointer with
         // LocalAlloc, ownership is unique to this wrapper, and LocalFree is called exactly once.
-        let _ = unsafe { windows_sys::Win32::System::Memory::LocalFree(self.0.cast()) };
+        let _ = unsafe { windows_sys::Win32::Foundation::LocalFree(self.0.cast()) };
     }
 }
 
@@ -239,12 +237,12 @@ impl Drop for OwnedLocalSecurityDescriptor {
 fn current_user_pipe_security_descriptor()
 -> Result<OwnedLocalSecurityDescriptor, PeerCredentialError> {
     use windows_sys::{
+        Win32::Foundation::LocalFree,
         Win32::Security::Authorization::{
             ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
             SDDL_REVISION_1,
         },
         Win32::Security::PSECURITY_DESCRIPTOR,
-        Win32::System::Memory::LocalFree,
         core::PWSTR,
     };
 
@@ -282,10 +280,9 @@ fn current_user_pipe_security_descriptor()
     }
     // SAFETY: the preceding bounded scan established exactly length initialized code units before
     // the null terminator and raw_sid_string remains live for this conversion.
-    let sid_text = String::from_utf16(unsafe {
-        std::slice::from_raw_parts(raw_sid_string.0, length)
-    })
-    .map_err(|_| PeerCredentialError::Os(-1))?;
+    let sid_text =
+        String::from_utf16(unsafe { std::slice::from_raw_parts(raw_sid_string.0, length) })
+            .map_err(|_| PeerCredentialError::Os(-1))?;
     let sddl = format!("D:P(A;;GA;;;{sid_text})");
     let wide_sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
     let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
@@ -308,6 +305,28 @@ fn current_user_pipe_security_descriptor()
     Ok(OwnedLocalSecurityDescriptor(descriptor))
 }
 
+#[cfg(any(windows, test))]
+const MAX_PIPE_NAME_UNITS: usize = 256;
+
+#[cfg(any(windows, test))]
+fn bounded_pipe_name(units: impl Iterator<Item = u16>) -> Result<Vec<u16>, PeerCredentialError> {
+    let mut name: Vec<u16> = units.take(MAX_PIPE_NAME_UNITS + 1).collect();
+    let prefix: Vec<u16> = r"\\.\pipe\".encode_utf16().collect();
+    if name.len() > MAX_PIPE_NAME_UNITS
+        || !name.starts_with(&prefix)
+        || name.len() == prefix.len()
+        || name.contains(&0)
+        || name[prefix.len()..].contains(&u16::from(b'\\'))
+    {
+        return Err(PeerCredentialError::InvalidPipeName);
+    }
+    name.push(0);
+    Ok(name)
+}
+
+#[cfg(test)]
+mod pipe_name_tests;
+
 #[cfg(windows)]
 #[allow(unsafe_code)]
 pub fn create_current_user_named_pipe(
@@ -326,12 +345,7 @@ pub fn create_current_user_named_pipe(
     if buffer_bytes == 0 || buffer_bytes > MAX_PIPE_BUFFER_BYTES {
         return Err(PeerCredentialError::InvalidPipeBufferSize);
     }
-    let mut wide_name: Vec<u16> = name.encode_wide().collect();
-    let prefix: Vec<u16> = r"\\.\pipe\".encode_utf16().collect();
-    if !wide_name.starts_with(&prefix) || wide_name.len() == prefix.len() || wide_name.contains(&0) {
-        return Err(PeerCredentialError::InvalidPipeName);
-    }
-    wide_name.push(0);
+    let wide_name = bounded_pipe_name(name.encode_wide())?;
     let descriptor = current_user_pipe_security_descriptor()?;
     let attributes = SECURITY_ATTRIBUTES {
         nLength: u32::try_from(std::mem::size_of::<SECURITY_ATTRIBUTES>())
@@ -382,9 +396,7 @@ pub(crate) fn named_pipe_client_credentials<H: std::os::windows::io::AsRawHandle
     // handle without retaining it, and `process_id` points to valid writable storage for the call.
     let result = unsafe { GetNamedPipeClientProcessId(raw_handle, &mut process_id) };
     if result == 0 {
-        let error_code = std::io::Error::last_os_error()
-            .raw_os_error()
-            .unwrap_or(-1);
+        let error_code = std::io::Error::last_os_error().raw_os_error().unwrap_or(-1);
         return Err(PeerCredentialError::Os(error_code));
     }
     if process_id == 0 {
@@ -408,9 +420,7 @@ fn named_pipe_server_credentials<H: std::os::windows::io::AsRawHandle>(
     // retained, and process_id points to valid writable storage for the returned process ID.
     let result = unsafe { GetNamedPipeServerProcessId(raw_handle, &mut process_id) };
     if result == 0 {
-        let error_code = std::io::Error::last_os_error()
-            .raw_os_error()
-            .unwrap_or(-1);
+        let error_code = std::io::Error::last_os_error().raw_os_error().unwrap_or(-1);
         return Err(PeerCredentialError::Os(error_code));
     }
     if process_id == 0 {
@@ -496,6 +506,26 @@ mod windows_tests {
             ExpectedPeer::windows_process(0),
             Err(PeerCredentialError::InvalidProcessId)
         );
+    }
+
+    #[test]
+    fn token_sid_storage_survives_moving_its_owner() -> Result<(), PeerCredentialError> {
+        let token = windows_token_user(std::process::id())?;
+        let allocation = token.0.as_ptr() as usize;
+        let mut owners = Vec::with_capacity(2);
+        owners.push(token);
+        let moved = std::hint::black_box(&owners[0]);
+        assert_eq!(moved.0.as_ptr() as usize, allocation);
+        let sid = windows_sid(moved)? as usize;
+        assert!(
+            sid >= allocation + std::mem::size_of::<windows_sys::Win32::Security::TOKEN_USER>()
+        );
+        assert!(sid < allocation + moved.0.len());
+        // A second query must not overwrite the first owner's SID storage.
+        owners.push(windows_token_user(std::process::id())?);
+        assert_eq!(windows_sid(&owners[0])? as usize, sid);
+        assert_ne!(owners[0].0.as_ptr(), owners[1].0.as_ptr());
+        Ok(())
     }
 
     #[test]

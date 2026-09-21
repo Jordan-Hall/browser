@@ -18,8 +18,7 @@ use windows_sys::Win32::Foundation::{
     ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, ERROR_PIPE_LISTENING,
 };
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, DisconnectNamedPipe, PIPE_NOWAIT, PIPE_REJECT_REMOTE_CLIENTS,
-    SetNamedPipeHandleState,
+    ConnectNamedPipe, DisconnectNamedPipe, PIPE_NOWAIT, SetNamedPipeHandleState,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -160,6 +159,17 @@ fn named_pipe_factory_rejects_unbounded_or_nonlocal_endpoints() {
         create_current_user_named_pipe(r"C:\intent-invalid".as_ref(), 4096),
         Err(PeerCredentialError::InvalidPipeName)
     ));
+    for name in [
+        String::from(r"\\.\pipe\"),
+        String::from("\\\\.\\pipe\\bad\0tail"),
+        String::from(r"\\.\pipe\bad\tail"),
+        format!(r"\\.\pipe\{}", "a".repeat(256)),
+    ] {
+        assert!(matches!(
+            create_current_user_named_pipe(name.as_ref(), 4096),
+            Err(PeerCredentialError::InvalidPipeName)
+        ));
+    }
 }
 
 fn connected(pipe: &File, deadline: Instant) -> io::Result<()> {
