@@ -388,6 +388,7 @@ struct Entry {
     term_sent: bool,
     kill_sent: bool,
     reaped: bool,
+    exit_observed_at: Option<Instant>,
     exit_code: Option<i32>,
     exit_signal: Option<i32>,
     pending: BTreeMap<RequestId, PendingRequest>,
@@ -464,27 +465,27 @@ impl Entry {
         if self.reaped {
             return Ok(false);
         }
-        if let Some(exit) = self.child.poll_exit()? {
+        if self.exit_observed_at.is_none()
+            && let Some(exit) = self.child.poll_exit()?
+        {
             self.exit_code = exit.code();
             self.exit_signal = exit.signal();
             self.lease.revoke();
-            self.reaped = true;
-            for lane in [&mut self.control, &mut self.progress] {
-                lane.authenticator = None;
-                lane.socket = None;
+            self.exit_observed_at = Some(now);
+            self.observation = None;
+            self.state = WorkerState::Draining;
+            self.control.authenticator = None;
+            self.progress.authenticator = None;
+            self.progress.socket = None;
+            if self.control.identity.is_none() {
+                self.control.socket = None;
             }
             if self.stop_at.is_none() {
                 self.failure = Some(WorkerFailure::OsExit);
             }
-            self.state = if self.failure.is_some() {
-                WorkerState::Failed
-            } else {
-                WorkerState::Stopped
-            };
-            if self.state == WorkerState::Failed {
-                self.restart.failed(now);
-            }
-            return Ok(true);
+        }
+        if let Some(exited_at) = self.exit_observed_at {
+            return Ok(self.finish_exit(now, exited_at, read_budget));
         }
         if self.lease.expired(now) || self.pending.values().any(|request| now >= request.expires) {
             self.fail(now, WorkerFailure::DeadlineExpired);
@@ -608,22 +609,25 @@ impl Entry {
         &mut self,
         now: Instant,
         read_budget: &mut ReadBudget,
-    ) -> Result<(), SupervisorError> {
+    ) -> Result<bool, SupervisorError> {
         let Some(socket) = self.control.socket.as_mut() else {
-            return Ok(());
+            return Ok(true);
         };
         let mut lane_budget = 8192;
         for _ in 0..8 {
+            let blocks_before = read_budget.blocked_reads();
             let before = read_budget.consumed();
             let outcome = read_budget.read_one(socket, lane_budget)?;
             lane_budget = lane_budget.saturating_sub(read_budget.consumed().saturating_sub(before));
             let frame = match outcome {
-                ReadOutcome::Pending => break,
+                ReadOutcome::Pending => {
+                    return Ok(lane_budget > 0 && read_budget.blocked_reads() == blocks_before);
+                }
                 ReadOutcome::Closed => {
                     if self.stop_at.is_none() {
                         self.fail(now, WorkerFailure::ControlClosed);
                     }
-                    break;
+                    return Ok(true);
                 }
                 ReadOutcome::Frame(frame) => frame,
             };
@@ -705,7 +709,7 @@ impl Entry {
                 _ => return Err(SupervisorError::Protocol),
             }
         }
-        Ok(())
+        Ok(false)
     }
     fn read_progress(
         &mut self,
@@ -913,6 +917,7 @@ impl Supervisor {
                 term_sent: false,
                 kill_sent: false,
                 reaped: false,
+                exit_observed_at: None,
                 exit_code: None,
                 exit_signal: None,
                 pending: BTreeMap::new(),
@@ -1244,6 +1249,7 @@ impl Supervisor {
             self.metrics_cursor = self.metrics_cursor.wrapping_add(1);
             if let Some((_, entry)) = self.entries.iter_mut().nth(index)
                 && !entry.reaped
+                && entry.exit_observed_at.is_none()
                 && now.duration_since(entry.sampled_at) >= Duration::from_millis(250)
             {
                 entry.observation = observe_unreaped(entry.child.id()).ok();
@@ -1436,3 +1442,5 @@ mod health_tests;
 
 #[cfg(test)]
 mod startup_tests;
+
+mod exit;

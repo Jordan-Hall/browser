@@ -375,3 +375,6 @@ fn observe_cancellation_then_release(
     std::fs::remove_file(release)?;
     stopped
 }
+
+#[path = "blocked_progress_cancellation/exit_ack.rs"]
+mod exit_ack;
