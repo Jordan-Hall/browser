@@ -224,6 +224,7 @@ fn process_uses_current_principal(process_id: u32) -> Result<bool, PeerCredentia
 struct OwnedLocalSecurityDescriptor(windows_sys::Win32::Security::PSECURITY_DESCRIPTOR);
 
 #[cfg(windows)]
+#[allow(unsafe_code)]
 impl Drop for OwnedLocalSecurityDescriptor {
     fn drop(&mut self) {
         // SAFETY: ConvertStringSecurityDescriptorToSecurityDescriptorW allocated this pointer with

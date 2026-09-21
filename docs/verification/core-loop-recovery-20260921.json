@@ -6,7 +6,7 @@
   "prior_pr_head": "beac7ccfe7b4f0491bbc958be46f634492bca698",
   "prior_pr_tree": "944f4f9e0361a9e645847afa8f05fdd092b2481b",
   "source_sha256": {
-    "crates/intent-local-transport/src/peer.rs": "bfec333115c94650c2c4bcb69cdfacb582eb8f2b3816a6f093d37bfd86eed350",
+    "crates/intent-local-transport/src/peer.rs": "0c3e43296c21f88e6dc2649ef48f7b729388230c7b06e9fbbc1cb5594689c2a5",
     "crates/intent-local-transport/src/peer/pipe_name_tests.rs": "8c51b2bc9dc310e83211da86f2befd3b3dbf11a8a0a188bcdeebde2e49b69081",
     "crates/intent-local-transport/tests/windows_named_pipe.rs": "5b7ec7c4b6754421e452565b7275960a3ff08b62c9586b4d1bd70a50872389e9",
     "docs/core-task-coverage.json": "9be3566a1af1cb1227191040eef52e193f8ebf4bb3f2e5a6fd400bdf6ce55581",
@@ -40,5 +40,13 @@
     "Whole-task platform supervision, endpoint qualification and independent acceptance."
   ],
   "production_ready": false,
-  "accepted": false
+  "accepted": false,
+  "native_followup": {
+    "failed_head": "5dfa109741207cd9fcde895865e0f1a25cf7ef7f",
+    "ci_run": 35623851417,
+    "windows_job": 106413229606,
+    "failure": "Workspace unsafe_code warning denied at the LocalFree destructor; Windows substantive tests were skipped and not counted as passed.",
+    "correction": "Apply the same narrowly scoped unsafe_code allowance used by the other Windows FFI wrappers to the private owned-descriptor Drop implementation. The single documented LocalFree call is unchanged; no crate-wide lint or runtime gate is relaxed.",
+    "new_exact_head_ci_required": true
+  }
 }
