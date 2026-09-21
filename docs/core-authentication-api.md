@@ -19,6 +19,14 @@ generation failure. A subsequent authentication attempt returns AlreadyConsumed.
 The connected authentication method repeats peer observation before consuming
 the Hello, even if a caller already performed the preflight check.
 
+Every issued verifier has a hard 60-second maximum lifetime. Peer preflight and
+Hello consumption fail closed after that cap; observing expiry consumes and
+erases the verifier-owned bootstrap secret. The Linux supervisor independently
+enforces its configured absolute startup deadline (bounded to at most 60 seconds)
+and drops unused lane verifiers when startup expires, so a shorter supervisor
+deadline remains authoritative. This transport cap does not extend the startup
+window or make the wire token itself an authority object.
+
 The supervisor still owns its private socket, decoded frame, identity, channel
 and generation in Lane. The API does not prove the origin of a caller-supplied
 decoded Hello by Rust types alone, and a returned identity cannot be injected

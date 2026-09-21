@@ -53,7 +53,7 @@ fn observation_failure_retains_the_live_secret_until_owner_disposal() -> Result<
             .is_err()
     );
     assert!(take_disposals().is_empty());
-    assert!(verifier.launch.is_some());
+    assert!(verifier.launch.borrow().is_some());
     drop(verifier);
     assert_eq!(take_disposals(), vec![true]);
     drop(hello);
@@ -96,12 +96,48 @@ fn fixture() -> Result<(WorkerHello, WorkerVerifier), Box<dyn Error>> {
             role: WorkerRole::BrowserWorker,
             bootstrap_token: token.clone(),
         },
+        expires_at: Instant::now() + MAX_BOOTSTRAP_LIFETIME,
     }
     .bind(expected()?);
     Ok((
         WorkerHello::new(instance()?, WorkerRole::BrowserWorker, token),
         verifier,
     ))
+}
+
+#[test]
+fn expiration_consumes_and_erases_the_verifier_secret() -> Result<(), Box<dyn Error>> {
+    let token = BootstrapToken([171; 32]);
+    let hello = WorkerHello::new(instance()?, WorkerRole::BrowserWorker, token.clone());
+    let mut verifier = WorkerVerifier {
+        launch: RefCell::new(Some(WorkerLaunch {
+            instance_id: instance()?,
+            role: WorkerRole::BrowserWorker,
+            bootstrap_token: token,
+        })),
+        expected: expected()?,
+        expires_at: Instant::now(),
+    };
+    take_disposals();
+    assert_eq!(verifier.consume_hello(&hello), Err(AuthenticationError::Expired));
+    assert_eq!(take_disposals(), vec![true]);
+    assert_eq!(
+        verifier.consume_hello(&hello),
+        Err(AuthenticationError::AlreadyConsumed)
+    );
+    drop(hello);
+    assert_eq!(take_disposals(), vec![true]);
+    Ok(())
+}
+
+#[test]
+fn issued_verifier_has_a_finite_hard_lifetime() -> Result<(), Box<dyn Error>> {
+    let before = Instant::now();
+    let (_, pending) = issue_worker_authentication(instance()?, WorkerRole::BrowserWorker)
+        .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    assert!(pending.expires_at > before);
+    assert!(pending.expires_at <= Instant::now() + MAX_BOOTSTRAP_LIFETIME);
+    Ok(())
 }
 
 #[test]

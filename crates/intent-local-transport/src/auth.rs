@@ -1,12 +1,15 @@
 use crate::peer::{ExpectedPeer, ObservedPeer, PeerCredentialError};
 use intent_contracts::{SchemaVersion, WorkerInstanceId};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::error::Error;
 use std::fmt;
+use std::time::{Duration, Instant};
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
 pub const BOOTSTRAP_TOKEN_BYTES: usize = 32;
+const MAX_BOOTSTRAP_LIFETIME: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -195,8 +198,12 @@ struct WorkerLaunch {
 #[derive(Debug)]
 pub struct UnboundWorkerVerifier {
     launch: WorkerLaunch,
+    expires_at: Instant,
 }
 
+/// Issues a one-use bootstrap proof with a hard maximum lifetime.
+/// The supervisor may enforce a shorter startup deadline; this cap prevents an issued verifier
+/// retained by another caller from keeping its bootstrap credential valid indefinitely.
 pub fn issue_worker_authentication(
     instance_id: WorkerInstanceId,
     role: WorkerRole,
@@ -209,6 +216,7 @@ pub fn issue_worker_authentication(
             role,
             bootstrap_token: token.clone(),
         },
+        expires_at: Instant::now() + MAX_BOOTSTRAP_LIFETIME,
     };
     Ok((token, verifier))
 }
@@ -217,8 +225,9 @@ impl UnboundWorkerVerifier {
     #[must_use]
     pub fn bind(self, expected: ExpectedPeer) -> WorkerVerifier {
         WorkerVerifier {
-            launch: Some(self.launch),
+            launch: RefCell::new(Some(self.launch)),
             expected,
+            expires_at: self.expires_at,
         }
     }
 }
@@ -278,8 +287,9 @@ impl WorkerIdentity {
 /// ```
 #[derive(Debug)]
 pub struct WorkerVerifier {
-    launch: Option<WorkerLaunch>,
+    launch: RefCell<Option<WorkerLaunch>>,
     expected: ExpectedPeer,
+    expires_at: Instant,
 }
 
 impl WorkerVerifier {
@@ -330,10 +340,15 @@ impl WorkerVerifier {
     }
 
     fn require_active(&self) -> Result<(), AuthenticationError> {
-        self.launch
-            .as_ref()
-            .ok_or(AuthenticationError::AlreadyConsumed)
-            .map(|_| ())
+        let mut launch = self.launch.borrow_mut();
+        if launch.is_none() {
+            return Err(AuthenticationError::AlreadyConsumed);
+        }
+        if Instant::now() >= self.expires_at {
+            launch.take();
+            return Err(AuthenticationError::Expired);
+        }
+        Ok(())
     }
 
     fn check_observed(
@@ -351,8 +366,10 @@ impl WorkerVerifier {
         &mut self,
         hello: &WorkerHello,
     ) -> Result<WorkerIdentity, AuthenticationError> {
+        self.require_active()?;
         let launch = self
             .launch
+            .get_mut()
             .take()
             .ok_or(AuthenticationError::AlreadyConsumed)?;
         if hello.schema_version != SchemaVersion::V1 {
@@ -372,6 +389,7 @@ impl WorkerVerifier {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AuthenticationError {
     UnsupportedSchema,
+    Expired,
     LaunchIdentityMismatch,
     PeerCredentialMismatch,
     PeerObservation(PeerCredentialError),
@@ -382,6 +400,7 @@ impl fmt::Display for AuthenticationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedSchema => formatter.write_str("unsupported worker handshake schema"),
+            Self::Expired => formatter.write_str("worker bootstrap credential expired"),
             Self::LaunchIdentityMismatch => {
                 formatter.write_str("worker launch identity did not match supervisor record")
             }
