@@ -119,7 +119,10 @@ fn expiration_consumes_and_erases_the_verifier_secret() -> Result<(), Box<dyn Er
         expires_at: Instant::now(),
     };
     take_disposals();
-    assert_eq!(verifier.consume_hello(&hello), Err(AuthenticationError::Expired));
+    assert_eq!(
+        verifier.consume_hello(&hello),
+        Err(AuthenticationError::Expired)
+    );
     assert_eq!(take_disposals(), vec![true]);
     assert_eq!(
         verifier.consume_hello(&hello),
