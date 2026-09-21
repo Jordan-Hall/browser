@@ -17,7 +17,7 @@ subtle.workspace = true
 nix.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Security", "Win32_System_Threading"] }
+windows-sys = { workspace = true, features = ["Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_Threading"] }
 
 [lints]
 workspace = true
