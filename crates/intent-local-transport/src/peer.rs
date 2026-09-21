@@ -120,9 +120,7 @@ fn process_uses_current_principal(process_id: u32) -> Result<bool, PeerCredentia
             EqualSid, GetTokenInformation, IsValidSid, PSID, SECURITY_MAX_SID_SIZE, TOKEN_QUERY,
             TOKEN_USER, TokenUser,
         },
-        System::Threading::{
-            OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
-        },
+        System::Threading::{OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION},
     };
 
     struct OwnedHandle(HANDLE);
