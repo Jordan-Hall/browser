@@ -154,7 +154,10 @@ fn authentication_case(case: HelloCase) -> TestResult {
     let endpoint = Endpoint::new()?;
     let listener = create_private_unix_listener(&endpoint.path)?;
     assert_eq!(
-        std::fs::symlink_metadata(&endpoint.path)?.permissions().mode() & 0o777,
+        std::fs::symlink_metadata(&endpoint.path)?
+            .permissions()
+            .mode()
+            & 0o777,
         0o600
     );
     listener.set_nonblocking(true)?;
