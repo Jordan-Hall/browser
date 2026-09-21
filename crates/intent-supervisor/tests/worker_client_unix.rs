@@ -4,9 +4,7 @@ use intent_contracts::{AccountId, BoundedText, SchemaVersion, TaskId, TraceId, W
 use intent_ipc::{
     ControlCodec, Envelope, Frame, FrameLane, ProtocolOffer, ProtocolRange, decode_control_owned,
 };
-use intent_local_transport::{
-    ExpectedPeer, WorkerHello, WorkerRole, issue_worker_authentication,
-};
+use intent_local_transport::{ExpectedPeer, WorkerHello, WorkerRole, issue_worker_authentication};
 use intent_supervisor::{
     BootstrapPacket, ChannelHello, ChannelKind, ControlMessage, WorkerScope, wire_limits,
     worker::WorkerClient,
@@ -194,11 +192,8 @@ fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
         .ok_or("missing child bootstrap stdin")?
         .write_all(&bootstrap)?;
 
-    let expected = ExpectedPeer::unix_process(
-        child.0.id(),
-        geteuid().as_raw(),
-        getegid().as_raw(),
-    )?;
+    let expected =
+        ExpectedPeer::unix_process(child.0.id(), geteuid().as_raw(), getegid().as_raw())?;
     let mut control_verifier = control_pending.bind(expected);
     let mut progress_verifier = progress_pending.bind(expected);
 
@@ -215,8 +210,7 @@ fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
     let progress_hello = read_bootstrap_hello(&mut progress)?;
     assert_eq!(control_hello.channel, ChannelKind::Control);
     assert_eq!(progress_hello.channel, ChannelKind::Progress);
-    let control_identity =
-        control_verifier.authenticate_unix(&control_hello.identity, &control)?;
+    let control_identity = control_verifier.authenticate_unix(&control_hello.identity, &control)?;
     let progress_identity =
         progress_verifier.authenticate_unix(&progress_hello.identity, &progress)?;
     assert_eq!(control_identity.instance_id(), generation);
