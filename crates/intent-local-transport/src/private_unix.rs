@@ -5,6 +5,12 @@ use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
 fn private_parent(path: &Path) -> io::Result<PathBuf> {
+    if !path.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Unix authentication endpoint path must be absolute",
+        ));
+    }
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -58,6 +64,15 @@ mod tests {
         DirBuilder::new().mode(0o700).create(&path)?;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))?;
         Ok(TestDirectory(path))
+    }
+
+    #[test]
+    fn listener_requires_absolute_path() {
+        let result = create_private_unix_listener(Path::new("relative-peer"));
+        assert!(matches!(
+            result,
+            Err(ref error) if error.kind() == io::ErrorKind::InvalidInput
+        ));
     }
 
     #[test]
