@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "scope": "Predecessor-gated acceptance preparation for CORE-01.T04 on current main; this file does not accept or close the task",
+  "task": "CORE-01.T04",
+  "issue": 124,
+  "prerequisite": {
+    "task": "CORE-01.T03",
+    "issue": 123,
+    "publication_pr": 855,
+    "verified_head": "679be76a08e7bfbb2bb389ee1a4e1f74586ca848",
+    "status": "awaiting required fresh Codex review and normal merge to main"
+  },
+  "implementation_main": {
+    "commit": "e454c8a6fd3e125efbbdb790ff8076e6d68d9d05",
+    "push_ci_run": 35536262622,
+    "push_ci_conclusion": "success"
+  },
+  "reviewed_source": {
+    "commit": "3c82332aeddd9bdae44c3609d669360c952790d2",
+    "report": "docs/verification/core-bounded-wire-ci-20260920.json",
+    "review_result": "Strict-event blocker resolved; no remaining finite task criterion gap; exact-source CI and main merge required",
+    "compatibility_review": "docs/core-wire-compatibility.md"
+  },
+  "merged_follow_through": [
+    {
+      "pr": 823,
+      "scope": "Poison framing errors, reject truncated EOF, propagate mid-frame EOF as protocol failure",
+      "final_head": "2f5d0042fd1d204464d03feb2e7c5e79aaf7a3aa",
+      "ci_run": 35453176359,
+      "fuzz_run": 35453176383
+    },
+    {
+      "pr": 824,
+      "scope": "One aggregate supervisor read budget across worker lanes with fairness/liveness corrections",
+      "final_head": "ef268064c657c8f2505d9693c796e1514c25f6ee",
+      "ci_run": 35463701387
+    },
+    {
+      "pr": 850,
+      "scope": "Measured bounded encoder allocation with limit-scaled traversal lower bound",
+      "final_head": "8466ca4851f7f11b3fdc18c366b431d018d79c2f",
+      "ci_run": 35525309889,
+      "fuzz_run": 35525309865
+    },
+    {
+      "pr": 851,
+      "scope": "Strict nested Event decoding while preserving valid v1 forms",
+      "final_head": "9c0c3d528f1576e94ad3bda1a28f7bf650bf7445",
+      "ci_run": 35528295136,
+      "fuzz_run": 35528295206
+    }
+  ],
+  "criteria_reconciliation": {
+    "fragmented_frames_complete_before_decode": "satisfied_by_merged_framing_and_complete-frame_gating",
+    "oversized_frames_rejected_before_unbounded_allocation": "satisfied_with_measured_encoder_and_decoder_limits",
+    "malformed_streams_fail_closed": "satisfied_by_poisoned_decoder_and_valid_invalid_valid_regressions",
+    "truncated_eof_rejected": "satisfied",
+    "deep_and_large_json_bounded": "satisfied_by_shared_structural_limits_and_complete-record_admission",
+    "duplicate_authority_keys_rejected": "satisfied",
+    "stable_wire_errors": "satisfied_by_explicit_v1_string_fixtures",
+    "wide_integer_money_preserved": "satisfied",
+    "aggregate_many_connection_read_budget": "satisfied_by_pr_824",
+    "strict_event_metadata": "satisfied_by_pr_851",
+    "finite_parser_fuzz_execution": "satisfied_as_bounded_smoke_only"
+  },
+  "delta_from_reviewed_source_to_current_main": {
+    "t04_executable_files_changed": [
+      "crates/intent-ipc/tests/encoder_allocations.rs"
+    ],
+    "effect": "The later T04 executable delta strengthens the allocation probe from nonzero traversal to a limit-scaled lower bound; production envelope/framing source is unchanged from the reviewed source.",
+    "other_changed_files": "Record-projection, profile-lock and tracking changes are outside the T04 executable surface and are not treated as T04 acceptance evidence."
+  },
+  "checks_executed_in_this_preparation": [],
+  "existing_verified_checks": [
+    "Current-main push CI 35536262622 completed successfully at e454c8a6fd3e125efbbdb790ff8076e6d68d9d05.",
+    "Prior exact-source CORE-01.T04 qualification and native allocation evidence are retained in docs/verification/core-bounded-wire-ci-20260920.json.",
+    "PR #823, #850 and #851 parser-fuzz runs completed successfully as recorded above."
+  ],
+  "limits": [
+    "CORE-01.T03 accepted-state publication has not merged to main; CORE-01.T04 cannot be accepted or closed yet.",
+    "This preparation is not an independent whole-task acceptance review.",
+    "Finite fuzz runs are bounded smoke coverage, not exhaustive parser proof.",
+    "Requested-allocation measurements do not bound arbitrary caller serializer allocations or physical RSS.",
+    "CORE-01.T07 transport backpressure/cancellation acceptance remains a separate task and is not imported into T04 acceptance.",
+    "Final acceptance must re-read then-current main, issue state, review threads and exact-main CI after the prerequisite merges, then synchronize the coverage and decision ledgers through a reviewed PR."
+  ]
+}
