@@ -4,7 +4,10 @@ use intent_contracts::{AccountId, BoundedText, SchemaVersion, TaskId, TraceId, W
 use intent_ipc::{
     ControlCodec, Envelope, Frame, FrameLane, ProtocolOffer, ProtocolRange, decode_control_owned,
 };
-use intent_local_transport::{ExpectedPeer, WorkerHello, WorkerRole, issue_worker_authentication};
+use intent_local_transport::{
+    AuthenticationError, ExpectedPeer, WorkerChannel, WorkerHello, WorkerRole,
+    issue_worker_channel_authentication,
+};
 use intent_supervisor::{
     BootstrapPacket, ChannelHello, ChannelKind, ControlMessage, WorkerScope, wire_limits,
     worker::WorkerClient,
@@ -148,11 +151,19 @@ fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
 
     let generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
     let (control_token, control_pending) =
-        issue_worker_authentication(generation, WorkerRole::FixtureWorker)
-            .map_err(|error| format!("control bootstrap entropy: {error}"))?;
+        issue_worker_channel_authentication(
+            generation,
+            WorkerRole::FixtureWorker,
+            WorkerChannel::Control,
+        )
+        .map_err(|error| format!("control bootstrap entropy: {error}"))?;
     let (progress_token, progress_pending) =
-        issue_worker_authentication(generation, WorkerRole::FixtureWorker)
-            .map_err(|error| format!("progress bootstrap entropy: {error}"))?;
+        issue_worker_channel_authentication(
+            generation,
+            WorkerRole::FixtureWorker,
+            WorkerChannel::Progress,
+        )
+        .map_err(|error| format!("progress bootstrap entropy: {error}"))?;
     let scope = WorkerScope {
         task_id: TaskId::from_uuid(Uuid::new_v4()),
         account_id: AccountId::from_uuid(Uuid::new_v4()),
@@ -210,13 +221,22 @@ fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
     let progress_hello = read_bootstrap_hello(&mut progress)?;
     assert_eq!(control_hello.channel, ChannelKind::Control);
     assert_eq!(progress_hello.channel, ChannelKind::Progress);
-    let control_identity = control_verifier.authenticate_unix(&control_hello.identity, &control)?;
-    let progress_identity =
-        progress_verifier.authenticate_unix(&progress_hello.identity, &progress)?;
+    let control_identity = control_verifier.authenticate_unix_channel(
+        WorkerChannel::Control,
+        &control_hello.identity,
+        &control,
+    )?;
+    let progress_identity = progress_verifier.authenticate_unix_channel(
+        WorkerChannel::Progress,
+        &progress_hello.identity,
+        &progress,
+    )?;
     assert_eq!(control_identity.instance_id(), generation);
     assert_eq!(progress_identity.instance_id(), generation);
     assert_eq!(control_identity.role(), WorkerRole::FixtureWorker);
     assert_eq!(progress_identity.role(), WorkerRole::FixtureWorker);
+    assert_eq!(control_identity.channel(), Some(WorkerChannel::Control));
+    assert_eq!(progress_identity.channel(), Some(WorkerChannel::Progress));
 
     let control_codec = ControlCodec::negotiate(&control_hello.offer)?;
     let progress_codec = ControlCodec::negotiate(&progress_hello.offer)?;
@@ -232,5 +252,96 @@ fn worker_client_authenticates_real_child_on_both_unix_lanes() -> TestResult {
 
     let status = child.0.wait()?;
     assert!(status.success(), "worker client child failed: {status}");
+    Ok(())
+}
+
+
+#[test]
+fn real_child_rejects_a_control_launch_record_bound_to_progress_lane() -> TestResult {
+    let endpoints = EndpointPair::new()?;
+    let control_listener = UnixListener::bind(&endpoints.control)?;
+    let progress_listener = UnixListener::bind(&endpoints.progress)?;
+    fs::set_permissions(&endpoints.control, fs::Permissions::from_mode(0o600))?;
+    fs::set_permissions(&endpoints.progress, fs::Permissions::from_mode(0o600))?;
+
+    let generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
+    let (control_token, control_pending) = issue_worker_channel_authentication(
+        generation,
+        WorkerRole::FixtureWorker,
+        WorkerChannel::Progress,
+    )
+    .map_err(|error| format!("wrong-lane control bootstrap entropy: {error}"))?;
+    let (progress_token, _progress_pending) = issue_worker_channel_authentication(
+        generation,
+        WorkerRole::FixtureWorker,
+        WorkerChannel::Progress,
+    )
+    .map_err(|error| format!("progress bootstrap entropy: {error}"))?;
+    let packet = BootstrapPacket {
+        control_endpoint: endpoint_text(&endpoints.control)?,
+        progress_endpoint: endpoint_text(&endpoints.progress)?,
+        control: ChannelHello {
+            channel: ChannelKind::Control,
+            identity: WorkerHello::new(generation, WorkerRole::FixtureWorker, control_token),
+            offer: offer()?,
+        },
+        progress: ChannelHello {
+            channel: ChannelKind::Progress,
+            identity: WorkerHello::new(generation, WorkerRole::FixtureWorker, progress_token),
+            offer: offer()?,
+        },
+        scope: WorkerScope {
+            task_id: TaskId::from_uuid(Uuid::new_v4()),
+            account_id: AccountId::from_uuid(Uuid::new_v4()),
+        },
+        handshake_timeout_millis: u32::try_from(IO_TIMEOUT.as_millis())?,
+    };
+    let bootstrap = serde_json::to_vec(&packet)?;
+    if bootstrap.len() as u64 > MAX_BOOTSTRAP_BYTES {
+        return Err("fixture bootstrap exceeds its private stdin bound".into());
+    }
+
+    let mut child = ChildGuard(
+        Command::new(std::env::current_exe()?)
+            .args(["--exact", "worker_client_child", "--ignored", "--nocapture"])
+            .stdin(Stdio::piped())
+            .spawn()?,
+    );
+    child
+        .0
+        .stdin
+        .take()
+        .ok_or("missing child bootstrap stdin")?
+        .write_all(&bootstrap)?;
+
+    let expected =
+        ExpectedPeer::unix_process(child.0.id(), geteuid().as_raw(), getegid().as_raw())?;
+    let mut control_verifier = control_pending.bind(expected);
+    let (mut control, _) = control_listener.accept()?;
+    let (_progress, _) = progress_listener.accept()?;
+    control.set_read_timeout(Some(IO_TIMEOUT))?;
+    control.set_write_timeout(Some(IO_TIMEOUT))?;
+    control_verifier.check_unix_peer(&control)?;
+
+    let control_hello = read_bootstrap_hello(&mut control)?;
+    assert_eq!(control_hello.channel, ChannelKind::Control);
+    assert_eq!(control_hello.identity.instance_id(), generation);
+    assert_eq!(control_hello.identity.role(), WorkerRole::FixtureWorker);
+    assert_eq!(
+        control_verifier.authenticate_unix_channel(
+            WorkerChannel::Control,
+            &control_hello.identity,
+            &control,
+        ),
+        Err(AuthenticationError::LaunchIdentityMismatch)
+    );
+    assert_eq!(
+        control_verifier.authenticate_unix_channel(
+            WorkerChannel::Progress,
+            &control_hello.identity,
+            &control,
+        ),
+        Err(AuthenticationError::AlreadyConsumed)
+    );
     Ok(())
 }

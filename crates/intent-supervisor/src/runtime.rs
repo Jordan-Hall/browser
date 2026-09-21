@@ -16,8 +16,8 @@ use intent_contracts::{
 };
 use intent_ipc::{ControlCodec, Envelope, EnvelopeKind};
 use intent_local_transport::{
-    AuthenticationError, ExpectedPeer, WorkerHello, WorkerIdentity, WorkerVerifier,
-    issue_worker_authentication,
+    AuthenticationError, ExpectedPeer, WorkerChannel, WorkerHello, WorkerIdentity, WorkerVerifier,
+    issue_worker_channel_authentication,
 };
 use nix::{
     fcntl::{OFlag, open, openat},
@@ -268,6 +268,13 @@ enum AuthenticationProgress {
     Expired,
 }
 
+const fn worker_channel(channel: ChannelKind) -> WorkerChannel {
+    match channel {
+        ChannelKind::Control => WorkerChannel::Control,
+        ChannelKind::Progress => WorkerChannel::Progress,
+    }
+}
+
 impl Lane {
     fn poll_authentication(
         &mut self,
@@ -337,7 +344,11 @@ impl Lane {
                 }
                 let mut auth = self.authenticator.take().ok_or(SupervisorError::Protocol)?;
                 let identity = auth
-                    .authenticate_unix(&hello.identity, &socket.stream)
+                    .authenticate_unix_channel(
+                        worker_channel(channel),
+                        &hello.identity,
+                        &socket.stream,
+                    )
                     .map_err(|_| SupervisorError::Protocol)?;
                 drop(hello);
                 let welcome = encode_event(
@@ -821,11 +832,21 @@ impl Supervisor {
                     "startup deadline overflow",
                 ))?;
             let (control_token, control_pending) =
-                issue_worker_authentication(generation, config.role).map_err(|_| {
+                issue_worker_channel_authentication(
+                    generation,
+                    config.role,
+                    WorkerChannel::Control,
+                )
+                .map_err(|_| {
                     SupervisorError::InvalidConfiguration("OS randomness unavailable")
                 })?;
             let (progress_token, progress_pending) =
-                issue_worker_authentication(generation, config.role).map_err(|_| {
+                issue_worker_channel_authentication(
+                    generation,
+                    config.role,
+                    WorkerChannel::Progress,
+                )
+                .map_err(|_| {
                     SupervisorError::InvalidConfiguration("OS randomness unavailable")
                 })?;
             let packet = BootstrapPacket {
