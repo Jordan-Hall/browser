@@ -83,6 +83,13 @@ pub enum WorkerRole {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum WorkerChannel {
+    Control,
+    Progress,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MessageFamily {
     BrowserObservation,
     PolicyDecision,
@@ -181,6 +188,7 @@ impl WorkerHello {
 struct WorkerLaunch {
     instance_id: WorkerInstanceId,
     role: WorkerRole,
+    channel: Option<WorkerChannel>,
     bootstrap_token: BootstrapToken,
 }
 
@@ -202,11 +210,28 @@ pub struct UnboundWorkerVerifier {
 }
 
 /// Issues a one-use bootstrap proof with a hard maximum lifetime.
-/// The supervisor may enforce a shorter startup deadline; this cap prevents an issued verifier
-/// retained by another caller from keeping its bootstrap credential valid indefinitely.
+/// Existing callers remain channel-neutral; new supervisors should prefer
+/// [`issue_worker_channel_authentication`] so the accepted identity is lane-bound.
 pub fn issue_worker_authentication(
     instance_id: WorkerInstanceId,
     role: WorkerRole,
+) -> Result<(BootstrapToken, UnboundWorkerVerifier), getrandom::Error> {
+    issue_worker_authentication_inner(instance_id, role, None)
+}
+
+/// Issues a one-use bootstrap proof bound to one trusted worker channel.
+pub fn issue_worker_channel_authentication(
+    instance_id: WorkerInstanceId,
+    role: WorkerRole,
+    channel: WorkerChannel,
+) -> Result<(BootstrapToken, UnboundWorkerVerifier), getrandom::Error> {
+    issue_worker_authentication_inner(instance_id, role, Some(channel))
+}
+
+fn issue_worker_authentication_inner(
+    instance_id: WorkerInstanceId,
+    role: WorkerRole,
+    channel: Option<WorkerChannel>,
 ) -> Result<(BootstrapToken, UnboundWorkerVerifier), getrandom::Error> {
     let mut token = BootstrapToken([0; BOOTSTRAP_TOKEN_BYTES]);
     getrandom::fill(&mut token.0)?;
@@ -214,6 +239,7 @@ pub fn issue_worker_authentication(
         launch: WorkerLaunch {
             instance_id,
             role,
+            channel,
             bootstrap_token: token.clone(),
         },
         expires_at: Instant::now() + MAX_BOOTSTRAP_LIFETIME,
@@ -251,6 +277,7 @@ impl UnboundWorkerVerifier {
 pub struct WorkerIdentity {
     instance_id: WorkerInstanceId,
     role: WorkerRole,
+    channel: Option<WorkerChannel>,
 }
 
 impl WorkerIdentity {
@@ -262,6 +289,11 @@ impl WorkerIdentity {
     #[must_use]
     pub const fn role(&self) -> WorkerRole {
         self.role
+    }
+
+    #[must_use]
+    pub const fn channel(&self) -> Option<WorkerChannel> {
+        self.channel
     }
 
     #[must_use]
@@ -313,7 +345,19 @@ impl WorkerVerifier {
         stream: &std::os::unix::net::UnixStream,
     ) -> Result<WorkerIdentity, AuthenticationError> {
         self.check_unix_peer(stream)?;
-        self.consume_hello(hello)
+        self.consume_hello(None, hello)
+    }
+
+    /// Authenticates a Hello against a verifier issued for the trusted lane.
+    #[cfg(unix)]
+    pub fn authenticate_unix_channel(
+        &mut self,
+        channel: WorkerChannel,
+        hello: &WorkerHello,
+        stream: &std::os::unix::net::UnixStream,
+    ) -> Result<WorkerIdentity, AuthenticationError> {
+        self.check_unix_peer(stream)?;
+        self.consume_hello(Some(channel), hello)
     }
 
     /// Checks the connected client before reading Hello without consuming the verifier.
@@ -336,7 +380,19 @@ impl WorkerVerifier {
         pipe: &H,
     ) -> Result<WorkerIdentity, AuthenticationError> {
         self.check_named_pipe_client(pipe)?;
-        self.consume_hello(hello)
+        self.consume_hello(None, hello)
+    }
+
+    /// Authenticates a Hello against a verifier issued for the trusted lane.
+    #[cfg(windows)]
+    pub fn authenticate_named_pipe_client_channel<H: std::os::windows::io::AsRawHandle>(
+        &mut self,
+        channel: WorkerChannel,
+        hello: &WorkerHello,
+        pipe: &H,
+    ) -> Result<WorkerIdentity, AuthenticationError> {
+        self.check_named_pipe_client(pipe)?;
+        self.consume_hello(Some(channel), hello)
     }
 
     fn require_active(&self) -> Result<(), AuthenticationError> {
@@ -364,6 +420,7 @@ impl WorkerVerifier {
 
     fn consume_hello(
         &mut self,
+        channel: Option<WorkerChannel>,
         hello: &WorkerHello,
     ) -> Result<WorkerIdentity, AuthenticationError> {
         self.require_active()?;
@@ -376,12 +433,17 @@ impl WorkerVerifier {
             return Err(AuthenticationError::UnsupportedSchema);
         }
         let token_matches = launch.bootstrap_token.matches(&hello.bootstrap_token);
-        if !token_matches || launch.instance_id != hello.instance_id || launch.role != hello.role {
+        if !token_matches
+            || launch.instance_id != hello.instance_id
+            || launch.role != hello.role
+            || launch.channel != channel
+        {
             return Err(AuthenticationError::LaunchIdentityMismatch);
         }
         Ok(WorkerIdentity {
             instance_id: launch.instance_id,
             role: launch.role,
+            channel: launch.channel,
         })
     }
 }

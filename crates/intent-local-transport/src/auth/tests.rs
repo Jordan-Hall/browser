@@ -25,15 +25,24 @@ fn consumed_and_abandoned_verifiers_erase_their_owned_token() -> Result<(), Box<
             hello.role = WorkerRole::PolicyBroker;
         }
         take_disposals();
-        assert_eq!(verifier.consume_hello(&hello).is_ok(), valid);
+        assert_eq!(
+            verifier
+                .consume_hello(Some(WorkerChannel::Control), &hello)
+                .is_ok(),
+            valid
+        );
         assert_eq!(take_disposals(), vec![true]);
         drop(verifier);
         assert!(take_disposals().is_empty());
         drop(hello);
         assert_eq!(take_disposals(), vec![true]);
     }
-    let (proof, pending) = issue_worker_authentication(instance()?, WorkerRole::BrowserWorker)
-        .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    let (proof, pending) = issue_worker_channel_authentication(
+        instance()?,
+        WorkerRole::BrowserWorker,
+        WorkerChannel::Control,
+    )
+    .map_err(|error| format!("bootstrap entropy: {error}"))?;
     take_disposals();
     drop(pending);
     assert_eq!(take_disposals(), vec![true]);
@@ -94,6 +103,7 @@ fn fixture() -> Result<(WorkerHello, WorkerVerifier), Box<dyn Error>> {
         launch: WorkerLaunch {
             instance_id: instance()?,
             role: WorkerRole::BrowserWorker,
+            channel: Some(WorkerChannel::Control),
             bootstrap_token: token.clone(),
         },
         expires_at: Instant::now() + MAX_BOOTSTRAP_LIFETIME,
@@ -113,6 +123,7 @@ fn expiration_consumes_and_erases_the_verifier_secret() -> Result<(), Box<dyn Er
         launch: RefCell::new(Some(WorkerLaunch {
             instance_id: instance()?,
             role: WorkerRole::BrowserWorker,
+            channel: Some(WorkerChannel::Control),
             bootstrap_token: token,
         })),
         expected: expected()?,
@@ -120,12 +131,12 @@ fn expiration_consumes_and_erases_the_verifier_secret() -> Result<(), Box<dyn Er
     };
     take_disposals();
     assert_eq!(
-        verifier.consume_hello(&hello),
+        verifier.consume_hello(Some(WorkerChannel::Control), &hello),
         Err(AuthenticationError::Expired)
     );
     assert_eq!(take_disposals(), vec![true]);
     assert_eq!(
-        verifier.consume_hello(&hello),
+        verifier.consume_hello(Some(WorkerChannel::Control), &hello),
         Err(AuthenticationError::AlreadyConsumed)
     );
     drop(hello);
@@ -136,8 +147,12 @@ fn expiration_consumes_and_erases_the_verifier_secret() -> Result<(), Box<dyn Er
 #[test]
 fn issued_verifier_has_a_finite_hard_lifetime() -> Result<(), Box<dyn Error>> {
     let before = Instant::now();
-    let (_, pending) = issue_worker_authentication(instance()?, WorkerRole::BrowserWorker)
-        .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    let (_, pending) = issue_worker_channel_authentication(
+        instance()?,
+        WorkerRole::BrowserWorker,
+        WorkerChannel::Control,
+    )
+    .map_err(|error| format!("bootstrap entropy: {error}"))?;
     assert!(pending.expires_at > before);
     assert!(pending.expires_at <= Instant::now() + MAX_BOOTSTRAP_LIFETIME);
     Ok(())
@@ -170,7 +185,7 @@ fn matching_peer_hello_failures_consume_the_verifier() -> Result<(), Box<dyn Err
             _ => return Err("unknown test field".into()),
         }
         assert_eq!(
-            verifier.consume_hello(&invalid),
+            verifier.consume_hello(Some(WorkerChannel::Control), &invalid),
             Err(if field == "schema" {
                 AuthenticationError::UnsupportedSchema
             } else {
@@ -178,7 +193,7 @@ fn matching_peer_hello_failures_consume_the_verifier() -> Result<(), Box<dyn Err
             })
         );
         assert_eq!(
-            verifier.consume_hello(&valid),
+            verifier.consume_hello(Some(WorkerChannel::Control), &valid),
             Err(AuthenticationError::AlreadyConsumed)
         );
     }
@@ -188,13 +203,28 @@ fn matching_peer_hello_failures_consume_the_verifier() -> Result<(), Box<dyn Err
 #[test]
 fn successful_authentication_binds_role_and_instance_once() -> Result<(), Box<dyn Error>> {
     let (hello, mut verifier) = fixture()?;
-    let identity = verifier.consume_hello(&hello)?;
+    let identity = verifier.consume_hello(Some(WorkerChannel::Control), &hello)?;
     assert_eq!(identity.instance_id(), instance()?);
     assert_eq!(identity.role(), WorkerRole::BrowserWorker);
+    assert_eq!(identity.channel(), Some(WorkerChannel::Control));
     assert!(identity.allows(MessageFamily::BrowserObservation));
     assert!(!identity.allows(MessageFamily::PolicyDecision));
     assert_eq!(
-        verifier.consume_hello(&hello),
+        verifier.consume_hello(Some(WorkerChannel::Control), &hello),
+        Err(AuthenticationError::AlreadyConsumed)
+    );
+    Ok(())
+}
+
+#[test]
+fn wrong_channel_consumes_the_verifier_without_changing_wire_hello() -> Result<(), Box<dyn Error>> {
+    let (hello, mut verifier) = fixture()?;
+    assert_eq!(
+        verifier.consume_hello(Some(WorkerChannel::Progress), &hello),
+        Err(AuthenticationError::LaunchIdentityMismatch)
+    );
+    assert_eq!(
+        verifier.consume_hello(Some(WorkerChannel::Control), &hello),
         Err(AuthenticationError::AlreadyConsumed)
     );
     Ok(())
@@ -213,8 +243,12 @@ fn wire_hello_keeps_the_existing_v1_representation() -> Result<(), Box<dyn Error
 #[test]
 fn connected_peer_check_preserves_one_use_authentication() -> Result<(), Box<dyn Error>> {
     let (socket, _other) = std::os::unix::net::UnixStream::pair()?;
-    let (token, pending) = issue_worker_authentication(instance()?, WorkerRole::BrowserWorker)
-        .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    let (token, pending) = issue_worker_channel_authentication(
+        instance()?,
+        WorkerRole::BrowserWorker,
+        WorkerChannel::Control,
+    )
+    .map_err(|error| format!("bootstrap entropy: {error}"))?;
     let mut verifier = pending.bind(ExpectedPeer::unix_process(
         std::process::id(),
         nix::unistd::geteuid().as_raw(),
@@ -224,11 +258,13 @@ fn connected_peer_check_preserves_one_use_authentication() -> Result<(), Box<dyn
     verifier.check_unix_peer(&socket)?;
     let hello = WorkerHello::new(instance()?, WorkerRole::BrowserWorker, token);
     assert_eq!(
-        verifier.authenticate_unix(&hello, &socket)?.instance_id(),
+        verifier
+            .authenticate_unix_channel(WorkerChannel::Control, &hello, &socket)?
+            .instance_id(),
         instance()?
     );
     assert_eq!(
-        verifier.authenticate_unix(&hello, &socket),
+        verifier.authenticate_unix_channel(WorkerChannel::Control, &hello, &socket),
         Err(AuthenticationError::AlreadyConsumed)
     );
     assert_eq!(
@@ -265,6 +301,11 @@ fn rejected_observation_leaves_the_issued_credential_available() -> Result<(), B
             PeerCredentialError::Os(5)
         ))
     );
-    assert_eq!(verifier.consume_hello(&hello)?.instance_id(), instance()?);
+    assert_eq!(
+        verifier
+            .consume_hello(Some(WorkerChannel::Control), &hello)?
+            .instance_id(),
+        instance()?
+    );
     Ok(())
 }
