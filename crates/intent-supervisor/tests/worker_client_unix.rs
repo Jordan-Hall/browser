@@ -83,7 +83,8 @@ fn read_frame(stream: &mut UnixStream) -> Result<Frame, Box<dyn Error>> {
 }
 
 fn read_bootstrap_hello(stream: &mut UnixStream) -> Result<ChannelHello, Box<dyn Error>> {
-    let envelope: Envelope<ControlMessage> = decode_control_owned(read_frame(stream)?, wire_limits())?;
+    let envelope: Envelope<ControlMessage> =
+        decode_control_owned(read_frame(stream)?, wire_limits())?;
     match envelope.into_payload() {
         ControlMessage::Hello(hello) => Ok(hello),
         _ => Err("fixture expected bootstrap Hello".into()),
@@ -102,7 +103,9 @@ fn write_welcome(
             selected: SchemaVersion::V1,
         },
     );
-    let bytes = codec.encode(&envelope, wire_limits())?.encode(wire_limits())?;
+    let bytes = codec
+        .encode(&envelope, wire_limits())?
+        .encode(wire_limits())?;
     stream.write_all(&bytes)?;
     Ok(())
 }
@@ -170,13 +173,16 @@ fn worker_client_completes_two_lane_bootstrap_on_unix() -> TestResult {
     write_welcome(&mut control, &control_codec, generation)?;
     write_welcome(&mut progress, &progress_codec, generation)?;
 
-    let ready: Envelope<ControlMessage> = control_codec.decode_owned(read_frame(&mut control)?, wire_limits())?;
+    let ready: Envelope<ControlMessage> =
+        control_codec.decode_owned(read_frame(&mut control)?, wire_limits())?;
     assert!(matches!(
         ready.into_payload(),
         ControlMessage::Ready { generation: actual } if actual == generation
     ));
     assert_eq!(
-        worker.join().map_err(|_| "worker client thread panicked")??,
+        worker
+            .join()
+            .map_err(|_| "worker client thread panicked")??,
         generation
     );
     Ok(())
