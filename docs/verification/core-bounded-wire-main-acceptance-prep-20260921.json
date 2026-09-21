@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "scope": "Whole-task acceptance reconciliation of CORE-01.T04 on current main; not overall CORE readiness",
+  "task": "CORE-01.T04",
+  "issue": 124,
+  "commit": "36e07abeba73a785dd0ef8d7a98457ff203ec8bc",
+  "platform": "Ubuntu 24.04 primary CI host; native Windows 2025 and macOS 15 checks also passed",
+  "accepted_task_issues": [
+    124
+  ],
+  "checks": {
+    "fragmented_complete_frame_gating": "success",
+    "oversized_decode_preallocation_bound": "success",
+    "oversized_encode_requested_allocation_bound": "success",
+    "malformed_stream_poisoning": "success",
+    "truncated_eof_rejection": "success",
+    "deep_large_json_structural_limits": "success",
+    "duplicate_authority_key_rejection": "success",
+    "stable_wire_error_encoding": "success",
+    "wide_integer_money_preservation": "success",
+    "encode_decode_limits_closure": "success",
+    "aggregate_many_connection_read_budget": "success",
+    "strict_event_metadata": "success",
+    "bounded_parser_fuzz_evidence": "success",
+    "historical_review_thread_reconciliation": "success",
+    "independent_whole_task_acceptance_reconciliation": "success",
+    "native_linux_windows_macos_ci": "success"
+  },
+  "reviewer": "Independent whole-task acceptance reconciliation on issue #124 after all historical correctness findings were resolved",
+  "review_url": "https://github.com/Jordan-Hall/browser/issues/124#issuecomment-5759553833",
+  "acceptance_decision": "pass",
+  "acceptance_comment": "https://github.com/Jordan-Hall/browser/issues/124#issuecomment-5759553833",
+  "prerequisite": {
+    "task": "CORE-01.T03",
+    "issue": 123,
+    "publication_pr": 855,
+    "main_merge": "36e07abeba73a785dd0ef8d7a98457ff203ec8bc",
+    "status": "accepted_and_closed"
+  },
+  "accepted_main": {
+    "commit": "36e07abeba73a785dd0ef8d7a98457ff203ec8bc",
+    "tree": "aedc9ae6bc0ed82fc89ab489d74c9d5c8e1e777a",
+    "tree_verification": {
+      "tested_head": "679be76a08e7bfbb2bb389ee1a4e1f74586ca848",
+      "tested_synthetic_merge": "e6ff8cc06359511f1767e41b86bdca044017561f",
+      "ci_run": 35541674664,
+      "ci_conclusion": "success",
+      "native_platforms": [
+        "ubuntu-24.04",
+        "windows-2025",
+        "macos-15"
+      ],
+      "artifact_id": 10614842732,
+      "artifact_sha256": "88de5c702ca1b51751b2c948d8502b60216795887cd95e4031c3ac35270b33bc",
+      "note": "tested head, synthetic merge and accepted main merge have the identical Git tree"
+    }
+  },
+  "reviewed_source": {
+    "commit": "3c82332aeddd9bdae44c3609d669360c952790d2",
+    "report": "docs/verification/core-bounded-wire-ci-20260920.json",
+    "independent_review_result": "Strict-event blocker resolved; no remaining finite task criterion gap; exact-source CI and main merge required",
+    "compatibility_review": "docs/core-wire-compatibility.md"
+  },
+  "review_history": {
+    "historical_reconciliation_comment": "https://github.com/Jordan-Hall/browser/issues/124#issuecomment-5758072416",
+    "remaining_inline_threads": 0,
+    "summary": "All historical #788 correctness threads were reconciled against merged follow-through and resolved; later T04 PR threads are resolved or absent."
+  },
+  "merged_follow_through": [
+    {
+      "pr": 823,
+      "scope": "Poison framing errors, reject truncated EOF, propagate mid-frame EOF as protocol failure",
+      "final_head": "2f5d0042fd1d204464d03feb2e7c5e79aaf7a3aa",
+      "ci_run": 35453176359,
+      "fuzz_run": 35453176383
+    },
+    {
+      "pr": 824,
+      "scope": "One aggregate supervisor read budget across worker lanes with fairness/liveness corrections",
+      "final_head": "ef268064c657c8f2505d9693c796e1514c25f6ee",
+      "ci_run": 35463701387
+    },
+    {
+      "pr": 850,
+      "scope": "Measured bounded encoder allocation with limit-scaled traversal lower bound",
+      "final_head": "8466ca4851f7f11b3fdc18c366b431d018d79c2f",
+      "ci_run": 35525309889,
+      "fuzz_run": 35525309865
+    },
+    {
+      "pr": 851,
+      "scope": "Strict nested Event decoding while preserving valid v1 forms",
+      "final_head": "9c0c3d528f1576e94ad3bda1a28f7bf650bf7445",
+      "ci_run": 35528295136,
+      "fuzz_run": 35528295206
+    }
+  ],
+  "criteria": {
+    "fragmented_frames_complete_before_decode": "pass",
+    "oversized_frames_rejected_before_unbounded_allocation": "pass",
+    "malformed_streams_fail_closed": "pass",
+    "truncated_eof_rejected": "pass",
+    "deep_and_large_json_bounded": "pass",
+    "duplicate_authority_keys_rejected": "pass",
+    "stable_wire_errors": "pass",
+    "wide_integer_money_preserved": "pass",
+    "encode_decode_limits_close": "pass",
+    "aggregate_many_connection_read_budget": "pass",
+    "strict_event_metadata": "pass",
+    "finite_parser_fuzz_execution": "pass_bounded_smoke"
+  },
+  "delta_from_reviewed_source_to_accepted_main": {
+    "t04_executable_files_changed": [
+      "crates/intent-ipc/tests/encoder_allocations.rs"
+    ],
+    "effect": "The later T04 executable delta only strengthens the allocation probe from nonzero traversal to a limit-scaled lower bound; production envelope/framing source is unchanged from the independently reviewed source.",
+    "other_changes": "Record-projection, profile-lock and T03 acceptance tracking changes are outside the T04 executable surface and are not imported as T04 acceptance evidence."
+  },
+  "limits": [
+    "Finite fuzz runs are bounded smoke coverage, not exhaustive parser proof.",
+    "Requested-allocation measurements do not bound arbitrary caller serializer allocations or physical RSS.",
+    "CORE-01.T07 real transport backpressure/cancellation acceptance remains separate and is not imported into T04.",
+    "This accepts issue #124 only; parent CORE-01, the CORE epic and production readiness remain open."
+  ]
+}
