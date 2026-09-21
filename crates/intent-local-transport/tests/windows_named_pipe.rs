@@ -4,24 +4,22 @@
 use intent_contracts::WorkerInstanceId;
 use intent_local_transport::{
     AuthenticationError, ExpectedPeer, MessageFamily, PeerCredentialError, WorkerHello, WorkerRole,
-    issue_worker_authentication, verify_named_pipe_server,
+    create_current_user_named_pipe, issue_worker_authentication, verify_named_pipe_server,
 };
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::os::windows::io::{AsRawHandle, FromRawHandle};
+use std::os::windows::io::AsRawHandle;
 use std::process::{Child, Command, Stdio};
 use std::ptr::{null, null_mut};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Foundation::{
     ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, ERROR_PIPE_LISTENING,
-    INVALID_HANDLE_VALUE,
 };
-use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_NOWAIT,
-    PIPE_REJECT_REMOTE_CLIENTS, SetNamedPipeHandleState,
+    ConnectNamedPipe, DisconnectNamedPipe, PIPE_NOWAIT, PIPE_REJECT_REMOTE_CLIENTS,
+    SetNamedPipeHandleState,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -142,28 +140,26 @@ fn server_pipe() -> Result<(String, File), Box<dyn Error>> {
         std::process::id(),
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
-    let wide_name: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-    // This fixture deliberately polls synchronous nonblocking handles to bound every I/O call.
-    // SAFETY: wide_name is terminated and lives through the call; null security attributes use
-    // the default descriptor and disable inheritance. The returned handle is checked then owned.
-    let handle = unsafe {
-        CreateNamedPipeW(
-            wide_name.as_ptr(),
-            PIPE_ACCESS_DUPLEX,
-            PIPE_NOWAIT | PIPE_REJECT_REMOTE_CLIENTS,
-            1,
-            4096,
-            4096,
-            0,
-            null(),
-        )
-    };
-    if handle == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error().into());
-    }
-    // SAFETY: CreateNamedPipeW returned a fresh valid handle, transferred once into File.
-    let pipe = unsafe { File::from_raw_handle(handle) };
+    // The production transport primitive installs a protected DACL granting this principal only,
+    // rejects remote clients, disables inheritance, and bounds the pipe buffers.
+    let pipe = create_current_user_named_pipe(name.as_ref(), 4096)?;
     Ok((name, pipe))
+}
+
+#[test]
+fn named_pipe_factory_rejects_unbounded_or_nonlocal_endpoints() {
+    assert!(matches!(
+        create_current_user_named_pipe(r"\\.\pipe\intent-invalid".as_ref(), 0),
+        Err(PeerCredentialError::InvalidPipeBufferSize)
+    ));
+    assert!(matches!(
+        create_current_user_named_pipe(r"\\.\pipe\intent-invalid".as_ref(), 1024 * 1024 + 1),
+        Err(PeerCredentialError::InvalidPipeBufferSize)
+    ));
+    assert!(matches!(
+        create_current_user_named_pipe(r"C:\intent-invalid".as_ref(), 4096),
+        Err(PeerCredentialError::InvalidPipeName)
+    ));
 }
 
 fn connected(pipe: &File, deadline: Instant) -> io::Result<()> {
