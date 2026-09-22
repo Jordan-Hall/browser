@@ -118,7 +118,7 @@ pub use retention::{
 
 use intent_contracts::OperationId;
 use migrations::apply_migrations;
-use rusqlite::{Connection, TransactionBehavior};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior};
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -137,9 +137,9 @@ pub struct StateStore {
 impl StateStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StateError> {
         let mut connection = Connection::open(path)?;
-        configure_connection(&mut connection, true)?;
+        let new_store = configure_connection(&mut connection, true)?;
         apply_migrations(&mut connection)?;
-        initialize_store_metadata(&connection)?;
+        initialize_store_metadata(&connection, new_store)?;
         Ok(Self {
             connection,
             runtime_epoch: None,
@@ -159,9 +159,9 @@ impl StateStore {
     #[doc(hidden)]
     pub fn open_in_memory_for_tests() -> Result<Self, StateError> {
         let mut connection = Connection::open_in_memory()?;
-        configure_connection(&mut connection, false)?;
+        let new_store = configure_connection(&mut connection, false)?;
         apply_migrations(&mut connection)?;
-        initialize_store_metadata(&connection)?;
+        initialize_store_metadata(&connection, new_store)?;
         let epoch = Uuid::new_v4();
         connection.execute(
             "UPDATE runtime_control SET epoch = ?1, dispatch_enabled = 1, reason = 'isolated in-memory fixture' WHERE singleton = 1",
@@ -212,13 +212,16 @@ impl StateStore {
     }
 }
 
-fn configure_connection(connection: &mut Connection, require_wal: bool) -> Result<(), StateError> {
+fn configure_connection(
+    connection: &mut Connection,
+    require_wal: bool,
+) -> Result<bool, StateError> {
     connection.busy_timeout(BUSY_TIMEOUT)?;
-    {
+    let new_store = {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let application_id: i64 =
             transaction.query_row("PRAGMA application_id", [], |row| row.get(0))?;
-        match application_id {
+        let new_store = match application_id {
             0 => {
                 let populated: bool = transaction.query_row(
                     "SELECT EXISTS(SELECT 1 FROM sqlite_schema)",
@@ -231,12 +234,14 @@ fn configure_connection(connection: &mut Connection, require_wal: bool) -> Resul
                     return Err(StateError::WrongApplicationId { found: 0 });
                 }
                 transaction.pragma_update(None, "application_id", APPLICATION_ID)?;
+                true
             }
-            APPLICATION_ID => {}
+            APPLICATION_ID => false,
             found => return Err(StateError::WrongApplicationId { found }),
-        }
+        };
         transaction.commit()?;
-    }
+        new_store
+    };
     connection.pragma_update(None, "foreign_keys", "ON")?;
     connection.pragma_update(None, "trusted_schema", "OFF")?;
     connection.pragma_update(None, "synchronous", "FULL")?;
@@ -248,16 +253,32 @@ fn configure_connection(connection: &mut Connection, require_wal: bool) -> Resul
         }
         connection.pragma_update(None, "wal_autocheckpoint", 1_000_i64)?;
     }
-    Ok(())
+    Ok(new_store)
 }
 
-fn initialize_store_metadata(connection: &Connection) -> Result<(), StateError> {
-    let store_id = Uuid::new_v4().to_string();
-    connection.execute(
-        "INSERT OR IGNORE INTO store_metadata(singleton, store_uuid, created_unix_seconds) VALUES (1, ?1, unixepoch())",
-        [&store_id],
-    )?;
-    Ok(())
+fn initialize_store_metadata(connection: &Connection, new_store: bool) -> Result<(), StateError> {
+    let stored_id: Option<String> = connection
+        .query_row(
+            "SELECT store_uuid FROM store_metadata WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    match stored_id {
+        Some(value) => {
+            Uuid::parse_str(&value).map_err(|_| StateError::InvalidStoreId(value))?;
+            Ok(())
+        }
+        None if new_store => {
+            let store_id = Uuid::new_v4().to_string();
+            connection.execute(
+                "INSERT INTO store_metadata(singleton, store_uuid, created_unix_seconds) VALUES (1, ?1, unixepoch())",
+                [&store_id],
+            )?;
+            Ok(())
+        }
+        None => Err(StateError::MissingStoreMetadata),
+    }
 }
 
 #[derive(Debug)]
@@ -267,6 +288,7 @@ pub enum StateError {
         found: i64,
     },
     WalUnavailable(String),
+    MissingStoreMetadata,
     InvalidStoreId(String),
     IntegrityCheckFailed(String),
     InvalidMigrationTarget {
@@ -318,6 +340,12 @@ impl fmt::Display for StateError {
                 write!(
                     formatter,
                     "SQLite WAL mode is unavailable; active mode is {mode}"
+                )
+            }
+            Self::MissingStoreMetadata => {
+                write!(
+                    formatter,
+                    "existing Intent Browser state is missing store identity metadata"
                 )
             }
             Self::InvalidStoreId(value) => {
@@ -448,6 +476,63 @@ mod tests {
 
         let reopened = StateStore::open(temp.path())?;
         assert_eq!(reopened.store_id()?, first_id);
+        Ok(())
+    }
+
+    #[test]
+    fn existing_store_missing_identity_fails_without_reidentifying() -> Result<(), Box<dyn Error>> {
+        let temp = TempDatabase::new();
+        let store = StateStore::open(temp.path())?;
+        drop(store);
+
+        let connection = Connection::open(temp.path())?;
+        connection.execute("DELETE FROM store_metadata WHERE singleton = 1", [])?;
+        drop(connection);
+
+        let Err(error) = StateStore::open(temp.path()) else {
+            return Err("existing store with missing identity unexpectedly opened".into());
+        };
+        assert!(matches!(error, StateError::MissingStoreMetadata));
+
+        let connection = Connection::open(temp.path())?;
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM store_metadata", [], |row| row.get(0))?;
+        assert_eq!(
+            count, 0,
+            "failed open must not invent a replacement store identity"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn existing_store_malformed_identity_fails_without_replacing_it() -> Result<(), Box<dyn Error>>
+    {
+        let temp = TempDatabase::new();
+        let store = StateStore::open(temp.path())?;
+        drop(store);
+
+        let connection = Connection::open(temp.path())?;
+        connection.execute(
+            "UPDATE store_metadata SET store_uuid = 'not-a-uuid' WHERE singleton = 1",
+            [],
+        )?;
+        drop(connection);
+
+        let Err(error) = StateStore::open(temp.path()) else {
+            return Err("existing store with malformed identity unexpectedly opened".into());
+        };
+        assert!(matches!(
+            error,
+            StateError::InvalidStoreId(ref value) if value == "not-a-uuid"
+        ));
+
+        let connection = Connection::open(temp.path())?;
+        let stored: String = connection.query_row(
+            "SELECT store_uuid FROM store_metadata WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(stored, "not-a-uuid");
         Ok(())
     }
 
