@@ -1,8 +1,10 @@
-use intent_state::StateStore;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use intent_contracts::UnixTimestampMicros;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use intent_state::RuntimeOwner;
+use intent_state::StateStore;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     error::Error,
     fs,
@@ -11,8 +13,6 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use uuid::Uuid;
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
@@ -79,7 +79,9 @@ fn wait_until_ready(child: &mut ChildGuard, ready: &Path) -> TestResult {
             return Ok(());
         }
         if let Some(status) = child.0.try_wait()? {
-            return Err(format!("portable profile owner child exited before readiness: {status}").into());
+            return Err(
+                format!("portable profile owner child exited before readiness: {status}").into(),
+            );
         }
         if Instant::now() >= deadline {
             return Err("portable profile owner child did not become ready".into());
@@ -136,6 +138,16 @@ fn duplicate_process_and_crash_release_are_portable() -> TestResult {
     );
 
     child.terminate()?;
+
+    #[cfg(unix)]
+    assert_eq!(
+        fs::metadata(profile.root().join("state.sqlite3"))?
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600,
+        "portable profile creation must preserve the private database mode required by RuntimeOwner"
+    );
 
     let recovered = StateStore::open_owned_profile(profile.root())?;
     let store_id = recovered.store_id()?;
