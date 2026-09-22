@@ -32,11 +32,7 @@ impl TempDatabase {
 impl Drop for TempDatabase {
     fn drop(&mut self) {
         for suffix in ["", "-wal", "-shm"] {
-            let _ = fs::remove_file(PathBuf::from(format!(
-                "{}{}",
-                self.path.display(),
-                suffix
-            )));
+            let _ = fs::remove_file(PathBuf::from(format!("{}{}", self.path.display(), suffix)));
         }
     }
 }
