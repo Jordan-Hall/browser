@@ -7,7 +7,7 @@ use crate::{
     },
 };
 use intent_contracts::{SchemaVersion, WorkerInstanceId};
-use intent_ipc::{ControlCodec, Envelope};
+use intent_ipc::{ControlCodec, Envelope, EnvelopeKind};
 use std::{
     io::{Read, Write},
     os::unix::net::UnixStream,
@@ -91,7 +91,48 @@ impl WorkerClient {
             ReadOutcome::Closed => Err(SupervisorError::Io(
                 std::io::ErrorKind::UnexpectedEof.into(),
             )),
-            ReadOutcome::Frame(frame) => Ok(Some(decode(frame, Some(&self.codec))?)),
+            ReadOutcome::Frame(frame) => {
+                let envelope = decode(frame, Some(&self.codec))?;
+                self.validate_supervisor_control(&envelope)?;
+                Ok(Some(envelope))
+            }
+        }
+    }
+    fn validate_supervisor_control(
+        &self,
+        envelope: &Envelope<ControlMessage>,
+    ) -> Result<(), SupervisorError> {
+        let valid = match envelope.payload() {
+            ControlMessage::Execute {
+                generation,
+                request_id,
+                deadline,
+                ..
+            } => {
+                *generation == self.generation
+                    && envelope.message()
+                        == (EnvelopeKind::Request {
+                            request_id: *request_id,
+                        })
+                    && envelope.deadline() == Some(*deadline)
+            }
+            ControlMessage::Cancel {
+                generation,
+                cancellation_id,
+            } => {
+                *generation == self.generation
+                    && envelope.message() == EnvelopeKind::Event
+                    && envelope.cancellation_id() == Some(*cancellation_id)
+            }
+            ControlMessage::Yield { generation } => {
+                *generation == self.generation && envelope.message() == EnvelopeKind::Event
+            }
+            _ => false,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(SupervisorError::Protocol)
         }
     }
     pub fn send(&mut self, envelope: &Envelope<ControlMessage>) -> Result<(), SupervisorError> {
@@ -150,7 +191,69 @@ mod tests {
     use crate::wire::{decode, offer, wire_limits};
     use intent_contracts::{CancellationId, TraceId};
     use intent_ipc::{Envelope, Frame, FrameLane};
+    use std::io::Write as _;
     use uuid::Uuid;
+
+    fn test_client() -> Result<(WorkerClient, UnixStream), Box<dyn std::error::Error>> {
+        let (worker_control, peer_control) = UnixStream::pair()?;
+        let (worker_progress, _peer_progress) = UnixStream::pair()?;
+        let codec = ControlCodec::negotiate(&offer()?)?;
+        let generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
+        Ok((
+            WorkerClient {
+                generation,
+                codec,
+                control: FramedSocket::new(worker_control)?,
+                progress: FramedSocket::new(worker_progress)?,
+                heartbeat: 0,
+                progress_sequence: 0,
+            },
+            peer_control,
+        ))
+    }
+
+    #[test]
+    fn poll_control_rejects_worker_direction_and_foreign_generation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (mut client, mut peer) = test_client()?;
+        let generation = client.generation();
+        let allowed = Envelope::event(
+            TraceId::from_uuid(Uuid::new_v4()),
+            ControlMessage::Yield { generation },
+        );
+        peer.write_all(&encode_envelope(&allowed, Some(&client.codec))?)?;
+        assert!(matches!(
+            client.poll_control()?.map(Envelope::into_payload),
+            Some(ControlMessage::Yield { generation: actual }) if actual == generation
+        ));
+
+        let worker_direction = Envelope::event(
+            TraceId::from_uuid(Uuid::new_v4()),
+            ControlMessage::Heartbeat {
+                generation,
+                sequence: 1,
+            },
+        );
+        peer.write_all(&encode_envelope(
+            &worker_direction,
+            Some(&client.codec),
+        )?)?;
+        assert!(matches!(client.poll_control(), Err(SupervisorError::Protocol)));
+
+        let foreign_generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
+        let wrong_instance = Envelope::event(
+            TraceId::from_uuid(Uuid::new_v4()),
+            ControlMessage::Yield {
+                generation: foreign_generation,
+            },
+        );
+        peer.write_all(&encode_envelope(
+            &wrong_instance,
+            Some(&client.codec),
+        )?)?;
+        assert!(matches!(client.poll_control(), Err(SupervisorError::Protocol)));
+        Ok(())
+    }
 
     #[test]
     fn cancellation_ack_queues_behind_a_partially_written_control_frame()
