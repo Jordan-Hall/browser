@@ -15,6 +15,7 @@ use std::{
 };
 
 const CONTROL_IO_BUDGET_BYTES: usize = 4096;
+const CONTROL_READ_RESERVE_BYTES: usize = CONTROL_IO_BUDGET_BYTES / 2;
 
 #[derive(Debug)]
 pub struct WorkerClient {
@@ -85,20 +86,28 @@ impl WorkerClient {
         self.generation
     }
     pub fn poll_control(&mut self) -> Result<Option<Envelope<ControlMessage>>, SupervisorError> {
-        self.control.flush(CONTROL_IO_BUDGET_BYTES)?;
-        self.progress.flush(CONTROL_IO_BUDGET_BYTES)?;
-        let mut budget = CONTROL_IO_BUDGET_BYTES;
-        match self.control.read_one(&mut budget)? {
-            ReadOutcome::Pending => Ok(None),
-            ReadOutcome::Closed => Err(SupervisorError::Io(
-                std::io::ErrorKind::UnexpectedEof.into(),
-            )),
+        let mut read_budget = CONTROL_READ_RESERVE_BYTES;
+        let outcome = self.control.read_one(&mut read_budget)?;
+        let read_bytes = CONTROL_READ_RESERVE_BYTES.saturating_sub(read_budget);
+        let envelope = match outcome {
+            ReadOutcome::Pending => None,
+            ReadOutcome::Closed => {
+                return Err(SupervisorError::Io(
+                    std::io::ErrorKind::UnexpectedEof.into(),
+                ));
+            }
             ReadOutcome::Frame(frame) => {
                 let envelope = decode(frame, Some(&self.codec))?;
                 self.validate_supervisor_control(&envelope)?;
-                Ok(Some(envelope))
+                Some(envelope)
             }
-        }
+        };
+        let write_budget = CONTROL_IO_BUDGET_BYTES.saturating_sub(read_bytes);
+        let progress_write_budget = write_budget / 4;
+        let control_write_budget = write_budget.saturating_sub(progress_write_budget);
+        self.control.flush(control_write_budget)?;
+        self.progress.flush(progress_write_budget)?;
+        Ok(envelope)
     }
     fn validate_supervisor_control(
         &self,
@@ -253,6 +262,76 @@ mod tests {
             client.poll_control(),
             Err(SupervisorError::Protocol)
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn poll_control_prioritizes_cancel_with_one_aggregate_io_budget()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (worker_control, mut peer_control) = UnixStream::pair()?;
+        let (worker_progress, mut peer_progress) = UnixStream::pair()?;
+        let codec = ControlCodec::negotiate(&offer()?)?;
+        let generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
+        let mut client = WorkerClient {
+            generation,
+            codec,
+            control: FramedSocket::new(worker_control)?,
+            progress: FramedSocket::new(worker_progress)?,
+            heartbeat: 0,
+            progress_sequence: 0,
+        };
+        client
+            .control
+            .queue(Frame::new(FrameLane::Control, vec![7; 5000]).encode(wire_limits())?)?;
+        client
+            .progress
+            .queue(Frame::new(FrameLane::Control, vec![8; 5000]).encode(wire_limits())?)?;
+
+        let cancellation_id = CancellationId::from_uuid(Uuid::new_v4());
+        let cancel = Envelope::event(
+            TraceId::from_uuid(Uuid::new_v4()),
+            ControlMessage::Cancel {
+                generation,
+                cancellation_id,
+            },
+        )
+        .with_cancellation_id(cancellation_id);
+        let cancel_bytes = encode_envelope(&cancel, Some(&client.codec))?;
+        assert!(cancel_bytes.len() <= CONTROL_READ_RESERVE_BYTES);
+        peer_control.write_all(&cancel_bytes)?;
+
+        assert!(matches!(
+            client.poll_control()?.map(Envelope::into_payload),
+            Some(ControlMessage::Cancel {
+                generation: actual_generation,
+                cancellation_id: actual_cancellation,
+            }) if actual_generation == generation && actual_cancellation == cancellation_id
+        ));
+
+        peer_control.set_nonblocking(true)?;
+        peer_progress.set_nonblocking(true)?;
+        let mut control_bytes = vec![0; CONTROL_IO_BUDGET_BYTES];
+        let mut progress_bytes = vec![0; CONTROL_IO_BUDGET_BYTES];
+        let control_sent = match peer_control.read(&mut control_bytes) {
+            Ok(length) => length,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => 0,
+            Err(error) => return Err(error.into()),
+        };
+        let progress_sent = match peer_progress.read(&mut progress_bytes) {
+            Ok(length) => length,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => 0,
+            Err(error) => return Err(error.into()),
+        };
+        assert!(control_sent > 0);
+        assert!(progress_sent > 0);
+        assert!(
+            cancel_bytes.len() + control_sent + progress_sent <= CONTROL_IO_BUDGET_BYTES,
+            "poll consumed {} inbound + {} control + {} progress bytes, exceeding the {}-byte aggregate budget",
+            cancel_bytes.len(),
+            control_sent,
+            progress_sent,
+            CONTROL_IO_BUDGET_BYTES
+        );
         Ok(())
     }
 
