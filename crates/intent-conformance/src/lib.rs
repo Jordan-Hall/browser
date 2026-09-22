@@ -244,8 +244,8 @@ fn check_malformed_approval_rejected() -> ConformanceResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CONFORMANCE_FORMAT_VERSION, ConformanceReport, ConformanceResult, render_conformance_result,
-        run_conformance,
+        CONFORMANCE_FORMAT_VERSION, ConformanceReport, ConformanceResult,
+        render_conformance_result, run_conformance,
     };
     use std::error::Error;
 
