@@ -343,7 +343,10 @@ impl fmt::Display for StateError {
                 )
             }
             Self::MissingStoreMetadata => {
-                write!(formatter, "existing Intent Browser state is missing store identity metadata")
+                write!(
+                    formatter,
+                    "existing Intent Browser state is missing store identity metadata"
+                )
             }
             Self::InvalidStoreId(value) => {
                 write!(formatter, "stored state UUID is invalid: {value}")
@@ -492,15 +495,18 @@ mod tests {
         assert!(matches!(error, StateError::MissingStoreMetadata));
 
         let connection = Connection::open(temp.path())?;
-        let count: i64 = connection.query_row("SELECT COUNT(*) FROM store_metadata", [], |row| {
-            row.get(0)
-        })?;
-        assert_eq!(count, 0, "failed open must not invent a replacement store identity");
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM store_metadata", [], |row| row.get(0))?;
+        assert_eq!(
+            count, 0,
+            "failed open must not invent a replacement store identity"
+        );
         Ok(())
     }
 
     #[test]
-    fn existing_store_malformed_identity_fails_without_replacing_it() -> Result<(), Box<dyn Error>> {
+    fn existing_store_malformed_identity_fails_without_replacing_it() -> Result<(), Box<dyn Error>>
+    {
         let temp = TempDatabase::new();
         let store = StateStore::open(temp.path())?;
         drop(store);
