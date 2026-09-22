@@ -39,8 +39,8 @@ impl OwnedProfileStateStore {
         }
         let owner_lock = acquire_owner_lock(&canonical_root)?;
         let database_path = prepare_profile_database(&canonical_root)?;
-        let store = StateStore::open(database_path)
-            .map_err(|error| io::Error::other(error.to_string()))?;
+        let store =
+            StateStore::open(database_path).map_err(|error| io::Error::other(error.to_string()))?;
         Ok(Self {
             store,
             _owner_lock: owner_lock,
