@@ -56,6 +56,55 @@ impl ConformanceReport {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenderedConformance {
+    json: String,
+    passed: bool,
+}
+
+impl RenderedConformance {
+    #[must_use]
+    pub fn json(&self) -> &str {
+        &self.json
+    }
+
+    #[must_use]
+    pub const fn passed(&self) -> bool {
+        self.passed
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ConformanceFailureReport {
+    format_version: u16,
+    result: &'static str,
+    rustc_version: &'static str,
+    error: String,
+}
+
+pub fn render_conformance_result(
+    result: ConformanceResult<ConformanceReport>,
+) -> Result<RenderedConformance, serde_json::Error> {
+    match result {
+        Ok(report) => Ok(RenderedConformance {
+            json: report.to_pretty_json()?,
+            passed: true,
+        }),
+        Err(error) => {
+            let report = ConformanceFailureReport {
+                format_version: CONFORMANCE_FORMAT_VERSION,
+                result: "failure",
+                rustc_version: env!("INTENT_RUSTC_VERSION"),
+                error: error.to_string(),
+            };
+            Ok(RenderedConformance {
+                json: serde_json::to_string_pretty(&report)?,
+                passed: false,
+            })
+        }
+    }
+}
+
 pub fn run_conformance() -> ConformanceResult<ConformanceReport> {
     let canonical_protocol_fixture = canonical_protocol_fixture()?;
     check_migration_chain()?;
@@ -194,7 +243,10 @@ fn check_malformed_approval_rejected() -> ConformanceResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::run_conformance;
+    use super::{
+        CONFORMANCE_FORMAT_VERSION, ConformanceReport, ConformanceResult, render_conformance_result,
+        run_conformance,
+    };
     use std::error::Error;
 
     #[test]
@@ -204,6 +256,20 @@ mod tests {
         assert_eq!(first, second);
         assert!(first.checks().iter().all(|check| check.passed()));
         assert_eq!(first.to_pretty_json()?, second.to_pretty_json()?);
+        Ok(())
+    }
+
+    #[test]
+    fn failure_report_is_structured_and_marks_execution_failed() -> Result<(), Box<dyn Error>> {
+        let failure: ConformanceResult<ConformanceReport> = Err("synthetic conformance failure".into());
+        let rendered = render_conformance_result(failure)?;
+        assert!(!rendered.passed());
+
+        let report: serde_json::Value = serde_json::from_str(rendered.json())?;
+        assert_eq!(report["format_version"], CONFORMANCE_FORMAT_VERSION);
+        assert_eq!(report["result"], "failure");
+        assert_eq!(report["rustc_version"], env!("INTENT_RUSTC_VERSION"));
+        assert_eq!(report["error"], "synthetic conformance failure");
         Ok(())
     }
 }
