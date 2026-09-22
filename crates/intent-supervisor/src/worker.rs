@@ -14,6 +14,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+const CONTROL_IO_BUDGET_BYTES: usize = 4096;
+
 #[derive(Debug)]
 pub struct WorkerClient {
     generation: WorkerInstanceId,
@@ -83,9 +85,9 @@ impl WorkerClient {
         self.generation
     }
     pub fn poll_control(&mut self) -> Result<Option<Envelope<ControlMessage>>, SupervisorError> {
-        self.control.flush(4096)?;
-        self.progress.flush(4096)?;
-        let mut budget = 4096;
+        self.control.flush(CONTROL_IO_BUDGET_BYTES)?;
+        self.progress.flush(CONTROL_IO_BUDGET_BYTES)?;
+        let mut budget = CONTROL_IO_BUDGET_BYTES;
         match self.control.read_one(&mut budget)? {
             ReadOutcome::Pending => Ok(None),
             ReadOutcome::Closed => Err(SupervisorError::Io(
@@ -142,7 +144,7 @@ impl WorkerClient {
         } else {
             self.control.queue(bytes)?;
         }
-        self.control.flush(4096)?;
+        self.control.flush(CONTROL_IO_BUDGET_BYTES)?;
         Ok(())
     }
     pub fn heartbeat(&mut self) -> Result<(), SupervisorError> {
@@ -160,11 +162,11 @@ impl WorkerClient {
             },
             Some(&self.codec),
         )?)?;
-        self.control.flush(4096)?;
+        self.control.flush(CONTROL_IO_BUDGET_BYTES)?;
         Ok(())
     }
     pub fn progress(&mut self, work_sequence: u64) -> Result<bool, SupervisorError> {
-        self.progress.flush(4096)?;
+        self.progress.flush(CONTROL_IO_BUDGET_BYTES)?;
         if !self.progress.idle() {
             return Ok(false);
         }
@@ -180,7 +182,7 @@ impl WorkerClient {
             },
             Some(&self.codec),
         )?)?;
-        self.progress.flush(4096)?;
+        self.progress.flush(CONTROL_IO_BUDGET_BYTES)?;
         Ok(true)
     }
 }
@@ -255,6 +257,40 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_control_frames_fit_one_io_budget() -> Result<(), Box<dyn std::error::Error>> {
+        let (client, _peer) = test_client()?;
+        let generation = client.generation();
+        let cancellation_id = CancellationId::from_uuid(Uuid::new_v4());
+        let cancel = Envelope::event(
+            TraceId::from_uuid(Uuid::new_v4()),
+            ControlMessage::Cancel {
+                generation,
+                cancellation_id,
+            },
+        )
+        .with_cancellation_id(cancellation_id);
+        let cancelled = Envelope::event(
+            TraceId::from_uuid(Uuid::new_v4()),
+            ControlMessage::Cancelled {
+                generation,
+                cancellation_id,
+            },
+        )
+        .with_cancellation_id(cancellation_id);
+
+        for envelope in [&cancel, &cancelled] {
+            let encoded = encode_envelope(envelope, Some(&client.codec))?;
+            assert!(
+                encoded.len() <= CONTROL_IO_BUDGET_BYTES,
+                "cancellation control frame uses {} bytes, exceeding one {}-byte worker I/O budget",
+                encoded.len(),
+                CONTROL_IO_BUDGET_BYTES
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn cancellation_ack_queues_behind_a_partially_written_control_frame()
     -> Result<(), Box<dyn std::error::Error>> {
         let (worker_control, peer_control) = UnixStream::pair()?;
@@ -271,7 +307,7 @@ mod tests {
         };
         let filler = Frame::new(FrameLane::Control, vec![7; 5000]).encode(wire_limits())?;
         client.control.queue(filler)?;
-        client.control.flush(4096)?;
+        client.control.flush(CONTROL_IO_BUDGET_BYTES)?;
         assert!(!client.control.idle());
 
         let trace = TraceId::from_uuid(Uuid::new_v4());
