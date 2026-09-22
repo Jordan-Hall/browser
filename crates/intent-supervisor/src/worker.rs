@@ -234,11 +234,11 @@ mod tests {
                 sequence: 1,
             },
         );
-        peer.write_all(&encode_envelope(
-            &worker_direction,
-            Some(&client.codec),
-        )?)?;
-        assert!(matches!(client.poll_control(), Err(SupervisorError::Protocol)));
+        peer.write_all(&encode_envelope(&worker_direction, Some(&client.codec))?)?;
+        assert!(matches!(
+            client.poll_control(),
+            Err(SupervisorError::Protocol)
+        ));
 
         let foreign_generation = WorkerInstanceId::from_uuid(Uuid::new_v4());
         let wrong_instance = Envelope::event(
@@ -247,11 +247,11 @@ mod tests {
                 generation: foreign_generation,
             },
         );
-        peer.write_all(&encode_envelope(
-            &wrong_instance,
-            Some(&client.codec),
-        )?)?;
-        assert!(matches!(client.poll_control(), Err(SupervisorError::Protocol)));
+        peer.write_all(&encode_envelope(&wrong_instance, Some(&client.codec))?)?;
+        assert!(matches!(
+            client.poll_control(),
+            Err(SupervisorError::Protocol)
+        ));
         Ok(())
     }
 
