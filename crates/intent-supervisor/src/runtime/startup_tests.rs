@@ -1,7 +1,7 @@
 use super::*;
 use crate::{Priority, ProcessLimits, RestartPolicy};
 use intent_contracts::{AccountId, CapabilityId};
-use intent_local_transport::WorkerRole;
+use intent_local_transport::{WorkerRole, issue_worker_authentication};
 use sha2::{Digest, Sha256};
 use std::{error::Error, io::Write, os::unix::net::UnixStream};
 
