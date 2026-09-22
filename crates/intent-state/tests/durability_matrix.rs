@@ -57,8 +57,7 @@ fn native_file_store_retains_wal_identity_and_integrity_across_reopen() -> TestR
         independent.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let journal_mode: String =
         independent.query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
-    let quick_check: String =
-        independent.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    let quick_check: String = independent.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
     assert_eq!(application_id, APPLICATION_ID);
     assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
     assert_eq!(quick_check, "ok");
