@@ -114,12 +114,9 @@ fn coalesced_hello_and_ready_still_admit_the_generation() -> Result<(), Box<dyn 
     let entry = supervisor.entries.get_mut(&id).ok_or("missing entry")?;
     let (receiver, mut sender) = UnixStream::pair()?;
     entry.progress.identity = Some(fixture_identity(id, &receiver)?);
-    let (token, pending) = issue_worker_channel_authentication(
-        id,
-        WorkerRole::FixtureWorker,
-        WorkerChannel::Control,
-    )
-    .map_err(|error| format!("bootstrap entropy: {error}"))?;
+    let (token, pending) =
+        issue_worker_channel_authentication(id, WorkerRole::FixtureWorker, WorkerChannel::Control)
+            .map_err(|error| format!("bootstrap entropy: {error}"))?;
     entry.control.authenticator = Some(pending.bind(ExpectedPeer::unix_process(
         std::process::id(),
         geteuid().as_raw(),
