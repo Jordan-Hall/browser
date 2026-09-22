@@ -1,5 +1,5 @@
 use intent_state::StateStore;
-use rusqlite::{params, Connection, TransactionBehavior};
+use rusqlite::{Connection, TransactionBehavior, params};
 use std::{
     error::Error,
     fs,
