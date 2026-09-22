@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+zeroize.workspace = true
 getrandom.workspace = true
 intent-contracts = { path = "../intent-contracts" }
 serde.workspace = true
@@ -16,11 +17,13 @@ subtle.workspace = true
 nix.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_Threading"] }
 
 [lints]
 workspace = true
 
-[target.'cfg(windows)'.dev-dependencies]
+[dev-dependencies]
 serde_json.workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
 windows-sys = { workspace = true, features = ["Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO"] }

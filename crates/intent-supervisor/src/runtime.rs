@@ -5,7 +5,10 @@ use crate::{
     SupervisorError, WorkQueues, WorkerConfig, WorkerLease, WorkerScope,
     observation::observe_unreaped,
     platform::ManagedChild,
-    wire::{FramedSocket, ReadBudget, ReadOutcome, decode, encode_envelope, encode_event, offer},
+    wire::{
+        FramedSocket, ReadBudget, ReadOutcome, decode, encode_bootstrap_event, encode_envelope,
+        encode_event, offer,
+    },
 };
 use intent_contracts::{
     BoundedText, CancellationId, ContentHash, RequestId, SchemaVersion, TaskId, TraceId,
@@ -13,8 +16,8 @@ use intent_contracts::{
 };
 use intent_ipc::{ControlCodec, Envelope, EnvelopeKind};
 use intent_local_transport::{
-    BootstrapToken, OneShotAuthenticator, PeerCredentialEvidence, PeerExpectation, WorkerHello,
-    WorkerIdentity, WorkerLaunchRecord, unix_peer_credentials,
+    AuthenticationError, ExpectedPeer, WorkerChannel, WorkerHello, WorkerIdentity, WorkerVerifier,
+    issue_worker_channel_authentication,
 };
 use nix::{
     fcntl::{OFlag, open, openat},
@@ -27,7 +30,7 @@ use nix::{
 use std::{
     collections::BTreeMap,
     fs::File,
-    io::{self, Write},
+    io,
     os::{
         fd::AsRawFd,
         unix::{net::UnixListener, process::ExitStatusExt},
@@ -78,7 +81,6 @@ pub enum WorkerFailure {
 }
 #[derive(Clone, Copy, Debug)]
 struct HealthAges {
-    starting: Duration,
     heartbeat: Duration,
     progress: Duration,
 }
@@ -97,13 +99,6 @@ fn health_failure_after_reads(
     blocked: HealthReadBlocks,
 ) -> Option<WorkerFailure> {
     match state {
-        WorkerState::Starting
-            if !blocked.control
-                && !blocked.progress
-                && ages.starting >= policy.handshake_timeout =>
-        {
-            Some(WorkerFailure::HandshakeTimeout)
-        }
         WorkerState::Ready if !blocked.control && ages.heartbeat >= policy.heartbeat_timeout => {
             Some(WorkerFailure::HeartbeatTimeout)
         }
@@ -261,19 +256,37 @@ struct Lane {
     name: String,
     listener: UnixListener,
     socket: Option<FramedSocket>,
-    authenticator: Option<OneShotAuthenticator>,
+    authenticator: Option<WorkerVerifier>,
     identity: Option<WorkerIdentity>,
     codec: Option<ControlCodec>,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AuthenticationProgress {
+    Pending,
+    Authenticated,
+    Expired,
+}
+
+const fn worker_channel(channel: ChannelKind) -> WorkerChannel {
+    match channel {
+        ChannelKind::Control => WorkerChannel::Control,
+        ChannelKind::Progress => WorkerChannel::Progress,
+    }
+}
+
 impl Lane {
     fn poll_authentication(
         &mut self,
-        pid: u32,
         channel: ChannelKind,
         generation: WorkerInstanceId,
+        startup_deadline: Instant,
         rejected: &mut u64,
         read_budget: &mut ReadBudget,
-    ) -> Result<(), SupervisorError> {
+    ) -> Result<AuthenticationProgress, SupervisorError> {
+        if Instant::now() >= startup_deadline {
+            return Ok(AuthenticationProgress::Expired);
+        }
         if self.socket.is_none() {
             for _ in 0..4 {
                 let stream = match self.listener.accept() {
@@ -284,30 +297,37 @@ impl Lane {
                             io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
                         ) =>
                     {
-                        return Ok(());
+                        return Ok(AuthenticationProgress::Pending);
                     }
                     Err(error) => return Err(error.into()),
                 };
-                let peer = unix_peer_credentials(&stream).map_err(|_| SupervisorError::Protocol)?;
-                if peer != expected_peer(pid) {
-                    *rejected = rejected.saturating_add(1);
-                    continue;
+                let auth = self
+                    .authenticator
+                    .as_ref()
+                    .ok_or(SupervisorError::Protocol)?;
+                match auth.check_unix_peer(&stream) {
+                    Ok(()) => {}
+                    Err(AuthenticationError::PeerCredentialMismatch) => {
+                        *rejected = rejected.saturating_add(1);
+                        continue;
+                    }
+                    Err(_) => return Err(SupervisorError::Protocol),
                 }
                 self.socket = Some(FramedSocket::new(stream)?);
                 break;
             }
         }
         if self.identity.is_some() {
-            return Ok(());
+            return Ok(AuthenticationProgress::Authenticated);
         }
         let Some(socket) = self.socket.as_mut() else {
-            return Ok(());
+            return Ok(AuthenticationProgress::Pending);
         };
         match read_budget.read_one(socket, 4096)? {
-            ReadOutcome::Pending => Ok(()),
+            ReadOutcome::Pending => Ok(AuthenticationProgress::Pending),
             ReadOutcome::Closed => Err(SupervisorError::Protocol),
             ReadOutcome::Frame(frame) => {
-                let envelope: Envelope<ControlMessage> = decode(&frame, None)?;
+                let envelope: Envelope<ControlMessage> = decode(frame, None)?;
                 if envelope.message() != EnvelopeKind::Event {
                     return Err(SupervisorError::Protocol);
                 }
@@ -319,32 +339,38 @@ impl Lane {
                 }
                 let codec =
                     ControlCodec::negotiate(&hello.offer).map_err(|_| SupervisorError::Protocol)?;
-                let auth = self.authenticator.take().ok_or(SupervisorError::Protocol)?;
-                let peer =
-                    unix_peer_credentials(&socket.stream).map_err(|_| SupervisorError::Protocol)?;
+                if Instant::now() >= startup_deadline {
+                    return Ok(AuthenticationProgress::Expired);
+                }
+                let mut auth = self.authenticator.take().ok_or(SupervisorError::Protocol)?;
                 let identity = auth
-                    .authenticate(&hello.identity, peer)
+                    .authenticate_unix_channel(
+                        worker_channel(channel),
+                        &hello.identity,
+                        &socket.stream,
+                    )
                     .map_err(|_| SupervisorError::Protocol)?;
-                socket.queue(encode_event(
+                drop(hello);
+                let welcome = encode_event(
                     ControlMessage::Welcome {
                         generation,
                         selected: SchemaVersion::V1,
                     },
                     Some(&codec),
-                )?)?;
+                )?;
+                if Instant::now() >= startup_deadline {
+                    return Ok(AuthenticationProgress::Expired);
+                }
+                socket.queue(welcome)?;
                 socket.flush(4096)?;
+                if Instant::now() >= startup_deadline {
+                    return Ok(AuthenticationProgress::Expired);
+                }
                 self.identity = Some(identity);
                 self.codec = Some(codec);
-                Ok(())
+                Ok(AuthenticationProgress::Authenticated)
             }
         }
-    }
-}
-fn expected_peer(pid: u32) -> PeerCredentialEvidence {
-    PeerCredentialEvidence::Unix {
-        pid: Some(pid),
-        uid: geteuid().as_raw(),
-        gid: getegid().as_raw(),
     }
 }
 
@@ -361,7 +387,7 @@ struct Entry {
     progress: Lane,
     state: WorkerState,
     failure: Option<WorkerFailure>,
-    started: Instant,
+    startup_deadline: Instant,
     heartbeat: Instant,
     progress_at: Instant,
     last_heartbeat: u64,
@@ -373,6 +399,7 @@ struct Entry {
     term_sent: bool,
     kill_sent: bool,
     reaped: bool,
+    exit_observed_at: Option<Instant>,
     exit_code: Option<i32>,
     exit_signal: Option<i32>,
     pending: BTreeMap<RequestId, PendingRequest>,
@@ -415,6 +442,13 @@ impl Entry {
         self.state = WorkerState::Draining;
         self.stop_at = Some(now);
         self.cancel_id = Some(cancellation);
+        self.control.authenticator = None;
+        self.progress.authenticator = None;
+        for lane in [&mut self.control, &mut self.progress] {
+            if lane.identity.is_none() {
+                lane.socket = None;
+            }
+        }
         if let Some(socket) = self.control.socket.as_mut() {
             socket.discard_unstarted();
         }
@@ -426,6 +460,14 @@ impl Entry {
             Some(failure),
         );
     }
+    fn expire_startup(&mut self, now: Instant) -> bool {
+        if self.state == WorkerState::Starting && now >= self.startup_deadline {
+            self.fail(now, WorkerFailure::HandshakeTimeout);
+            true
+        } else {
+            false
+        }
+    }
     fn poll(
         &mut self,
         now: Instant,
@@ -434,23 +476,27 @@ impl Entry {
         if self.reaped {
             return Ok(false);
         }
-        if let Some(exit) = self.child.poll_exit()? {
+        if self.exit_observed_at.is_none()
+            && let Some(exit) = self.child.poll_exit()?
+        {
             self.exit_code = exit.code();
             self.exit_signal = exit.signal();
             self.lease.revoke();
-            self.reaped = true;
+            self.exit_observed_at = Some(now);
+            self.observation = None;
+            self.state = WorkerState::Draining;
+            self.control.authenticator = None;
+            self.progress.authenticator = None;
+            self.progress.socket = None;
+            if self.control.identity.is_none() {
+                self.control.socket = None;
+            }
             if self.stop_at.is_none() {
                 self.failure = Some(WorkerFailure::OsExit);
             }
-            self.state = if self.failure.is_some() {
-                WorkerState::Failed
-            } else {
-                WorkerState::Stopped
-            };
-            if self.state == WorkerState::Failed {
-                self.restart.failed(now);
-            }
-            return Ok(true);
+        }
+        if let Some(exited_at) = self.exit_observed_at {
+            return Ok(self.finish_exit(now, exited_at, read_budget));
         }
         if self.lease.expired(now) || self.pending.values().any(|request| now >= request.expires) {
             self.fail(now, WorkerFailure::DeadlineExpired);
@@ -459,40 +505,50 @@ impl Entry {
             self.stop(now, CancellationId::from_uuid(Uuid::new_v4()), None);
         }
         let mut blocked = HealthReadBlocks::default();
+        let starting = self.state == WorkerState::Starting;
+        self.expire_startup(Instant::now());
         if self.state == WorkerState::Starting {
             let before = read_budget.blocked_reads();
-            self.control.poll_authentication(
-                self.child.id(),
+            let authentication = self.control.poll_authentication(
                 ChannelKind::Control,
                 self.generation,
+                self.startup_deadline,
                 &mut self.rejected_peers,
                 read_budget,
             )?;
             blocked.control |= read_budget.blocked_reads() != before;
+            if authentication == AuthenticationProgress::Expired {
+                self.expire_startup(Instant::now());
+            }
+        }
+        if self.state == WorkerState::Starting {
             let before = read_budget.blocked_reads();
-            self.progress.poll_authentication(
-                self.child.id(),
+            let authentication = self.progress.poll_authentication(
                 ChannelKind::Progress,
                 self.generation,
+                self.startup_deadline,
                 &mut self.rejected_peers,
                 read_budget,
             )?;
             blocked.progress |= read_budget.blocked_reads() != before;
+            if authentication == AuthenticationProgress::Expired {
+                self.expire_startup(Instant::now());
+            }
         }
-        if self.control.identity.is_some() {
+        if self.control.identity.is_some() && !(starting && self.stop_at.is_some()) {
             let before = read_budget.blocked_reads();
             self.read_control(now, read_budget)?;
             blocked.control |= read_budget.blocked_reads() != before;
         }
-        if self.progress.identity.is_some() {
+        if self.progress.identity.is_some() && !(starting && self.stop_at.is_some()) {
             let before = read_budget.blocked_reads();
             self.read_progress(now, read_budget)?;
             blocked.progress |= read_budget.blocked_reads() != before;
         }
+        self.expire_startup(Instant::now());
         if let Some(failure) = health_failure_after_reads(
             self.state,
             HealthAges {
-                starting: now.duration_since(self.started),
                 heartbeat: now.duration_since(self.heartbeat),
                 progress: now.duration_since(self.progress_at),
             },
@@ -500,8 +556,9 @@ impl Entry {
             self.config.health,
             blocked,
         ) {
-            self.fail(now, failure);
+            self.fail(Instant::now(), failure);
         }
+        let now = Instant::now();
         if let Some(stop) = self.stop_at {
             if let Some(socket) = self.control.socket.as_mut()
                 && !self.cancel_sent
@@ -563,26 +620,29 @@ impl Entry {
         &mut self,
         now: Instant,
         read_budget: &mut ReadBudget,
-    ) -> Result<(), SupervisorError> {
+    ) -> Result<bool, SupervisorError> {
         let Some(socket) = self.control.socket.as_mut() else {
-            return Ok(());
+            return Ok(true);
         };
         let mut lane_budget = 8192;
         for _ in 0..8 {
+            let blocks_before = read_budget.blocked_reads();
             let before = read_budget.consumed();
             let outcome = read_budget.read_one(socket, lane_budget)?;
             lane_budget = lane_budget.saturating_sub(read_budget.consumed().saturating_sub(before));
             let frame = match outcome {
-                ReadOutcome::Pending => break,
+                ReadOutcome::Pending => {
+                    return Ok(lane_budget > 0 && read_budget.blocked_reads() == blocks_before);
+                }
                 ReadOutcome::Closed => {
                     if self.stop_at.is_none() {
                         self.fail(now, WorkerFailure::ControlClosed);
                     }
-                    break;
+                    return Ok(true);
                 }
                 ReadOutcome::Frame(frame) => frame,
             };
-            let envelope: Envelope<ControlMessage> = decode(&frame, self.control.codec.as_ref())?;
+            let envelope: Envelope<ControlMessage> = decode(frame, self.control.codec.as_ref())?;
             let kind = envelope.message();
             let cancellation = envelope.cancellation_id();
             match envelope.into_payload() {
@@ -592,9 +652,14 @@ impl Entry {
                         && self.progress.identity.is_some()
                         && kind == EnvelopeKind::Event =>
                 {
+                    let admitted_at = Instant::now();
+                    if admitted_at >= self.startup_deadline {
+                        self.fail(admitted_at, WorkerFailure::HandshakeTimeout);
+                        break;
+                    }
                     self.state = WorkerState::Ready;
-                    self.heartbeat = now;
-                    self.progress_at = now;
+                    self.heartbeat = admitted_at;
+                    self.progress_at = admitted_at;
                 }
                 ControlMessage::Heartbeat {
                     generation,
@@ -604,7 +669,7 @@ impl Entry {
                         return Err(SupervisorError::Protocol);
                     }
                     self.last_heartbeat = sequence;
-                    self.heartbeat = now;
+                    self.heartbeat = self.heartbeat.max(now);
                 }
                 ControlMessage::Observed {
                     generation,
@@ -633,7 +698,7 @@ impl Entry {
                             sequence,
                         },
                     );
-                    self.progress_at = now;
+                    self.progress_at = self.progress_at.max(now);
                 }
                 ControlMessage::Cancelled {
                     generation,
@@ -655,7 +720,7 @@ impl Entry {
                 _ => return Err(SupervisorError::Protocol),
             }
         }
-        Ok(())
+        Ok(false)
     }
     fn read_progress(
         &mut self,
@@ -674,7 +739,7 @@ impl Entry {
                 ReadOutcome::Pending | ReadOutcome::Closed => break,
                 ReadOutcome::Frame(frame) => frame,
             };
-            let envelope: Envelope<ProgressMessage> = decode(&frame, self.progress.codec.as_ref())?;
+            let envelope: Envelope<ProgressMessage> = decode(frame, self.progress.codec.as_ref())?;
             if envelope.message() != EnvelopeKind::Event {
                 return Err(SupervisorError::Protocol);
             }
@@ -690,7 +755,7 @@ impl Entry {
                 .values()
                 .any(|request| request.sent && request.sequence == progress.work_sequence)
             {
-                self.progress_at = now;
+                self.progress_at = self.progress_at.max(now);
             }
         }
         Ok(())
@@ -761,10 +826,23 @@ impl Supervisor {
         let created = (|| -> Result<Entry, SupervisorError> {
             let control_listener = self.namespace.listener(&control_name)?;
             let progress_listener = self.namespace.listener(&progress_name)?;
-            let control_token = BootstrapToken::generate()
-                .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
-            let progress_token = BootstrapToken::generate()
-                .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
+            let startup_deadline = Instant::now()
+                .checked_add(config.health.handshake_timeout)
+                .ok_or(SupervisorError::InvalidConfiguration(
+                    "startup deadline overflow",
+                ))?;
+            let (control_token, control_pending) = issue_worker_channel_authentication(
+                generation,
+                config.role,
+                WorkerChannel::Control,
+            )
+            .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
+            let (progress_token, progress_pending) = issue_worker_channel_authentication(
+                generation,
+                config.role,
+                WorkerChannel::Progress,
+            )
+            .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
             let packet = BootstrapPacket {
                 control_endpoint: BoundedText::try_new(
                     self.namespace.endpoint(&control_name, true),
@@ -776,12 +854,12 @@ impl Supervisor {
                 .map_err(|_| SupervisorError::InvalidConfiguration("socket endpoint too long"))?,
                 control: ChannelHello {
                     channel: ChannelKind::Control,
-                    identity: WorkerHello::new(generation, config.role, control_token.clone()),
+                    identity: WorkerHello::new(generation, config.role, control_token),
                     offer: offer()?,
                 },
                 progress: ChannelHello {
                     channel: ChannelKind::Progress,
-                    identity: WorkerHello::new(generation, config.role, progress_token.clone()),
+                    identity: WorkerHello::new(generation, config.role, progress_token),
                     offer: offer()?,
                 },
                 scope: config.scope,
@@ -790,8 +868,8 @@ impl Supervisor {
                 )
                 .map_err(|_| SupervisorError::InvalidConfiguration("handshake timeout overflow"))?,
             };
-            let bootstrap = encode_event(packet, None)?;
-            if bootstrap.len() > 4096 {
+            let bootstrap = encode_bootstrap_event(packet)?;
+            if bootstrap.as_bytes().len() > 4096 {
                 return Err(SupervisorError::InvalidConfiguration(
                     "bootstrap exceeds one pipe budget",
                 ));
@@ -806,25 +884,22 @@ impl Supervisor {
                 .spawn()?;
             let stdin = raw.stdin.take();
             let child = ManagedChild::new(raw);
-            stdin
-                .ok_or(SupervisorError::InvalidState)?
-                .write_all(&bootstrap)?;
-            let expectation = PeerExpectation::exact(expected_peer(child.id()));
-            let lane = |name, listener, token| Lane {
+            let expected =
+                ExpectedPeer::unix_process(child.id(), geteuid().as_raw(), getegid().as_raw())
+                    .map_err(|_| SupervisorError::Protocol)?;
+            let control_auth = control_pending.bind(expected);
+            let progress_auth = progress_pending.bind(expected);
+            bootstrap.write_all(&mut stdin.ok_or(SupervisorError::InvalidState)?)?;
+            let lane = |name, listener, authenticator| Lane {
                 name,
                 listener,
                 socket: None,
-                authenticator: Some(OneShotAuthenticator::new(WorkerLaunchRecord::new(
-                    generation,
-                    config.role,
-                    token,
-                    expectation,
-                ))),
+                authenticator: Some(authenticator),
                 identity: None,
                 codec: None,
             };
-            let control = lane(control_name.clone(), control_listener, control_token);
-            let progress = lane(progress_name.clone(), progress_listener, progress_token);
+            let control = lane(control_name.clone(), control_listener, control_auth);
+            let progress = lane(progress_name.clone(), progress_listener, progress_auth);
             let lease = WorkerLease::new(
                 generation,
                 config.scope,
@@ -845,7 +920,7 @@ impl Supervisor {
                 progress,
                 state: WorkerState::Starting,
                 failure: None,
-                started: now,
+                startup_deadline,
                 heartbeat: now,
                 progress_at: now,
                 last_heartbeat: 0,
@@ -857,6 +932,7 @@ impl Supervisor {
                 term_sent: false,
                 kill_sent: false,
                 reaped: false,
+                exit_observed_at: None,
                 exit_code: None,
                 exit_signal: None,
                 pending: BTreeMap::new(),
@@ -1188,6 +1264,7 @@ impl Supervisor {
             self.metrics_cursor = self.metrics_cursor.wrapping_add(1);
             if let Some((_, entry)) = self.entries.iter_mut().nth(index)
                 && !entry.reaped
+                && entry.exit_observed_at.is_none()
                 && now.duration_since(entry.sampled_at) >= Duration::from_millis(250)
             {
                 entry.observation = observe_unreaped(entry.child.id()).ok();
@@ -1314,7 +1391,6 @@ mod tests {
             ..HealthPolicy::default()
         };
         let ages = HealthAges {
-            starting: old,
             heartbeat: old,
             progress: old,
         };
@@ -1345,7 +1421,7 @@ mod tests {
                 policy,
                 HealthReadBlocks::default()
             ),
-            Some(WorkerFailure::HandshakeTimeout)
+            None
         );
         assert_eq!(
             health_failure_after_reads(
@@ -1378,3 +1454,8 @@ mod tests {
 
 #[cfg(test)]
 mod health_tests;
+
+#[cfg(test)]
+mod startup_tests;
+
+mod exit;

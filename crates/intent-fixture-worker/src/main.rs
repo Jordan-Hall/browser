@@ -7,13 +7,16 @@ mod broker_effect;
 mod progress_pressure;
 
 #[cfg(target_os = "linux")]
+mod startup_gate;
+
+#[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use intent_contracts::{TraceId, UnixTimestampMicros};
     use intent_ipc::{Envelope, EnvelopeKind};
     use intent_supervisor::{BootstrapPacket, ControlMessage, wire_limits, worker::WorkerClient};
     use std::{
         fs::File,
-        io::Write,
+        io::{Read, Write},
         process::{Command, Stdio},
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
@@ -37,6 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => None,
     };
     let packet = WorkerClient::read_bootstrap(&mut std::io::stdin().lock())?;
+    if mode == "startup-gate" {
+        return startup_gate::run(
+            packet,
+            args.get(1).ok_or("missing startup gate directory")?,
+            args.get(2).map(String::as_str).unwrap_or("ready"),
+        );
+    }
     if mode == "inherited-fd-probe" {
         let expected_absent = args.get(1).ok_or("missing descriptor target")?;
         for descriptor in std::fs::read_dir("/proc/self/fd")?.take(4097) {
@@ -53,14 +63,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    if mode == "wrong-peer" {
+    if mode == "silent-peer" {
+        let mut socket = std::os::unix::net::UnixStream::connect(packet.control_endpoint.as_str())?;
+        socket.set_read_timeout(Some(Duration::from_secs(10)))?;
+        let mut byte = [0];
+        if socket.read(&mut byte)? == 0 {
+            return Err("foreign connection rejected before Hello".into());
+        }
+        return Ok(());
+    }
+    if matches!(
+        mode,
+        "wrong-peer" | "wrong-peer-then-owner" | "silent-peer-then-owner"
+    ) {
         let bytes = intent_ipc::encode_control(
-            &Envelope::event(TraceId::from_uuid(Uuid::new_v4()), packet),
+            &Envelope::event(TraceId::from_uuid(Uuid::new_v4()), &packet),
             wire_limits(),
         )?
         .encode(wire_limits())?;
         let mut child = Command::new("/proc/self/exe")
-            .arg("normal")
+            .arg(if mode == "silent-peer-then-owner" {
+                "silent-peer"
+            } else {
+                "normal"
+            })
             .env_clear()
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -71,9 +97,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .take()
             .ok_or("no forwarding pipe")?
             .write_all(&bytes)?;
-        let _ = child.wait()?;
-        loop {
-            std::thread::sleep(Duration::from_millis(100));
+        if let Some(path) = args.get(1) {
+            std::fs::write(path, child.id().to_string())?;
+        }
+        let result = child.wait()?;
+        if result.success() {
+            return Err("foreign process unexpectedly completed bootstrap".into());
+        }
+        if mode == "wrong-peer" {
+            loop {
+                std::thread::sleep(Duration::from_millis(100));
+            }
         }
     }
     let packet = if matches!(mode, "wrong-token" | "wrong-role" | "wrong-generation") {
@@ -105,6 +139,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let scope = packet.scope;
     let mut client = WorkerClient::connect(packet)?;
+    if matches!(mode, "foreign-lifecycle" | "foreign-heartbeat") {
+        let generation = intent_contracts::WorkerInstanceId::from_uuid(Uuid::parse_str(
+            args.get(1).ok_or("missing foreign generation")?,
+        )?);
+        let message = if mode == "foreign-heartbeat" {
+            Envelope::event(
+                TraceId::from_uuid(Uuid::new_v4()),
+                ControlMessage::Heartbeat {
+                    generation,
+                    sequence: 1,
+                },
+            )
+        } else {
+            let cancellation_id = intent_contracts::CancellationId::from_uuid(Uuid::new_v4());
+            Envelope::event(
+                TraceId::from_uuid(Uuid::new_v4()),
+                ControlMessage::Cancel {
+                    generation,
+                    cancellation_id,
+                },
+            )
+            .with_cancellation_id(cancellation_id)
+        };
+        client.send(&message)?;
+    }
     if let Some(saved) = saved {
         client.send(&Envelope::event(
             TraceId::from_uuid(Uuid::new_v4()),
@@ -120,7 +179,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             x = std::hint::black_box(x.wrapping_mul(6364136223846793005).wrapping_add(1));
         }
     }
-    if mode == "silent-after-ready" {
+    if matches!(
+        mode,
+        "silent-after-ready" | "foreign-lifecycle" | "foreign-heartbeat"
+    ) {
         loop {
             std::thread::sleep(Duration::from_millis(100));
         }

@@ -1,6 +1,6 @@
 use super::*;
 use intent_ipc::{Frame, FrameLane};
-use std::{error::Error, os::unix::net::UnixStream};
+use std::{error::Error, io::Write, os::unix::net::UnixStream};
 
 fn policy() -> HealthPolicy {
     HealthPolicy {
@@ -37,7 +37,6 @@ fn a_fully_serviced_last_worker_is_not_exempt_from_heartbeat_expiry() -> Result<
             health_failure_after_reads(
                 WorkerState::Ready,
                 HealthAges {
-                    starting: Duration::ZERO,
                     heartbeat: Duration::from_secs(10),
                     progress: Duration::ZERO,
                 },
@@ -62,7 +61,6 @@ fn progress_lane_saturation_cannot_mask_a_serviced_control_lane_timeout() {
         health_failure_after_reads(
             WorkerState::Ready,
             HealthAges {
-                starting: Duration::ZERO,
                 heartbeat: Duration::from_secs(1),
                 progress: Duration::ZERO,
             },
@@ -84,17 +82,12 @@ fn only_reads_that_can_carry_the_missing_health_signal_defer_its_timeout() {
             let blocked = HealthReadBlocks { control, progress };
             let old = Duration::from_secs(1);
             let ages = HealthAges {
-                starting: old,
                 heartbeat: old,
                 progress: old,
             };
             assert_eq!(
                 health_failure_after_reads(WorkerState::Starting, ages, false, policy(), blocked),
-                if control || progress {
-                    None
-                } else {
-                    Some(WorkerFailure::HandshakeTimeout)
-                }
+                None
             );
             assert_eq!(
                 health_failure_after_reads(WorkerState::Ready, ages, false, policy(), blocked),
@@ -224,7 +217,6 @@ fn a_partially_serviced_worker_gets_the_first_window_on_the_next_poll() -> Resul
         health_failure_after_reads(
             WorkerState::Ready,
             HealthAges {
-                starting: Duration::ZERO,
                 heartbeat: Duration::from_secs(10),
                 progress: Duration::ZERO
             },

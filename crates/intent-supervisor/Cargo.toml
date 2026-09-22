@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+zeroize.workspace = true
 intent-contracts = { path = "../intent-contracts" }
 intent-ipc = { path = "../intent-ipc" }
 intent-local-transport = { path = "../intent-local-transport" }
@@ -17,6 +18,9 @@ uuid.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { workspace = true, features = ["feature"] }
+
+[target.'cfg(target_vendor = "apple")'.dev-dependencies]
+nix.workspace = true
 
 [lints]
 workspace = true

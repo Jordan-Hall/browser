@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "scope": "Deterministic EOF setup in supervisor budget fixture; production unchanged",
+  "source_git_blob": "f9bae453d37a34f788fca191db7b31a6d7d1b790",
+  "trigger_ci_run": "https://github.com/Jordan-Hall/browser/actions/runs/35524596732",
+  "checks": [
+    {
+      "log": "target/eof-budget-before.log",
+      "sha256": "90dc868c300e9f0cf30a8018108468bd4518c6b3203c2d65757488a2b6d665e8",
+      "exit_code": 101,
+      "scope": "Retained duplicate peer reproduces Pending instead of immediate Closed in the existing exact assertion."
+    },
+    {
+      "log": "target/eof-budget-after.log",
+      "sha256": "c8f0c3abf7f4bd111663685db660f11f17e5d71abc1d914d84fbb4fb27d3a123",
+      "exit_code": 0,
+      "scope": "Explicit write shutdown with retained handles preserves all assertions; 37 supervisor tests and strict Clippy pass."
+    }
+  ],
+  "review": "target/eof-budget-review.md",
+  "limits": [
+    "The historical CI log does not identify WouldBlock versus Interrupted or prove which child inherited a descriptor.",
+    "Retained-handle reproduction proves the invalid immediate-EOF assumption, not the historical syscall schedule."
+  ]
+}

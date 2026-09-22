@@ -1,6 +1,6 @@
 #![deny(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![doc = "Bounded Linux worker supervision. Worker results are observations, never authorization or proof of external completion."]
+#![doc = "Bounded Linux worker supervision with portable Unix worker-side transport. Worker results are observations, never authorization or proof of external completion."]
 
 mod admission;
 mod error;
@@ -21,16 +21,16 @@ pub use spec::*;
 mod platform;
 #[cfg(target_os = "linux")]
 mod runtime;
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 mod wire;
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 pub mod worker;
 
 #[cfg(target_os = "linux")]
 pub use platform::ExecutableImage;
 #[cfg(target_os = "linux")]
 pub use runtime::*;
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 pub use wire::{
     BootstrapPacket, ChannelHello, ChannelKind, ControlMessage, ProgressMessage, wire_limits,
 };

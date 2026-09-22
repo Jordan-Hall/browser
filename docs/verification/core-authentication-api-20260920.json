@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "scope": "CORE-01.T05 issued verifier and connected peer observation API contraction; not whole-task acceptance",
+  "base_commit": "fcadd0ec0c0b124cb75c45665694e05f11c776a9",
+  "source_git_blobs": {
+    "crates/intent-conformance/src/lib.rs": "014e9a443e07009a1f6742187d15e87f2424bc0a",
+    "crates/intent-fixture-worker/src/main.rs": "63e7a1879449cfe742bb3fb2e179dc935d136739",
+    "crates/intent-fixture-worker/tests/supervision.rs": "3094330eae52cfd0c7a626adae417988fe7282fa",
+    "crates/intent-local-transport/Cargo.toml": "f723ea3d46404cd3d8a8b64e5304a0f13224e1e9",
+    "crates/intent-local-transport/src/auth.rs": "273e786d255719bd99c70a34689cca40258fccf7",
+    "crates/intent-local-transport/src/auth/tests.rs": "c7a38c83e667abb1d1ffffc64b31c8c572907049",
+    "crates/intent-local-transport/src/lib.rs": "099a86ab741bee1edff3d7f85735e18eb311771c",
+    "crates/intent-local-transport/src/peer.rs": "65997ced7186092ed07a234a8f753a8cd6f8276b",
+    "crates/intent-local-transport/tests/windows_named_pipe.rs": "fd147b543896cb66e4ba7e4d54ca9cec8c6f3f23",
+    "crates/intent-supervisor/src/runtime.rs": "958dabdfef9c68b536534c373be06cfa82d4deea",
+    "crates/intent-supervisor/src/runtime/startup_tests.rs": "d70d73a3188533f408cc42be717683dd8d29b9dc",
+    "crates/intent-supervisor/src/wire.rs": "4c762aca6de66d37dfee31db6c4387939ce0d3cb"
+  },
+  "checks": [
+    {
+      "log": "target/authentication-api-linux-first.log",
+      "exit_code": 1,
+      "scope": "Initial strict Clippy stopped on an obsolete FromStr import after removing synthetic conformance authentication. No test success claimed.",
+      "sha256": "cccc9bdcb84a436a6017b57ac5f7f5fd5dfac416fae2fc26a8cebf57e6cbac2f",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-api-linux-second.log",
+      "exit_code": 0,
+      "scope": "Strict workspace Clippy plus all-feature transport, supervisor, fixture and conformance tests/doctests; 106 passing results and one ignored helper. Predates only additional method documentation and three compile-fail examples.",
+      "sha256": "259e47fba7a3e579760f4df681253478ebc50b56d07e546d94c287fb47ed405c",
+      "passing_test_results": 106,
+      "failed_test_results": 0,
+      "ignored_test_results": 1
+    },
+    {
+      "log": "target/authentication-api-linux-final-checks.log",
+      "exit_code": 0,
+      "scope": "Final source formatting and strict workspace Clippy; seven transport compile-fail examples, architecture check and 18 portable conformance checks.",
+      "sha256": "d7a61506befcbfa43d7e5c714a8a6192d92a8c5d79fa1994d3d92a671decec2e",
+      "passing_test_results": 7,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-api-windows-first.log",
+      "exit_code": 0,
+      "scope": "Native Windows: five unit tests, one real-pipe parent case with four executed child cases, and four initial compile-fail examples. Counts include child test-run output; one helper is ignored in the parent inventory.",
+      "sha256": "9999f0877ce9588d180706431a467398ad4cf4fb84e4f084a54bff87c7170159",
+      "passing_test_results": 14,
+      "failed_test_results": 0,
+      "ignored_test_results": 1
+    },
+    {
+      "log": "target/authentication-api-windows-clippy.log",
+      "exit_code": 0,
+      "scope": "Native Windows strict all-target/all-feature local-transport Clippy.",
+      "sha256": "d1d388a154f918da69cd12c458b64693d228bcb73bd8c5772eaf03ab6e3e3865",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-api-windows-doc-final.log",
+      "exit_code": 0,
+      "scope": "Final source: all seven compile-fail examples pass on Windows, including both verifier deserialization and private identity construction checks.",
+      "sha256": "0b6dc162e8246cfccc7d06aeb1cd0235413b19960079b13e0817523a0daed0b9",
+      "passing_test_results": 7,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-api-conformance.log",
+      "exit_code": 0,
+      "scope": "Native Windows architecture check and 18 portable conformance checks; synthetic authentication removed, role-family policy retained.",
+      "sha256": "51a2fd92277df889f984eebbff62e83ae1672e25a118a2d5d222bdc81fca67f9",
+      "passing_test_results": 0,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-api-silent-negative.log",
+      "exit_code": 101,
+      "scope": "Removing only the supervisor pre-Hello peer filter prevents intended-owner readiness while a foreign process connects silently. Connected authentication remains in place after Hello; expected causal negative control.",
+      "sha256": "91ad037a0eae2d46dd06295f0ab5d2587a50433c2f668ecda5e44a338ed357e9",
+      "passing_test_results": 0,
+      "failed_test_results": 1,
+      "ignored_test_results": 0
+    },
+    {
+      "log": "target/authentication-api-silent-restored.log",
+      "exit_code": 0,
+      "scope": "Identical silent-peer case passes after restoring the final supervisor; raw runtime hash matches the working source.",
+      "sha256": "39cb43f099e32da784b075d12ab4cb00e11ffde3c1a3af86526fd326772598da",
+      "passing_test_results": 1,
+      "failed_test_results": 0,
+      "ignored_test_results": 0
+    }
+  ],
+  "independent_review": {
+    "source": "target/authentication-api-source-review.md",
+    "implementation_reconciliation": "target/authentication-api-implementation-review.md",
+    "evidence_audit": "target/authentication-api-final-audit.md",
+    "result": "No blocking finding; all 12 source blobs and raw log hashes match; negative control fails with HandshakeTimeout and restored source passes."
+  },
+  "design": {
+    "base": "Borrowed connected authentication retaining private Lane ownership",
+    "grafts": [
+      "Issue before spawn and bind once after actual PID is known",
+      "Preserve peer filtering before Hello to reject silent foreign connectors",
+      "Retain separate Windows expected-server verification without public observed evidence"
+    ],
+    "rejected": "Owned generic channel wrapper with public mutable inner I/O did not enforce its claimed connection identity; no second registry added."
+  },
+  "limits": [
+    "The existing supervisor was not shown remotely bypassable through the old public value API; this contracts misleading authority construction for future adapters.",
+    "Caller must decode Hello from and retain the supplied connection. Rust types alone do not establish decoded-message byte origin.",
+    "Windows evidence qualifies the native named-pipe API, not production supervisor, endpoint ACL or principal enforcement.",
+    "Full Windows/macOS supervisor authentication, bootstrap secret erasure and independent whole-task acceptance remain.",
+    "Hostile same-user containment remains SEC-04 work.",
+    "Published exact-source CI remains a separate gate."
+  ]
+}

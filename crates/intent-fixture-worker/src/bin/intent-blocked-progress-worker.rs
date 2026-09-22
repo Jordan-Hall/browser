@@ -10,6 +10,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let marker = std::env::args()
         .nth(1)
         .ok_or("missing progress backpressure marker")?;
+    let exit_heartbeats = std::env::args()
+        .nth(2)
+        .map(|value| value.parse::<u8>())
+        .transpose()?;
+    if exit_heartbeats.is_some_and(|count| count > 64) {
+        return Err("too many exit heartbeat fixtures".into());
+    }
+    let acknowledgement = std::env::args().nth(3).unwrap_or_else(|| "ack".to_owned());
+    if !matches!(acknowledgement.as_str(), "ack" | "no-ack" | "wrong-id") {
+        return Err("invalid acknowledgement fixture mode".into());
+    }
     let packet = WorkerClient::read_bootstrap(&mut std::io::stdin().lock())?;
     let scope = packet.scope;
     let mut client = WorkerClient::connect(packet)?;
@@ -55,6 +66,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cancellation_id,
                 } if generation == client.generation() && cancellation == Some(cancellation_id) => {
                     std::fs::write(&marker, b"cancel received while progress backpressured")?;
+                    for _ in 0..exit_heartbeats.unwrap_or(0) {
+                        client.heartbeat()?;
+                    }
+                    if acknowledgement == "no-ack" {
+                        return Ok(());
+                    }
+                    let cancellation_id = if acknowledgement == "wrong-id" {
+                        "018f47f7-5a86-7c00-8000-000000000fff".parse()?
+                    } else {
+                        cancellation_id
+                    };
                     client.send(
                         &Envelope::event(
                             trace,
@@ -65,6 +87,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .with_cancellation_id(cancellation_id),
                     )?;
+                    if exit_heartbeats.is_some() {
+                        return Ok(());
+                    }
                     let release = std::path::Path::new(&marker).with_extension("release");
                     let release_deadline = Instant::now() + Duration::from_secs(3);
                     while !release.try_exists()? {

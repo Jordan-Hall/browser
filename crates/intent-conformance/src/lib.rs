@@ -3,18 +3,13 @@
 
 use intent_contracts::{
     Approval, MigrationFailure, MigrationRegistry, MigrationStep, RecordFamily, SchemaVersion,
-    WorkerInstanceId,
 };
 use intent_ipc::{
     NegotiationError, ProtocolCapability, ProtocolOffer, ProtocolRange, negotiate_protocol,
 };
-use intent_local_transport::{
-    AuthenticationError, BootstrapToken, MessageFamily, OneShotAuthenticator,
-    PeerCredentialEvidence, PeerExpectation, WorkerHello, WorkerLaunchRecord, WorkerRole,
-};
+use intent_local_transport::{MessageFamily, WorkerRole};
 use serde::Serialize;
 use std::error::Error;
-use std::str::FromStr;
 
 mod record_fixtures;
 
@@ -65,7 +60,6 @@ pub fn run_conformance() -> ConformanceResult<ConformanceReport> {
     let canonical_protocol_fixture = canonical_protocol_fixture()?;
     check_migration_chain()?;
     check_outdated_worker_rejected()?;
-    check_negative_worker_authentication()?;
     check_role_capability_binding()?;
     check_malformed_approval_rejected()?;
     let record_checks = record_fixtures::check()?;
@@ -90,10 +84,6 @@ pub fn run_conformance() -> ConformanceResult<ConformanceReport> {
                 },
                 ConformanceCheck {
                     name: "outdated_worker_rejected",
-                    passed: true,
-                },
-                ConformanceCheck {
-                    name: "negative_worker_authentication",
                     passed: true,
                 },
                 ConformanceCheck {
@@ -180,29 +170,6 @@ fn check_outdated_worker_rejected() -> ConformanceResult<()> {
         Err(NegotiationError::NoCompatibleVersion)
     ) {
         return Err("incompatible worker protocol was not rejected".into());
-    }
-    Ok(())
-}
-
-fn check_negative_worker_authentication() -> ConformanceResult<()> {
-    let instance = WorkerInstanceId::from_str("018f47f7-5a86-7c00-8000-000000000801")?;
-    let token = BootstrapToken::from_bytes([0x41_u8; 32]);
-    let peer = PeerCredentialEvidence::Synthetic {
-        process_id: 7,
-        principal_id: 11,
-    };
-    let launch = WorkerLaunchRecord::new(
-        instance,
-        WorkerRole::PolicyBroker,
-        token.clone(),
-        PeerExpectation::exact(peer),
-    );
-    let hello = WorkerHello::new(instance, WorkerRole::BrowserWorker, token);
-    if !matches!(
-        OneShotAuthenticator::new(launch).authenticate(&hello, peer),
-        Err(AuthenticationError::LaunchIdentityMismatch)
-    ) {
-        return Err("worker role mismatch was not rejected".into());
     }
     Ok(())
 }

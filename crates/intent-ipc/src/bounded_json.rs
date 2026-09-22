@@ -55,7 +55,12 @@ pub(crate) fn encode<T: Serialize>(value: &T, limits: WireLimits) -> Result<Vec<
             format!("failed to serialize control envelope: {error}"),
         )
     })?;
-    crate::envelope::preflight_json_structure(&writer.bytes, limits.max_json_depth)?;
-    crate::strict_json::decode(&writer.bytes, limits)?;
+    validate(&writer.bytes, limits)?;
     Ok(writer.bytes)
+}
+
+pub(crate) fn validate(bytes: &[u8], limits: WireLimits) -> Result<(), WireError> {
+    crate::envelope::preflight_json_structure(bytes, limits.max_json_depth)?;
+    crate::strict_json::decode(bytes, limits)?;
+    Ok(())
 }

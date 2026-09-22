@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "scope": "Published post-exec Unix peer authentication primitive on native macOS and Linux; no platform Supervisor acceptance",
+  "source_commit": "9d035eb5101183292f29a5bce28a8b0815a1d24d",
+  "tested_merge_commit": "c322cd913f0c1404508b9f27e54645853b35df17",
+  "core_artifact": {
+    "id": 10611225126,
+    "name": "core-verification-35528771410-1",
+    "source_files_matched": 307,
+    "compiler": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "source_archive_sha256": "3dff38596212c03d2738112fbe8a78c739c18c972b6ee1dcaae80fa50540c1d6",
+    "verification_sha256": "9af479c9df09b59cdaf61286dede65ad064da2a4acb9dc44d5acb399c1ee9d71",
+    "lockfile_sha256": {
+      "Cargo.lock": "593a74e00757e25c28fd196d768d813f2c2af7dd8ed51d91fe5222c2bda87558",
+      "fuzz/Cargo.lock": "53f1dae4ea1bf7c876b85b6f413654ffa7f52c7ba38a5dc107421e7363468e20"
+    },
+    "source_content_commit": "9d035eb5101183292f29a5bce28a8b0815a1d24d",
+    "tested_merge_commit": "c322cd913f0c1404508b9f27e54645853b35df17"
+  },
+  "native_allocation_artifacts": [
+    {
+      "platform": "ubuntu-24.04",
+      "artifact_id": 10611195122,
+      "artifact_name": "encoder-allocation-ubuntu-24.04-35528771410-1",
+      "exit_code": 0,
+      "tested_commit": "c322cd913f0c1404508b9f27e54645853b35df17",
+      "source_blobs_matched": 59,
+      "rustc_verbose": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ],
+      "artifact_file_sha256": {
+        "cargo.txt": "9950bbb2d5c3417b1a068f0e81f6d3cac991a363193bdf2a22d447f5acf8b503",
+        "exit-code.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "probe.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "probe.stdout.log": "659d65be6a78fcf97f4945ede6e70ecda8d3c4e94e1c65138dc74e57005df887",
+        "revision.txt": "c0ac0652772b45f4428473ecb95eef3d69264f6c85713daa20cd3c779332a0e9",
+        "rustc.txt": "778fbc643a806f0dd123c056e66201d7e8a56a61928ec0a33171be8d6c2d5a37",
+        "source-blobs.txt": "3aed21dd61794e39b43e2999eef434aed4f282e38e268d6e50e41067159c22f3"
+      }
+    },
+    {
+      "platform": "windows-2025",
+      "artifact_id": 10611115463,
+      "artifact_name": "encoder-allocation-windows-2025-35528771410-1",
+      "exit_code": 0,
+      "tested_commit": "c322cd913f0c1404508b9f27e54645853b35df17",
+      "source_blobs_matched": 59,
+      "rustc_verbose": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ],
+      "artifact_file_sha256": {
+        "cargo.txt": "9950bbb2d5c3417b1a068f0e81f6d3cac991a363193bdf2a22d447f5acf8b503",
+        "exit-code.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "probe.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "probe.stdout.log": "659d65be6a78fcf97f4945ede6e70ecda8d3c4e94e1c65138dc74e57005df887",
+        "revision.txt": "c0ac0652772b45f4428473ecb95eef3d69264f6c85713daa20cd3c779332a0e9",
+        "rustc.txt": "c45e612575abeef05e99e88eb1e7aea52cddab9ad70d4f65ad20eaa65e92a9cf",
+        "source-blobs.txt": "3aed21dd61794e39b43e2999eef434aed4f282e38e268d6e50e41067159c22f3"
+      }
+    },
+    {
+      "platform": "macos-15",
+      "artifact_id": 10610288413,
+      "artifact_name": "encoder-allocation-macos-15-35528771410-1",
+      "exit_code": 0,
+      "tested_commit": "c322cd913f0c1404508b9f27e54645853b35df17",
+      "source_blobs_matched": 59,
+      "rustc_verbose": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: aarch64-apple-darwin\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+      "samples": [
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 430,
+          "frame_limit": 1024,
+          "peak_live_ceiling": 5120,
+          "realloc_overlap_ceiling": 6144,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 1209,
+            "peak_realloc_overlap_bytes": 1536,
+            "successful_requests": 8,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 8110,
+          "frame_limit": 16384,
+          "peak_live_ceiling": 20480,
+          "realloc_overlap_ceiling": 36864,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 16569,
+            "peak_realloc_overlap_bytes": 24576,
+            "successful_requests": 12,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "oversized_bounded_encoder",
+          "logical_elements": 1048576,
+          "attempted_elements": 32686,
+          "frame_limit": 65536,
+          "peak_live_ceiling": 69632,
+          "realloc_overlap_ceiling": 135168,
+          "error": "FrameTooLarge",
+          "output_bytes": null,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 65721,
+            "peak_realloc_overlap_bytes": 98304,
+            "successful_requests": 14,
+            "accounting_invalid": false
+          }
+        },
+        {
+          "case": "materializing_positive_control",
+          "logical_elements": 1048576,
+          "attempted_elements": 1048576,
+          "frame_limit": null,
+          "peak_live_ceiling": null,
+          "realloc_overlap_ceiling": null,
+          "error": null,
+          "output_bytes": 2097320,
+          "measurement": {
+            "live_bytes": 0,
+            "peak_live_bytes": 4194304,
+            "peak_realloc_overlap_bytes": 6291456,
+            "successful_requests": 16,
+            "accounting_invalid": false
+          }
+        }
+      ],
+      "artifact_file_sha256": {
+        "cargo.txt": "9950bbb2d5c3417b1a068f0e81f6d3cac991a363193bdf2a22d447f5acf8b503",
+        "exit-code.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "probe.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "probe.stdout.log": "659d65be6a78fcf97f4945ede6e70ecda8d3c4e94e1c65138dc74e57005df887",
+        "revision.txt": "c0ac0652772b45f4428473ecb95eef3d69264f6c85713daa20cd3c779332a0e9",
+        "rustc.txt": "e2211d4c0760a2a3b03eab88e42f8848952b7aa2ed649277a8fdbf3ce1838fd4",
+        "source-blobs.txt": "3aed21dd61794e39b43e2999eef434aed4f282e38e268d6e50e41067159c22f3"
+      }
+    }
+  ],
+  "ci": {
+    "run_id": 35528771410,
+    "url": "https://github.com/Jordan-Hall/browser/actions/runs/35528771410",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "Native contracts and storage (ubuntu-24.04)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Native contracts and storage (macos-15)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Native contracts and storage (windows-2025)",
+        "conclusion": "success"
+      },
+      {
+        "name": "Rust checks",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "native_test_execution": [
+    {
+      "platform": "macos-15",
+      "job_id": 106125545576,
+      "job_url": "https://github.com/Jordan-Hall/browser/actions/runs/35528771410/job/106125545576",
+      "parent_cases": [
+        "spawned_peer_rejects_foreign_connection_then_authenticates",
+        "spawned_peer_wrong_token_consumes_credential",
+        "spawned_peer_wrong_role_consumes_credential",
+        "spawned_peer_wrong_instance_consumes_credential"
+      ],
+      "passing_parent_cases": 4,
+      "executed_passing_child_cases": 4,
+      "ignored_parent_inventory_helper": 1,
+      "log_sha256": "8954900d937c3c6595651dd68e143c03ee8b3685fd2836f5d842513b521ee779"
+    },
+    {
+      "platform": "ubuntu-24.04",
+      "job_id": 106125545502,
+      "job_url": "https://github.com/Jordan-Hall/browser/actions/runs/35528771410/job/106125545502",
+      "parent_cases": [
+        "spawned_peer_rejects_foreign_connection_then_authenticates",
+        "spawned_peer_wrong_token_consumes_credential",
+        "spawned_peer_wrong_role_consumes_credential",
+        "spawned_peer_wrong_instance_consumes_credential"
+      ],
+      "passing_parent_cases": 4,
+      "executed_passing_child_cases": 4,
+      "ignored_parent_inventory_helper": 1,
+      "log_sha256": "3e132353b1f959772bd6f5ccf346b7cf5fd21f1fa4d2539f53e58e3a16fce0bb"
+    }
+  ],
+  "independent_review": {
+    "report": "target/unix-post-exec-published-audit.md",
+    "result": "Four CI jobs,307source files,native artifact identities and actual macOS/Linux parent and child execution verified."
+  },
+  "limits": [
+    "Windows CI passed but does not execute this Unix-only integration test.",
+    "The private fixture endpoint and exchange qualify connected-peer/issued-verifier primitives, not production native supervision or two-lane authority.",
+    "No new parser-fuzz execution is claimed for this test-only increment.",
+    "Whole-task acceptance and full Windows/macOS Supervisor remain incomplete."
+  ]
+}
