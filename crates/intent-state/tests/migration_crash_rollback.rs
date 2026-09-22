@@ -1,5 +1,5 @@
 use intent_state::StateStore;
-use rusqlite::{Connection, TransactionBehavior, params};
+use rusqlite::{params, Connection, TransactionBehavior};
 use std::{
     error::Error,
     fs,
@@ -47,10 +47,9 @@ struct ChildGuard(Child);
 impl ChildGuard {
     fn terminate(&mut self) -> TestResult {
         match self.0.try_wait()? {
-            Some(status) => Err(format!(
-                "migration child exited before forced termination: {status}"
-            )
-            .into()),
+            Some(status) => {
+                Err(format!("migration child exited before forced termination: {status}").into())
+            }
             None => {
                 self.0.kill()?;
                 let _ = self.0.wait()?;
@@ -93,7 +92,9 @@ fn migration_crash_child() -> TestResult {
     let mut connection = Connection::open(database)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let baseline: i64 = transaction.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    let interrupted_version = baseline.checked_add(1).ok_or("migration version overflow")?;
+    let interrupted_version = baseline
+        .checked_add(1)
+        .ok_or("migration version overflow")?;
 
     transaction.execute_batch(&format!(
         "CREATE TABLE {INTERRUPTED_TABLE} (value INTEGER NOT NULL) STRICT;"
@@ -129,7 +130,12 @@ fn process_crash_rolls_back_migration_shaped_schema_ledger_and_version_changes()
 
     let mut child = ChildGuard(
         Command::new(std::env::current_exe()?)
-            .args(["--exact", "migration_crash_child", "--ignored", "--nocapture"])
+            .args([
+                "--exact",
+                "migration_crash_child",
+                "--ignored",
+                "--nocapture",
+            ])
             .env(DATABASE_ENV, &database)
             .env(READY_ENV, &ready)
             .stdin(Stdio::null())
