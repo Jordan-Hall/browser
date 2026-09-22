@@ -1,5 +1,7 @@
 use crate::{OutboxError, StateError, StateStore};
 use rusqlite::Connection;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     fs::{self, File, OpenOptions, TryLockError},
     io,
@@ -8,11 +10,10 @@ use std::{
     thread,
     time::Duration,
 };
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
 use uuid::Uuid;
 
 const PROFILE_OWNER_LOCK_FILE: &str = ".intent-profile-owner.lock";
+const PROFILE_DATABASE_FILE: &str = "state.sqlite3";
 const PROFILE_OWNER_LOCK_RETRIES: usize = 16;
 const PROFILE_OWNER_LOCK_RETRY_DELAY: Duration = Duration::from_millis(1);
 
@@ -37,7 +38,8 @@ impl OwnedProfileStateStore {
             return Err(invalid_owner("profile root is not a directory"));
         }
         let owner_lock = acquire_owner_lock(&canonical_root)?;
-        let store = StateStore::open(canonical_root.join("state.sqlite3"))
+        let database_path = prepare_profile_database(&canonical_root)?;
+        let store = StateStore::open(database_path)
             .map_err(|error| io::Error::other(error.to_string()))?;
         Ok(Self {
             store,
@@ -105,6 +107,26 @@ fn acquire_owner_lock(canonical_root: &Path) -> io::Result<File> {
     }
     retry_owner_lock(|| lock.try_lock())?;
     Ok(lock)
+}
+
+fn prepare_profile_database(canonical_root: &Path) -> io::Result<PathBuf> {
+    let database_path = canonical_root.join(PROFILE_DATABASE_FILE);
+    if let Ok(metadata) = fs::symlink_metadata(&database_path)
+        && (metadata.file_type().is_symlink() || !metadata.is_file())
+    {
+        return Err(invalid_owner("profile database is not a regular file"));
+    }
+
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let database = options.open(&database_path)?;
+    if !database.metadata()?.is_file() {
+        return Err(invalid_owner("profile database is not a regular file"));
+    }
+    drop(database);
+    Ok(database_path)
 }
 
 fn retry_owner_lock(mut attempt: impl FnMut() -> Result<(), TryLockError>) -> io::Result<()> {
