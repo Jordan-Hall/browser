@@ -7,8 +7,8 @@ Standing instruction, 2026-09-20: fetch and incorporate `origin/main` before eac
 - [x] Merge main through PRs #840 and #841; retain the distinct local outbound-cancellation and fixture-observation fixes.
 - [x] Commit the broker startup deadline separation and outbound cancellation state fix.
 - [x] Reproduce and fix final-message observation races in the newly merged process fixtures without extending stop deadlines.
-- [ ] Publish the verified cancellation changes and inspect exact-head CI.
-- [ ] Complete task-level acceptance audit of CORE-01.T01, then close #121 if its full criteria are proven.
+- [x] Publish the verified cancellation changes and inspect exact-head CI; follow-through is merged through #861 with exact-head native CI.
+- [x] Complete task-level acceptance audit of CORE-01.T01; CORE-01.T01 through T04 are accepted on the live ledger.
 
 - [x] Read the Principles section of the poteto-mode skill.
 - [x] Phase A: Frame. Compare the consolidated implementation with the CORE task ledger and live issues.
@@ -29,7 +29,7 @@ Standing instruction, 2026-09-20: fetch and incorporate `origin/main` before eac
 - [ ] Phase D: Keep the audit trail. Append decisions and executed evidence to decisions.tsv.
 - [ ] Phase E: Verify and hand back. Require actual task evidence and the unchanged require-accepted gate.
 
-Completion requires all 37 CORE tasks to satisfy their individual criteria and the acceptance ledger gate before subsequent workstreams. The existing ledger reports zero accepted tasks. Platform, independent review, real-provider and power-loss criteria require their own evidence; unit test success cannot replace them.
+Completion requires all 37 CORE tasks to satisfy their individual criteria and the acceptance ledger gate before subsequent workstreams. The live ledger has 4 accepted tasks (CORE-01.T01-T04) and 33 unaccepted tasks; `production_ready=false` and `--require-accepted` remain fail-closed. Platform, independent review, real-provider and power-loss criteria require their own evidence; unit test success cannot replace them.
 
 ## 2026-09-19 cancellation transport continuation
 
@@ -53,4 +53,4 @@ The user explicitly requires cross-platform support. Native Windows tests are re
 
 Design comparison phases: Frame, Fan out, Cross-judge, Pick, Graft, Verify. Prefer a small internal backend over duplicating state machines. Reject any candidate that substitutes successful no-ops for unavailable durability or authentication guarantees.
 
-Current implementation and verification status: docs/core-native-progress.md. The three saved patches are integrated. Native Windows verification passed within the recorded scope; Linux/macOS/Windows CI for the CORE-01.T01 baseline passed on PR #817. CORE acceptance remains open, and no later workstream has started.
+Current implementation and verification status: docs/core-native-progress.md. CORE-01.T01-T04 are accepted; T05 remains partial and T06-T08 remain implemented_pending_acceptance. CORE-01.T07 follow-through #860/#861, CORE-01.T08 #862, and CORE-02.T01 #863-#868 are merged with exact-head native CI in their documented scopes. CORE-02.T01 remains partial for controlled filesystem/power-loss qualification and independent acceptance. No later workstream starts until CORE closes.
