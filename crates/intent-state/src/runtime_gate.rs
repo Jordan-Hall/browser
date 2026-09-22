@@ -8,6 +8,8 @@ use std::{
     thread,
     time::Duration,
 };
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use uuid::Uuid;
 
 const PROFILE_OWNER_LOCK_FILE: &str = ".intent-profile-owner.lock";
@@ -93,11 +95,11 @@ fn acquire_owner_lock(canonical_root: &Path) -> io::Result<File> {
         return Err(invalid_owner("profile owner lock is not a regular file"));
     }
 
-    let lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .open(lock_path)?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let lock = options.open(lock_path)?;
     if !lock.metadata()?.is_file() {
         return Err(invalid_owner("profile owner lock is not a regular file"));
     }
