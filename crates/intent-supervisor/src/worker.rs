@@ -191,7 +191,6 @@ mod tests {
     use crate::wire::{decode, offer, wire_limits};
     use intent_contracts::{CancellationId, TraceId};
     use intent_ipc::{Envelope, Frame, FrameLane};
-    use std::io::Write as _;
     use uuid::Uuid;
 
     fn test_client() -> Result<(WorkerClient, UnixStream), Box<dyn std::error::Error>> {
