@@ -261,7 +261,8 @@ mod tests {
 
     #[test]
     fn failure_report_is_structured_and_marks_execution_failed() -> Result<(), Box<dyn Error>> {
-        let failure: ConformanceResult<ConformanceReport> = Err("synthetic conformance failure".into());
+        let failure: ConformanceResult<ConformanceReport> =
+            Err("synthetic conformance failure".into());
         let rendered = render_conformance_result(failure)?;
         assert!(!rendered.passed());
 
