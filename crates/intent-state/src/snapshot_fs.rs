@@ -9,6 +9,7 @@ use std::{
     io,
     os::{fd::AsRawFd, unix::fs::MetadataExt},
     path::{Component, Path, PathBuf},
+    sync::OnceLock,
     thread,
     time::Duration,
 };
@@ -18,6 +19,7 @@ const DIRECTORY_FLAGS: OFlag = OFlag::O_RDONLY
     .union(OFlag::O_DIRECTORY)
     .union(OFlag::O_NOFOLLOW)
     .union(OFlag::O_CLOEXEC);
+const PROFILE_OWNER_LOCK_FILE: &str = ".intent-profile-owner.lock";
 const PROFILE_LOCK_RETRIES: usize = 16;
 const PROFILE_LOCK_RETRY_DELAY: Duration = Duration::from_millis(1);
 
@@ -35,22 +37,32 @@ fn retry_profile_lock(mut attempt: impl FnMut() -> Result<(), TryLockError>) -> 
 }
 
 #[derive(Debug)]
-pub(crate) struct Directory(File);
+pub(crate) struct Directory {
+    file: File,
+    profile_owner_lock: OnceLock<File>,
+}
 
 impl Directory {
+    fn from_file(file: File) -> Self {
+        Self {
+            file,
+            profile_owner_lock: OnceLock::new(),
+        }
+    }
+
     pub fn open_private(path: &Path) -> io::Result<Self> {
         let absolute = if path.is_absolute() {
             path.to_path_buf()
         } else {
             std::env::current_dir()?.join(path)
         };
-        let mut current = Self(File::from(open("/", DIRECTORY_FLAGS, Mode::empty())?));
+        let mut current = Self::from_file(File::from(open("/", DIRECTORY_FLAGS, Mode::empty())?));
         for component in absolute.components() {
             match component {
                 Component::RootDir | Component::CurDir => {}
                 Component::Normal(name) => {
-                    current = Self(File::from(openat(
-                        &current.0,
+                    current = Self::from_file(File::from(openat(
+                        &current.file,
                         name,
                         DIRECTORY_FLAGS,
                         Mode::empty(),
@@ -59,7 +71,7 @@ impl Directory {
                 _ => return Err(invalid("parent traversal is not allowed")),
             }
         }
-        let metadata = current.0.metadata()?;
+        let metadata = current.file.metadata()?;
         if metadata.uid() != geteuid().as_raw() || metadata.mode() & 0o077 != 0 {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -71,8 +83,8 @@ impl Directory {
 
     pub fn child(&self, name: &str) -> io::Result<Self> {
         check_name(name)?;
-        Ok(Self(File::from(openat(
-            &self.0,
+        Ok(Self::from_file(File::from(openat(
+            &self.file,
             name,
             DIRECTORY_FLAGS,
             Mode::empty(),
@@ -81,7 +93,7 @@ impl Directory {
 
     pub fn create_child(&self, name: &str) -> io::Result<Self> {
         check_name(name)?;
-        mkdirat(&self.0, name, Mode::from_bits_truncate(0o700))?;
+        mkdirat(&self.file, name, Mode::from_bits_truncate(0o700))?;
         let child = self.child(name)?;
         child.sync()?;
         self.sync()?;
@@ -91,7 +103,7 @@ impl Directory {
     pub fn open_file(&self, name: &str) -> io::Result<File> {
         check_name(name)?;
         let file = File::from(openat(
-            &self.0,
+            &self.file,
             name,
             OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
             Mode::empty(),
@@ -105,7 +117,7 @@ impl Directory {
     pub fn create_file(&self, name: &str) -> io::Result<File> {
         check_name(name)?;
         Ok(File::from(openat(
-            &self.0,
+            &self.file,
             name,
             OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_EXCL | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
             Mode::from_bits_truncate(0o600),
@@ -113,7 +125,7 @@ impl Directory {
     }
 
     pub fn names(&self, maximum: usize) -> io::Result<Vec<String>> {
-        let mut directory = Dir::openat(&self.0, ".", DIRECTORY_FLAGS, Mode::empty())?;
+        let mut directory = Dir::openat(&self.file, ".", DIRECTORY_FLAGS, Mode::empty())?;
         let mut names = Vec::new();
         for entry in directory.iter() {
             let entry = entry?;
@@ -134,9 +146,33 @@ impl Directory {
     }
 
     pub fn lock_profile(&self) -> io::Result<File> {
-        retry_profile_lock(|| self.0.try_lock())?;
+        let owner_lock = File::from(openat(
+            &self.file,
+            PROFILE_OWNER_LOCK_FILE,
+            OFlag::O_RDWR | OFlag::O_CREAT | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
+            Mode::from_bits_truncate(0o600),
+        )?);
+        let owner_metadata = owner_lock.metadata()?;
+        if !owner_metadata.is_file()
+            || owner_metadata.nlink() != 1
+            || owner_metadata.uid() != geteuid().as_raw()
+            || owner_metadata.mode() & 0o077 != 0
+        {
+            return Err(invalid(
+                "profile owner lock must be a private, singly linked regular file",
+            ));
+        }
+        retry_profile_lock(|| owner_lock.try_lock())?;
+        self.profile_owner_lock.set(owner_lock).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "profile owner lock already acquired by this directory handle",
+            )
+        })?;
+
+        retry_profile_lock(|| self.file.try_lock())?;
         let file = File::from(openat(
-            &self.0,
+            &self.file,
             "state.sqlite3",
             OFlag::O_RDWR
                 | OFlag::O_CREAT
@@ -163,12 +199,12 @@ impl Directory {
     pub fn sqlite_path(&self) -> PathBuf {
         PathBuf::from(format!(
             "/proc/self/fd/{}/state.sqlite3",
-            self.0.as_raw_fd()
+            self.file.as_raw_fd()
         ))
     }
 
     pub fn sync(&self) -> io::Result<()> {
-        self.0.sync_all()
+        self.file.sync_all()
     }
 
     fn remove_tree(&self, name: &str, depth: usize) -> io::Result<()> {
@@ -180,9 +216,9 @@ impl Directory {
                 for entry in child.names(8192)? {
                     child.remove_tree(&entry, depth + 1)?;
                 }
-                unlinkat(&self.0, name, UnlinkatFlags::RemoveDir)?;
+                unlinkat(&self.file, name, UnlinkatFlags::RemoveDir)?;
             }
-            Err(_) => unlinkat(&self.0, name, UnlinkatFlags::NoRemoveDir)?,
+            Err(_) => unlinkat(&self.file, name, UnlinkatFlags::NoRemoveDir)?,
         }
         Ok(())
     }
@@ -211,9 +247,9 @@ impl StagingDirectory {
         check_name(name)?;
         self.directory.sync()?;
         renameat2(
-            &self.parent.0,
+            &self.parent.file,
             self.name.as_str(),
-            &self.parent.0,
+            &self.parent.file,
             name,
             RenameFlags::RENAME_NOREPLACE,
         )?;
