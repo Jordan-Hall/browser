@@ -129,7 +129,10 @@ fn windows_supervisor_rejects_previous_generation() -> TestResult {
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
     )?;
-    assert!(matches!(pending.authenticate(), Err(SupervisorError::Protocol)));
+    assert!(matches!(
+        pending.authenticate(),
+        Err(SupervisorError::Protocol)
+    ));
     Ok(())
 }
 
