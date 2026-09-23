@@ -1,8 +1,8 @@
 #![cfg(windows)]
 
 use intent_contracts::WorkerInstanceId;
-use intent_local_transport::{WorkerChannel, WorkerRole, verify_named_pipe_server};
-use intent_supervisor::{WindowsBootstrapPacket, WindowsPendingWorker};
+use intent_local_transport::{WorkerChannel, WorkerHello, WorkerRole, verify_named_pipe_server};
+use intent_supervisor::{SupervisorError, WindowsBootstrapPacket, WindowsPendingWorker};
 use std::{
     error::Error,
     fs::{File, OpenOptions},
@@ -17,8 +17,26 @@ fn instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
     Ok("018f47f7-5a86-7c00-8000-000000000505".parse()?)
 }
 
+fn fresh_instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
+    Ok("018f47f7-5a86-7c00-8000-000000000506".parse()?)
+}
+
+fn child_command() -> Result<Command, Box<dyn Error>> {
+    let mut command = Command::new(std::env::current_exe()?);
+    command
+        .args([
+            "--exact",
+            "windows_supervisor_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    Ok(command)
+}
+
 #[test]
-#[ignore = "launched only by windows_supervisor_binds_spawned_worker_channels"]
+#[ignore = "launched only by Windows supervisor subprocess regressions"]
 fn windows_supervisor_child() -> TestResult {
     let mut bootstrap = Vec::new();
     std::io::stdin().take(4097).read_to_end(&mut bootstrap)?;
@@ -36,7 +54,14 @@ fn windows_supervisor_child() -> TestResult {
         .open(packet.progress_endpoint.as_str())?;
     verify_named_pipe_server(&control, packet.supervisor_process_id)?;
     verify_named_pipe_server(&progress, packet.supervisor_process_id)?;
-    write_hello(&mut control, &packet.control)?;
+    if std::env::var_os("INTENT_WINDOWS_STALE_GENERATION").is_some() {
+        let mut stale = serde_json::to_value(&packet.control)?;
+        stale["instance_id"] = serde_json::to_value(instance()?)?;
+        let stale: WorkerHello = serde_json::from_value(stale)?;
+        write_hello(&mut control, &stale)?;
+    } else {
+        write_hello(&mut control, &packet.control)?;
+    }
     write_hello(&mut progress, &packet.progress)?;
     let mut ack = [0_u8; 1];
     control.read_exact(&mut ack)?;
@@ -44,7 +69,7 @@ fn windows_supervisor_child() -> TestResult {
     Ok(())
 }
 
-fn write_hello(pipe: &mut File, hello: &intent_local_transport::WorkerHello) -> TestResult {
+fn write_hello(pipe: &mut File, hello: &WorkerHello) -> TestResult {
     let mut bytes = serde_json::to_vec(hello)?;
     bytes.push(b'\n');
     pipe.write_all(&bytes)?;
@@ -52,18 +77,19 @@ fn write_hello(pipe: &mut File, hello: &intent_local_transport::WorkerHello) -> 
     Ok(())
 }
 
+fn finish_authenticated(
+    authenticated: intent_supervisor::WindowsAuthenticatedWorker,
+) -> TestResult {
+    let (mut child, mut control, mut progress, _, _) = authenticated.into_parts()?;
+    control.write_all(&[1])?;
+    progress.write_all(&[1])?;
+    assert!(child.wait()?.success());
+    Ok(())
+}
+
 #[test]
 fn windows_supervisor_binds_spawned_worker_channels() -> TestResult {
-    let mut command = Command::new(std::env::current_exe()?);
-    command
-        .args([
-            "--exact",
-            "windows_supervisor_child",
-            "--ignored",
-            "--nocapture",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    let mut command = child_command()?;
     let pending = WindowsPendingWorker::spawn(
         &mut command,
         instance()?,
@@ -90,9 +116,52 @@ fn windows_supervisor_binds_spawned_worker_channels() -> TestResult {
         authenticated.progress_identity().channel(),
         Some(WorkerChannel::Progress)
     );
-    let (mut child, mut control, mut progress, _, _) = authenticated.into_parts()?;
-    control.write_all(&[1])?;
-    progress.write_all(&[1])?;
-    assert!(child.wait()?.success());
+    finish_authenticated(authenticated)
+}
+
+#[test]
+fn windows_supervisor_rejects_previous_generation() -> TestResult {
+    let mut command = child_command()?;
+    command.env("INTENT_WINDOWS_STALE_GENERATION", "1");
+    let pending = WindowsPendingWorker::spawn(
+        &mut command,
+        fresh_instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?;
+    assert!(matches!(
+        pending.authenticate(),
+        Err(SupervisorError::Protocol)
+    ));
     Ok(())
+}
+
+#[test]
+fn windows_supervisor_revokes_before_auth_then_restarts_fresh() -> TestResult {
+    let mut first = child_command()?;
+    let pending = WindowsPendingWorker::spawn(
+        &mut first,
+        instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?;
+    assert!(!pending.revoke_before_auth()?.success());
+
+    let mut second = child_command()?;
+    let pending = WindowsPendingWorker::spawn(
+        &mut second,
+        fresh_instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?;
+    let authenticated = pending.authenticate()?;
+    assert_eq!(
+        authenticated.control_identity().instance_id(),
+        fresh_instance()?
+    );
+    assert_eq!(
+        authenticated.progress_identity().instance_id(),
+        fresh_instance()?
+    );
+    finish_authenticated(authenticated)
 }

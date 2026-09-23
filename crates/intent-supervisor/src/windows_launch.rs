@@ -9,7 +9,7 @@ use std::{
     fs::File,
     io::{self, Read, Write},
     os::windows::io::AsRawHandle,
-    process::{Child, Command, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     ptr::null_mut,
     thread,
     time::{Duration, Instant},
@@ -173,6 +173,19 @@ impl WindowsPendingWorker {
             .as_ref()
             .map(Child::id)
             .ok_or(SupervisorError::InvalidState)
+    }
+
+    pub fn revoke_before_auth(mut self) -> Result<ExitStatus, SupervisorError> {
+        self.control.verifier = None;
+        self.progress.verifier = None;
+        self.control.pipe = None;
+        self.progress.pipe = None;
+        let mut child = self.child.take().ok_or(SupervisorError::InvalidState)?;
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        child.kill()?;
+        Ok(child.wait()?)
     }
 
     pub fn authenticate(mut self) -> Result<WindowsAuthenticatedWorker, SupervisorError> {
