@@ -249,6 +249,17 @@ impl WindowsAuthenticatedWorker {
         &self.progress_identity
     }
 
+    pub fn revoke_after_auth(mut self) -> Result<ExitStatus, SupervisorError> {
+        self.control = None;
+        self.progress = None;
+        let mut child = self.child.take().ok_or(SupervisorError::InvalidState)?;
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        child.kill()?;
+        Ok(child.wait()?)
+    }
+
     pub fn into_parts(
         mut self,
     ) -> Result<(Child, File, File, WorkerIdentity, WorkerIdentity), SupervisorError> {
