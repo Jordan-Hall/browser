@@ -1,5 +1,15 @@
 # CORE native implementation checkpoint
 
+## 2026-09-23 Windows supervisor lifecycle reconciliation through #876
+
+Main `d0c8141947db2924cd07137ccea5417973835616` includes the bounded Windows supervisor lifecycle increments #874-#876. Post-merge main CI `35913724042` completed successfully on that exact main. The ledger remains fail-closed with four accepted tasks and 33 unaccepted tasks; publication and green CI do not promote whole-task acceptance.
+
+- **CORE-01.T05 #874** — tested head `d8f46aa76e6185f2b77ffa2aba60c7c5dcf479ea`, CI `35858311920`, merged as `4359dd81cccef2ef04380fb87a4dcd8ae1209eb1`. Retained artifact `10748068411`, SHA256 `92986344002fba03728496d18e2931cb107092da06b96d7a6ffe55c271d8398e`, reconstructs exact merge tree `871304d15750527de7e786b5bde9de59a9be7fcf`. This integrates the shared restart budget with the real Windows launched-worker ownership path.
+- **CORE-01.T05 #875** — tested head `8ff6f263e0c7f7cd1220c0010dd277b9b2e80ca3`, CI `35886549393`, merged as `9dd1f4a0a726993f7e1c272123ecf4838a281adc`. Retained artifact `10762169291`, SHA256 `d7c968946670c8b3d9d48d87c80d5e665e4773c8f0cc9030a5956973da12108d`, reconstructs exact merge tree `b9d4dd31b3bf977a6d3da3216429bce7c160c1dc` matching tested synthetic merge `18a18978e1c6b1d47e194db1eddeba32b1ed65f7`. This adds cooperative authenticated stop bounded by shared `stop_grace`, hard escalation/reap for an uncooperative owned child, and shared restart-budget failure recording.
+- **CORE-01.T05 #876** — tested head `3f645bdc96290ae142233671304c949d2b78a056`, CI `35907425491`, merged as current main `d0c8141947db2924cd07137ccea5417973835616`. Retained artifact `10771766100`, SHA256 `8e419d4f364f01beb0e130fc3d32367366867db8c56a003091ddba878538ddc6`, reconstructs exact merge tree `fd6bf7e33f35bc483c5f8a9be06cc42cc2d884ba` matching tested synthetic merge `46e48e89b890c5c784eee828e11176854e4f4cce`. This separately bounds hard-termination completion/reap observation by shared `terminate_grace`, fails closed on deadline expiry, and records stop-path errors in the existing restart budget.
+
+These runs establish only the recorded bounded Windows ownership/restart/stop lifecycle. They do not establish production scheduler/Cancel-message integration, a Windows SIGTERM-equivalent cooperative signal, executable sealing/containment, any macOS supervisor, hostile same-user containment, parser-fuzz qualification for these non-parser changes, or independent whole-task acceptance. CORE-01.T05 therefore remains partial/open; hostile same-user containment remains a separate SEC-04 boundary.
+
 ## 2026-09-23 Windows supervisor authentication lifecycle reconciliation
 
 Main `b844abdcb4ef426a966f98f90b6c3a7c1e2bbfd4` includes the bounded Windows supervisor authentication-lifecycle increments through #872. Post-merge main CI `35830104199` passed Rust plus substantive native Ubuntu 24.04, Windows 2025 and macOS 15 jobs. The ledger remains fail-closed with four accepted tasks and 33 unaccepted tasks; publication and green CI do not promote whole-task acceptance.
