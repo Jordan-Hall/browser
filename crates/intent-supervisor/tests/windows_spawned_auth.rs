@@ -2,12 +2,16 @@
 
 use intent_contracts::WorkerInstanceId;
 use intent_local_transport::{WorkerChannel, WorkerHello, WorkerRole, verify_named_pipe_server};
-use intent_supervisor::{SupervisorError, WindowsBootstrapPacket, WindowsPendingWorker};
+use intent_supervisor::{
+    RestartDecision, RestartPolicy, SupervisorError, WindowsBootstrapPacket, WindowsPendingWorker,
+    WindowsRestartLifecycle,
+};
 use std::{
     error::Error,
     fs::{File, OpenOptions},
     io::{Read, Write},
     process::{Command, Stdio},
+    thread,
     time::Duration,
 };
 
@@ -19,6 +23,10 @@ fn instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
 
 fn fresh_instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
     Ok("018f47f7-5a86-7c00-8000-000000000506".parse()?)
+}
+
+fn third_instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
+    Ok("018f47f7-5a86-7c00-8000-000000000507".parse()?)
 }
 
 fn child_command() -> Result<Command, Box<dyn Error>> {
@@ -195,4 +203,53 @@ fn windows_supervisor_revokes_after_auth_then_restarts_fresh() -> TestResult {
         fresh_instance()?
     );
     finish_authenticated(authenticated)
+}
+
+#[test]
+fn windows_supervisor_restart_budget_survives_authenticated_generations() -> TestResult {
+    let policy = RestartPolicy::bounded(1, Duration::from_millis(100), Duration::from_millis(100))?;
+    let mut lifecycle = WindowsRestartLifecycle::new(policy, Duration::from_secs(5))?;
+
+    let mut first = child_command()?;
+    let first = WindowsPendingWorker::spawn(
+        &mut first,
+        instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?
+    .authenticate()?;
+    assert!(!lifecycle.revoke_after_auth(first)?.success());
+    assert!(matches!(
+        lifecycle.decision(),
+        RestartDecision::BackoffUntil(_)
+    ));
+
+    thread::sleep(Duration::from_millis(125));
+    assert_eq!(lifecycle.decision(), RestartDecision::Eligible);
+
+    let mut second = child_command()?;
+    let second = lifecycle
+        .restart(
+            &mut second,
+            fresh_instance()?,
+            WorkerRole::BrowserWorker,
+            Duration::from_secs(15),
+        )?
+        .authenticate()?;
+    assert_eq!(second.control_identity().instance_id(), fresh_instance()?);
+    assert_eq!(second.progress_identity().instance_id(), fresh_instance()?);
+    assert!(!lifecycle.revoke_after_auth(second)?.success());
+    assert_eq!(lifecycle.decision(), RestartDecision::CircuitOpen);
+
+    let mut denied = child_command()?;
+    assert!(matches!(
+        lifecycle.restart(
+            &mut denied,
+            third_instance()?,
+            WorkerRole::BrowserWorker,
+            Duration::from_secs(15),
+        ),
+        Err(SupervisorError::RestartDenied)
+    ));
+    Ok(())
 }

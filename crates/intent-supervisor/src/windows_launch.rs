@@ -1,4 +1,4 @@
-use crate::SupervisorError;
+use crate::{RestartBudget, RestartDecision, RestartPolicy, SupervisorError};
 use intent_contracts::{BoundedText, WorkerInstanceId};
 use intent_local_transport::{
     ExpectedPeer, WorkerChannel, WorkerHello, WorkerIdentity, WorkerRole, WorkerVerifier,
@@ -23,6 +23,7 @@ use windows_sys::Win32::{
 const MAX_BOOTSTRAP_BYTES: usize = 4096;
 const PIPE_BUFFER_BYTES: u32 = 4096;
 const MAX_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_WORKER_LIFETIME: Duration = Duration::from_secs(86400);
 const RETRY_DELAY: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -278,6 +279,65 @@ impl Drop for WindowsAuthenticatedWorker {
         if let Some(child) = self.child.as_mut() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct WindowsRestartLifecycle {
+    budget: RestartBudget,
+}
+
+impl WindowsRestartLifecycle {
+    pub fn new(policy: RestartPolicy, lifetime: Duration) -> Result<Self, SupervisorError> {
+        if lifetime.is_zero() || lifetime > MAX_WORKER_LIFETIME {
+            return Err(SupervisorError::InvalidConfiguration(
+                "Windows worker lifetime must be positive and at most one day",
+            ));
+        }
+        let now = Instant::now();
+        Ok(Self {
+            budget: RestartBudget::new(policy, now + lifetime),
+        })
+    }
+
+    #[must_use]
+    pub fn decision(&self) -> RestartDecision {
+        self.budget.decision(Instant::now())
+    }
+
+    pub fn revoke_before_auth(
+        &mut self,
+        worker: WindowsPendingWorker,
+    ) -> Result<ExitStatus, SupervisorError> {
+        let status = worker.revoke_before_auth()?;
+        self.budget.failed(Instant::now());
+        Ok(status)
+    }
+
+    pub fn revoke_after_auth(
+        &mut self,
+        worker: WindowsAuthenticatedWorker,
+    ) -> Result<ExitStatus, SupervisorError> {
+        let status = worker.revoke_after_auth()?;
+        self.budget.failed(Instant::now());
+        Ok(status)
+    }
+
+    pub fn restart(
+        &mut self,
+        command: &mut Command,
+        generation: WorkerInstanceId,
+        role: WorkerRole,
+        handshake_timeout: Duration,
+    ) -> Result<WindowsPendingWorker, SupervisorError> {
+        self.budget.consume(Instant::now())?;
+        match WindowsPendingWorker::spawn(command, generation, role, handshake_timeout) {
+            Ok(worker) => Ok(worker),
+            Err(error) => {
+                self.budget.failed(Instant::now());
+                Err(error)
+            }
         }
     }
 }
