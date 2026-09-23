@@ -165,3 +165,34 @@ fn windows_supervisor_revokes_before_auth_then_restarts_fresh() -> TestResult {
     );
     finish_authenticated(authenticated)
 }
+
+#[test]
+fn windows_supervisor_revokes_after_auth_then_restarts_fresh() -> TestResult {
+    let mut first = child_command()?;
+    let pending = WindowsPendingWorker::spawn(
+        &mut first,
+        instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?;
+    let authenticated = pending.authenticate()?;
+    assert!(!authenticated.revoke_after_auth()?.success());
+
+    let mut second = child_command()?;
+    let pending = WindowsPendingWorker::spawn(
+        &mut second,
+        fresh_instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?;
+    let authenticated = pending.authenticate()?;
+    assert_eq!(
+        authenticated.control_identity().instance_id(),
+        fresh_instance()?
+    );
+    assert_eq!(
+        authenticated.progress_identity().instance_id(),
+        fresh_instance()?
+    );
+    finish_authenticated(authenticated)
+}
