@@ -3,13 +3,13 @@
 use intent_contracts::WorkerInstanceId;
 use intent_local_transport::{WorkerChannel, WorkerHello, WorkerRole, verify_named_pipe_server};
 use intent_supervisor::{
-    RestartDecision, RestartPolicy, SupervisorError, WindowsBootstrapPacket, WindowsPendingWorker,
-    WindowsRestartLifecycle,
+    HealthPolicy, RestartDecision, RestartPolicy, SupervisorError, WindowsBootstrapPacket,
+    WindowsPendingWorker, WindowsRestartLifecycle,
 };
 use std::{
     error::Error,
     fs::{File, OpenOptions},
-    io::{Read, Write},
+    io::{self, Read, Write},
     process::{Command, Stdio},
     thread,
     time::Duration,
@@ -71,6 +71,21 @@ fn windows_supervisor_child() -> TestResult {
         write_hello(&mut control, &packet.control)?;
     }
     write_hello(&mut progress, &packet.progress)?;
+
+    if std::env::var_os("INTENT_WINDOWS_COOPERATIVE_STOP").is_some() {
+        let mut byte = [0_u8; 1];
+        return match control.read(&mut byte) {
+            Ok(0) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+            Ok(_) => Err("unexpected control byte during cooperative stop".into()),
+            Err(error) => Err(error.into()),
+        };
+    }
+    if std::env::var_os("INTENT_WINDOWS_IGNORE_STOP").is_some() {
+        thread::sleep(Duration::from_secs(30));
+        return Ok(());
+    }
+
     let mut ack = [0_u8; 1];
     control.read_exact(&mut ack)?;
     progress.read_exact(&mut ack)?;
@@ -250,6 +265,63 @@ fn windows_supervisor_restart_budget_survives_authenticated_generations() -> Tes
             Duration::from_secs(15),
         ),
         Err(SupervisorError::RestartDenied)
+    ));
+    Ok(())
+}
+
+#[test]
+fn windows_supervisor_cooperative_stop_uses_shared_health_grace() -> TestResult {
+    let policy = RestartPolicy::bounded(1, Duration::from_millis(100), Duration::from_millis(100))?;
+    let mut lifecycle = WindowsRestartLifecycle::new(policy, Duration::from_secs(5))?;
+    let mut command = child_command()?;
+    command.env("INTENT_WINDOWS_COOPERATIVE_STOP", "1");
+    let authenticated = WindowsPendingWorker::spawn(
+        &mut command,
+        instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?
+    .authenticate()?;
+
+    let report = lifecycle.stop_after_auth(
+        authenticated,
+        HealthPolicy {
+            stop_grace: Duration::from_secs(1),
+            ..HealthPolicy::default()
+        },
+    )?;
+    assert!(!report.escalated());
+    assert!(report.status().success());
+    assert_eq!(lifecycle.decision(), RestartDecision::Eligible);
+    Ok(())
+}
+
+#[test]
+fn windows_supervisor_escalates_uncooperative_stop_and_records_failure() -> TestResult {
+    let policy = RestartPolicy::bounded(1, Duration::from_millis(100), Duration::from_millis(100))?;
+    let mut lifecycle = WindowsRestartLifecycle::new(policy, Duration::from_secs(5))?;
+    let mut command = child_command()?;
+    command.env("INTENT_WINDOWS_IGNORE_STOP", "1");
+    let authenticated = WindowsPendingWorker::spawn(
+        &mut command,
+        instance()?,
+        WorkerRole::BrowserWorker,
+        Duration::from_secs(15),
+    )?
+    .authenticate()?;
+
+    let report = lifecycle.stop_after_auth(
+        authenticated,
+        HealthPolicy {
+            stop_grace: Duration::from_millis(50),
+            ..HealthPolicy::default()
+        },
+    )?;
+    assert!(report.escalated());
+    assert!(!report.status().success());
+    assert!(matches!(
+        lifecycle.decision(),
+        RestartDecision::BackoffUntil(_)
     ));
     Ok(())
 }
