@@ -314,6 +314,7 @@ fn windows_supervisor_escalates_uncooperative_stop_and_records_failure() -> Test
         authenticated,
         HealthPolicy {
             stop_grace: Duration::from_millis(50),
+            terminate_grace: Duration::from_secs(5),
             ..HealthPolicy::default()
         },
     )?;
