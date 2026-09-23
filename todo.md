@@ -9,6 +9,7 @@ Standing instruction, 2026-09-20: fetch and incorporate `origin/main` before eac
 - [x] Reproduce and fix final-message observation races in the newly merged process fixtures without extending stop deadlines.
 - [x] Publish the verified cancellation changes and inspect exact-head CI; follow-through is merged through #861 with exact-head native CI.
 - [x] Complete task-level acceptance audit of CORE-01.T01; CORE-01.T01 through T04 are accepted on the live ledger.
+- [x] Merge bounded Windows CORE-01.T05 authentication-lifecycle follow-through through #872: real child spawn/two-lane authentication, pre-auth revocation/stale-generation fencing, and post-auth ownership revocation/fresh-generation recovery; keep T05 open/partial.
 
 - [x] Read the Principles section of the poteto-mode skill.
 - [x] Phase A: Frame. Compare the consolidated implementation with the CORE task ledger and live issues.
@@ -53,4 +54,4 @@ The user explicitly requires cross-platform support. Native Windows tests are re
 
 Design comparison phases: Frame, Fan out, Cross-judge, Pick, Graft, Verify. Prefer a small internal backend over duplicating state machines. Reject any candidate that substitutes successful no-ops for unavailable durability or authentication guarantees.
 
-Current implementation and verification status: docs/core-native-progress.md. CORE-01.T01-T04 are accepted; T05 remains partial and T06-T08 remain implemented_pending_acceptance. CORE-01.T07 follow-through #860/#861, CORE-01.T08 #862, and CORE-02.T01 #863-#868 are merged with exact-head native CI in their documented scopes. CORE-02.T01 remains partial for controlled filesystem/power-loss qualification and independent acceptance. No later workstream starts until CORE closes.
+Current implementation and verification status: docs/core-native-progress.md. CORE-01.T01-T04 are accepted; T05 remains partial and T06-T08 remain implemented_pending_acceptance. CORE-01.T05 Windows follow-through #870-#872 is merged with exact-head native CI for bounded real-child launch/authentication, pre-auth generation fencing and post-auth ownership revocation; it does not establish complete Windows lifecycle parity or any macOS supervisor. CORE-01.T07 #860/#861, CORE-01.T08 #862, and CORE-02.T01 #863-#868 are also merged with exact-head native CI in their documented scopes. CORE-02.T01 remains partial for controlled filesystem/power-loss qualification and independent acceptance. No later workstream starts until CORE closes.

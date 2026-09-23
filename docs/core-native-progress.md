@@ -1,5 +1,15 @@
 # CORE native implementation checkpoint
 
+## 2026-09-23 Windows supervisor authentication lifecycle reconciliation
+
+Main `b844abdcb4ef426a966f98f90b6c3a7c1e2bbfd4` includes the bounded Windows supervisor authentication-lifecycle increments through #872. Post-merge main CI `35830104199` passed Rust plus substantive native Ubuntu 24.04, Windows 2025 and macOS 15 jobs. The ledger remains fail-closed with four accepted tasks and 33 unaccepted tasks; publication and green CI do not promote whole-task acceptance.
+
+- **CORE-01.T05 #870** — tested head `31dea135d6e08f31f7634210a2b129463baf0b08`, CI `35804828839`, merged as `fd9a82dbdb0864abaab0c2b49182324664f03cd8`. Retained artifact `10726699499`, SHA256 `c6e1671a2b32d5d9843aa47e65b3f251761dc4f78264830ccf6c8938c92f69f8`, reconstructs exact merge tree `72421ddc604b6a8215232dbe39b1664985374540`. This adds bounded supervisor-owned real Windows child launch plus two-lane Control/Progress authentication with exact child PID/principal/instance/role/channel binding and bounded bootstrap/handshake deadlines.
+- **CORE-01.T05 #871** — tested head `46695c0d241a44bf53012f14a776d896127032a5`, CI `35817097373`, merged as `aa3969bbf6435ed78d9060ccdaac872f42144ea1`. Retained artifact `10732013360`, SHA256 `de726fb5b7816dc00ace26085afaaa582a03c484a16cb2eea0e965873965bb92`, reconstructs exact merge tree `2e8292b692913670cad18707c7b2480676c08a00`. This adds explicit pre-auth verifier/pipe destruction plus untrusted-child terminate/reap, stale-generation rejection and fresh-generation recovery.
+- **CORE-01.T05 #872** — tested head `c3be1ce93f95c29d66319f6b561c0816df4fe2c1`, CI `35825685882`, merged as current main `b844abdcb4ef426a966f98f90b6c3a7c1e2bbfd4`. Retained artifact `10735132102`, SHA256 `51fd900da96e0161e9360db3d4554b7e03c34e2bddacf2f3236634d19e8007a3`, reconstructs exact merge tree `72ec6baee68efa8bb3bf15fa3f327008bf50a8e2`. This adds consuming post-auth lane closure and owned-child terminate/reap followed by successful fresh-generation authentication.
+
+These runs establish only the recorded bounded Windows real-child authentication ownership lifecycle. They do not establish complete Windows supervisor lifecycle parity (scheduler, graceful cancellation/escalation, restart-budget integration, executable sealing/containment), any macOS supervisor, hostile same-user containment, parser-fuzz qualification for these non-parser changes, or independent whole-task acceptance. CORE-01.T05 therefore remains partial/open.
+
 ## 2026-09-22 current merged evidence reconciliation
 
 Main `87887c8977cb299a94c677c8c4ec1ca3c6027240` includes the recent CORE-01/CORE-02 increments that were missing from this live checkpoint. The ledger remains fail-closed with four accepted tasks and 33 unaccepted tasks; source publication and green CI do not promote whole-task acceptance.
