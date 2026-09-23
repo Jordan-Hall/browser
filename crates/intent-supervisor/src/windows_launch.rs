@@ -264,53 +264,36 @@ impl WindowsAuthenticatedWorker {
     fn stop_with_grace(
         mut self,
         stop_grace: Duration,
+        terminate_grace: Duration,
     ) -> Result<WindowsStopReport, SupervisorError> {
-        if stop_grace.is_zero() || stop_grace > MAX_HANDSHAKE_TIMEOUT {
-            return Err(SupervisorError::InvalidConfiguration(
-                "Windows worker stop grace must be 1ms..=60s",
-            ));
+        for (grace, reason) in [
+            (stop_grace, "Windows worker stop grace must be 1ms..=60s"),
+            (
+                terminate_grace,
+                "Windows worker terminate grace must be 1ms..=60s",
+            ),
+        ] {
+            if grace.is_zero() || grace > MAX_HANDSHAKE_TIMEOUT {
+                return Err(SupervisorError::InvalidConfiguration(reason));
+            }
         }
         self.control = None;
         self.progress = None;
-        let deadline = Instant::now() + stop_grace;
-        loop {
-            if let Some(status) = self
-                .child
-                .as_mut()
-                .ok_or(SupervisorError::InvalidState)?
-                .try_wait()?
-            {
-                self.child = None;
-                return Ok(WindowsStopReport {
-                    status,
-                    escalated: false,
-                });
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                break;
-            }
-            let remaining = deadline.saturating_duration_since(now);
-            thread::sleep(if remaining < RETRY_DELAY {
-                remaining
-            } else {
-                RETRY_DELAY
+        let mut child = self.child.take().ok_or(SupervisorError::InvalidState)?;
+        if let Some(status) = wait_for_child_exit(&mut child, Instant::now() + stop_grace)? {
+            return Ok(WindowsStopReport {
+                status,
+                escalated: false,
             });
         }
-        self.child
-            .as_mut()
-            .ok_or(SupervisorError::InvalidState)?
-            .kill()?;
-        let status = self
-            .child
-            .as_mut()
-            .ok_or(SupervisorError::InvalidState)?
-            .wait()?;
-        self.child = None;
-        Ok(WindowsStopReport {
-            status,
-            escalated: true,
-        })
+        child.kill()?;
+        if let Some(status) = wait_for_child_exit(&mut child, Instant::now() + terminate_grace)? {
+            return Ok(WindowsStopReport {
+                status,
+                escalated: true,
+            });
+        }
+        Err(SupervisorError::DeadlineExpired)
     }
 
     pub fn into_parts(
@@ -400,11 +383,18 @@ impl WindowsRestartLifecycle {
         health: HealthPolicy,
     ) -> Result<WindowsStopReport, SupervisorError> {
         health.validate()?;
-        let report = worker.stop_with_grace(health.stop_grace)?;
-        if report.escalated() || !report.status().success() {
-            self.budget.failed(Instant::now());
+        match worker.stop_with_grace(health.stop_grace, health.terminate_grace) {
+            Ok(report) => {
+                if report.escalated() || !report.status().success() {
+                    self.budget.failed(Instant::now());
+                }
+                Ok(report)
+            }
+            Err(error) => {
+                self.budget.failed(Instant::now());
+                Err(error)
+            }
         }
-        Ok(report)
     }
 
     pub fn restart(
@@ -422,6 +412,27 @@ impl WindowsRestartLifecycle {
                 Err(error)
             }
         }
+    }
+}
+
+fn wait_for_child_exit(
+    child: &mut Child,
+    deadline: Instant,
+) -> Result<Option<ExitStatus>, SupervisorError> {
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Some(status));
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return Ok(None);
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        thread::sleep(if remaining < RETRY_DELAY {
+            remaining
+        } else {
+            RETRY_DELAY
+        });
     }
 }
 
