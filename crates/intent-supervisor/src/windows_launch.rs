@@ -1,4 +1,4 @@
-use crate::{RestartBudget, RestartDecision, RestartPolicy, SupervisorError};
+use crate::{HealthPolicy, RestartBudget, RestartDecision, RestartPolicy, SupervisorError};
 use intent_contracts::{BoundedText, WorkerInstanceId};
 use intent_local_transport::{
     ExpectedPeer, WorkerChannel, WorkerHello, WorkerIdentity, WorkerRole, WorkerVerifier,
@@ -261,6 +261,58 @@ impl WindowsAuthenticatedWorker {
         Ok(child.wait()?)
     }
 
+    fn stop_with_grace(
+        mut self,
+        stop_grace: Duration,
+    ) -> Result<WindowsStopReport, SupervisorError> {
+        if stop_grace.is_zero() || stop_grace > MAX_HANDSHAKE_TIMEOUT {
+            return Err(SupervisorError::InvalidConfiguration(
+                "Windows worker stop grace must be 1ms..=60s",
+            ));
+        }
+        self.control = None;
+        self.progress = None;
+        let deadline = Instant::now() + stop_grace;
+        loop {
+            if let Some(status) = self
+                .child
+                .as_mut()
+                .ok_or(SupervisorError::InvalidState)?
+                .try_wait()?
+            {
+                self.child = None;
+                return Ok(WindowsStopReport {
+                    status,
+                    escalated: false,
+                });
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                break;
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            thread::sleep(if remaining < RETRY_DELAY {
+                remaining
+            } else {
+                RETRY_DELAY
+            });
+        }
+        self.child
+            .as_mut()
+            .ok_or(SupervisorError::InvalidState)?
+            .kill()?;
+        let status = self
+            .child
+            .as_mut()
+            .ok_or(SupervisorError::InvalidState)?
+            .wait()?;
+        self.child = None;
+        Ok(WindowsStopReport {
+            status,
+            escalated: true,
+        })
+    }
+
     pub fn into_parts(
         mut self,
     ) -> Result<(Child, File, File, WorkerIdentity, WorkerIdentity), SupervisorError> {
@@ -280,6 +332,24 @@ impl Drop for WindowsAuthenticatedWorker {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct WindowsStopReport {
+    status: ExitStatus,
+    escalated: bool,
+}
+
+impl WindowsStopReport {
+    #[must_use]
+    pub const fn escalated(&self) -> bool {
+        self.escalated
+    }
+
+    #[must_use]
+    pub fn status(&self) -> &ExitStatus {
+        &self.status
     }
 }
 
@@ -322,6 +392,19 @@ impl WindowsRestartLifecycle {
         let status = worker.revoke_after_auth()?;
         self.budget.failed(Instant::now());
         Ok(status)
+    }
+
+    pub fn stop_after_auth(
+        &mut self,
+        worker: WindowsAuthenticatedWorker,
+        health: HealthPolicy,
+    ) -> Result<WindowsStopReport, SupervisorError> {
+        health.validate()?;
+        let report = worker.stop_with_grace(health.stop_grace)?;
+        if report.escalated() || !report.status().success() {
+            self.budget.failed(Instant::now());
+        }
+        Ok(report)
     }
 
     pub fn restart(
