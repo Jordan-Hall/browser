@@ -207,11 +207,7 @@ fn windows_supervisor_revokes_after_auth_then_restarts_fresh() -> TestResult {
 
 #[test]
 fn windows_supervisor_restart_budget_survives_authenticated_generations() -> TestResult {
-    let policy = RestartPolicy::bounded(
-        1,
-        Duration::from_millis(100),
-        Duration::from_millis(100),
-    )?;
+    let policy = RestartPolicy::bounded(1, Duration::from_millis(100), Duration::from_millis(100))?;
     let mut lifecycle = WindowsRestartLifecycle::new(policy, Duration::from_secs(5))?;
 
     let mut first = child_command()?;
@@ -240,14 +236,8 @@ fn windows_supervisor_restart_budget_survives_authenticated_generations() -> Tes
             Duration::from_secs(15),
         )?
         .authenticate()?;
-    assert_eq!(
-        second.control_identity().instance_id(),
-        fresh_instance()?
-    );
-    assert_eq!(
-        second.progress_identity().instance_id(),
-        fresh_instance()?
-    );
+    assert_eq!(second.control_identity().instance_id(), fresh_instance()?);
+    assert_eq!(second.progress_identity().instance_id(), fresh_instance()?);
     assert!(!lifecycle.revoke_after_auth(second)?.success());
     assert_eq!(lifecycle.decision(), RestartDecision::CircuitOpen);
 
