@@ -26,4 +26,9 @@ nix.workspace = true
 workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_System_Threading", "Win32_System_ProcessStatus"] }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+] }
