@@ -292,7 +292,7 @@ fn windows_supervisor_cooperative_stop_uses_shared_health_grace() -> TestResult 
     )?;
     assert!(!report.escalated());
     assert!(report.status().success());
-    assert_eq!(lifecycle.decision(), RestartDecision::Eligible);
+    assert_eq!(lifecycle.decision(), RestartDecision::CircuitOpen);
     Ok(())
 }
 
