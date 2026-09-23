@@ -115,18 +115,12 @@ impl WindowsPendingWorker {
         let progress_pipe =
             create_current_user_named_pipe(progress_name.as_ref(), PIPE_BUFFER_BYTES)
                 .map_err(|_| SupervisorError::Protocol)?;
-        let (control_token, control_pending) = issue_worker_channel_authentication(
-            generation,
-            role,
-            WorkerChannel::Control,
-        )
-        .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
-        let (progress_token, progress_pending) = issue_worker_channel_authentication(
-            generation,
-            role,
-            WorkerChannel::Progress,
-        )
-        .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
+        let (control_token, control_pending) =
+            issue_worker_channel_authentication(generation, role, WorkerChannel::Control)
+                .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
+        let (progress_token, progress_pending) =
+            issue_worker_channel_authentication(generation, role, WorkerChannel::Progress)
+                .map_err(|_| SupervisorError::InvalidConfiguration("OS randomness unavailable"))?;
         let packet = WindowsBootstrapPacket {
             supervisor_process_id: std::process::id(),
             control_endpoint: BoundedText::try_new(control_name).map_err(|_| {
@@ -147,8 +141,8 @@ impl WindowsPendingWorker {
         }
 
         let mut child = command.stdin(Stdio::piped()).spawn()?;
-        let expected = ExpectedPeer::windows_process(child.id())
-            .map_err(|_| SupervisorError::Protocol)?;
+        let expected =
+            ExpectedPeer::windows_process(child.id()).map_err(|_| SupervisorError::Protocol)?;
         let mut pending = Self {
             child: Some(child),
             control: PendingLane {
