@@ -1,6 +1,4 @@
-use crate::{
-    HealthPolicy, RestartBudget, RestartDecision, RestartPolicy, SupervisorError,
-};
+use crate::{HealthPolicy, RestartBudget, RestartDecision, RestartPolicy, SupervisorError};
 use intent_contracts::{BoundedText, WorkerInstanceId};
 use intent_local_transport::{
     ExpectedPeer, WorkerChannel, WorkerHello, WorkerIdentity, WorkerRole, WorkerVerifier,
@@ -263,7 +261,10 @@ impl WindowsAuthenticatedWorker {
         Ok(child.wait()?)
     }
 
-    fn stop_with_grace(mut self, stop_grace: Duration) -> Result<WindowsStopReport, SupervisorError> {
+    fn stop_with_grace(
+        mut self,
+        stop_grace: Duration,
+    ) -> Result<WindowsStopReport, SupervisorError> {
         if stop_grace.is_zero() || stop_grace > MAX_HANDSHAKE_TIMEOUT {
             return Err(SupervisorError::InvalidConfiguration(
                 "Windows worker stop grace must be 1ms..=60s",
