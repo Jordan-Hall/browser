@@ -1,6 +1,6 @@
 #![deny(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![doc = "Bounded Linux worker supervision plus native launched-channel authentication primitives on Windows.
+#![doc = "Bounded Linux worker supervision plus native launched-channel authentication and executable-identity primitives on Windows.
 Worker results are observations, never authorization or proof of external completion."]
 
 mod admission;
@@ -9,6 +9,8 @@ mod lease;
 mod observation;
 mod restart;
 mod spec;
+#[cfg(windows)]
+mod windows_executable;
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod windows_launch;
@@ -19,6 +21,8 @@ pub use lease::*;
 pub use observation::ProcessObservation;
 pub use restart::*;
 pub use spec::*;
+#[cfg(windows)]
+pub use windows_executable::*;
 #[cfg(windows)]
 pub use windows_launch::*;
 
