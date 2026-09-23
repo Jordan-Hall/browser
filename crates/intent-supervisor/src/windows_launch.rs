@@ -267,10 +267,7 @@ impl WindowsAuthenticatedWorker {
         terminate_grace: Duration,
     ) -> Result<WindowsStopReport, SupervisorError> {
         for (grace, reason) in [
-            (
-                stop_grace,
-                "Windows worker stop grace must be 1ms..=60s",
-            ),
+            (stop_grace, "Windows worker stop grace must be 1ms..=60s"),
             (
                 terminate_grace,
                 "Windows worker terminate grace must be 1ms..=60s",
