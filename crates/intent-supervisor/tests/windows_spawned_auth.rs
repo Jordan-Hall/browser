@@ -56,7 +56,12 @@ fn write_hello(pipe: &mut File, hello: &intent_local_transport::WorkerHello) -> 
 fn windows_supervisor_binds_spawned_worker_channels() -> TestResult {
     let mut command = Command::new(std::env::current_exe()?);
     command
-        .args(["--exact", "windows_supervisor_child", "--ignored", "--nocapture"])
+        .args([
+            "--exact",
+            "windows_supervisor_child",
+            "--ignored",
+            "--nocapture",
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     let pending = WindowsPendingWorker::spawn(
