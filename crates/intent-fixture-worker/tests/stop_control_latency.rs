@@ -1,7 +1,9 @@
 #![cfg(target_os = "linux")]
 #![forbid(unsafe_code)]
 
-use intent_contracts::{AccountId, CancellationId, CapabilityId, ContentHash, TaskId, WorkerInstanceId};
+use intent_contracts::{
+    AccountId, CancellationId, CapabilityId, ContentHash, TaskId, WorkerInstanceId,
+};
 use intent_local_transport::WorkerRole;
 use intent_supervisor::{
     AdmissionLimits, ExecutableImage, ExecutionBoundary, HealthPolicy, Priority, ProcessLimits,
@@ -184,7 +186,9 @@ fn task_stop_control_is_acknowledged_within_configured_grace_under_progress_back
                 .into());
             }
         }
-        if acknowledged.iter().any(|value| !value) && Instant::now() >= acknowledgement_deadline {
+        if acknowledged.iter().any(|value| !value)
+            && Instant::now() >= acknowledgement_deadline
+        {
             return Err(format!(
                 "cancellation acknowledgement exceeded configured stop grace of {:?}",
                 STOP_GRACE
@@ -197,9 +201,12 @@ fn task_stop_control_is_acknowledged_within_configured_grace_under_progress_back
     assert!(acknowledged_after < STOP_GRACE);
 
     for &worker in &workers {
-        let stopped = until(&mut supervisor, worker, Duration::from_secs(5), |snapshot| {
-            matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed)
-        })?;
+        let stopped = until(
+            &mut supervisor,
+            worker,
+            Duration::from_secs(5),
+            |snapshot| matches!(snapshot.state, WorkerState::Stopped | WorkerState::Failed),
+        )?;
         assert_eq!(stopped.state, WorkerState::Stopped);
         assert_eq!(stopped.exit_code, Some(0));
         assert!(!stopped.stop_escalated);
