@@ -198,7 +198,8 @@ impl WindowsPinnedAuthenticatedWorker {
         SupervisorError,
     > {
         let Self { worker, executable } = self;
-        let (child, control, progress, control_identity, progress_identity) = worker.into_parts()?;
+        let (child, control, progress, control_identity, progress_identity) =
+            worker.into_parts()?;
         Ok((
             child,
             control,
