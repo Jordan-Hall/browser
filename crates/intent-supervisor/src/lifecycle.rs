@@ -12,10 +12,7 @@ pub enum LifecycleControl {
 
 impl LifecycleControl {
     #[must_use]
-    pub const fn cancel(
-        generation: WorkerInstanceId,
-        cancellation_id: CancellationId,
-    ) -> Self {
+    pub const fn cancel(generation: WorkerInstanceId, cancellation_id: CancellationId) -> Self {
         Self::Cancel {
             generation,
             cancellation_id,
