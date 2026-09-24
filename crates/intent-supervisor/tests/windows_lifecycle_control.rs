@@ -197,14 +197,8 @@ fn windows_restart_lifecycle_routes_controlled_stop_and_restart_budget() -> Test
         )?
         .authenticate()?
         .into_controlled()?;
-    assert_eq!(
-        second.control_identity().instance_id(),
-        fresh_instance()?
-    );
-    assert_eq!(
-        second.progress_identity().instance_id(),
-        fresh_instance()?
-    );
+    assert_eq!(second.control_identity().instance_id(), fresh_instance()?);
+    assert_eq!(second.progress_identity().instance_id(), fresh_instance()?);
 
     let second_report = lifecycle.stop_controlled_after_auth(
         second,
