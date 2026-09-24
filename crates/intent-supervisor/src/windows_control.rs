@@ -84,10 +84,8 @@ impl WindowsControlledWorker {
             });
         }
 
-        let control = LifecycleControl::cancel(
-            self.control_identity.instance_id(),
-            cancellation_id,
-        );
+        let control =
+            LifecycleControl::cancel(self.control_identity.instance_id(), cancellation_id);
         if let Err(error) = self.send_control(control) {
             return match self.terminate(health.terminate_grace) {
                 Ok(_) => Err(error),
@@ -95,10 +93,9 @@ impl WindowsControlledWorker {
             };
         }
 
-        if let Some(status) = wait_for_child_exit(
-            self.child_mut()?,
-            Instant::now() + health.stop_grace,
-        )? {
+        if let Some(status) =
+            wait_for_child_exit(self.child_mut()?, Instant::now() + health.stop_grace)?
+        {
             return Ok(WindowsControlledStopReport {
                 status,
                 cancellation_id,
@@ -128,10 +125,7 @@ impl WindowsControlledWorker {
             ));
         }
         bytes.push(b'\n');
-        let pipe = self
-            .control
-            .as_mut()
-            .ok_or(SupervisorError::InvalidState)?;
+        let pipe = self.control.as_mut().ok_or(SupervisorError::InvalidState)?;
         pipe.write_all(&bytes)?;
         pipe.flush()?;
         Ok(())
