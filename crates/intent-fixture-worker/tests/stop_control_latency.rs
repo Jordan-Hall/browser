@@ -114,8 +114,7 @@ fn ready(supervisor: &mut Supervisor, id: WorkerInstanceId) -> Result<(), Box<dy
 
 #[test]
 fn task_stop_control_is_acknowledged_within_configured_grace_under_progress_backpressure()
-    -> TestResult
-{
+-> TestResult {
     let markers = Markers(
         std::env::temp_dir().join(format!("intent-stop-control-latency-{}", Uuid::new_v4())),
     );
