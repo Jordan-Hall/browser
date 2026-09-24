@@ -82,7 +82,7 @@ pub struct WindowsPendingWorker {
 }
 
 impl WindowsPendingWorker {
-    pub fn spawn(
+    pub(crate) fn spawn(
         command: &mut Command,
         generation: WorkerInstanceId,
         role: WorkerRole,
@@ -397,7 +397,7 @@ impl WindowsRestartLifecycle {
         }
     }
 
-    pub fn restart(
+    pub(crate) fn restart(
         &mut self,
         command: &mut Command,
         generation: WorkerInstanceId,
