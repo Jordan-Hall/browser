@@ -1,4 +1,7 @@
-use crate::{HealthPolicy, RestartBudget, RestartDecision, RestartPolicy, SupervisorError};
+use crate::{
+    HealthPolicy, RestartBudget, RestartDecision, RestartPolicy, SupervisorError,
+    WindowsControlledStopReport, WindowsControlledWorker,
+};
 use intent_contracts::{BoundedText, WorkerInstanceId};
 use intent_local_transport::{
     ExpectedPeer, WorkerChannel, WorkerHello, WorkerIdentity, WorkerRole, WorkerVerifier,
@@ -384,6 +387,26 @@ impl WindowsRestartLifecycle {
     ) -> Result<WindowsStopReport, SupervisorError> {
         health.validate()?;
         match worker.stop_with_grace(health.stop_grace, health.terminate_grace) {
+            Ok(report) => {
+                if report.escalated() || !report.status().success() {
+                    self.budget.failed(Instant::now());
+                }
+                Ok(report)
+            }
+            Err(error) => {
+                self.budget.failed(Instant::now());
+                Err(error)
+            }
+        }
+    }
+
+    pub fn stop_controlled_after_auth(
+        &mut self,
+        worker: WindowsControlledWorker,
+        health: HealthPolicy,
+    ) -> Result<WindowsControlledStopReport, SupervisorError> {
+        health.validate()?;
+        match worker.stop(health) {
             Ok(report) => {
                 if report.escalated() || !report.status().success() {
                     self.budget.failed(Instant::now());
