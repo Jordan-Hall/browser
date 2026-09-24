@@ -6,9 +6,12 @@ Worker results are observations, never authorization or proof of external comple
 mod admission;
 mod error;
 mod lease;
+mod lifecycle;
 mod observation;
 mod restart;
 mod spec;
+#[cfg(windows)]
+mod windows_control;
 #[cfg(windows)]
 mod windows_executable;
 #[cfg(windows)]
@@ -18,9 +21,12 @@ mod windows_launch;
 pub use admission::*;
 pub use error::*;
 pub use lease::*;
+pub use lifecycle::*;
 pub use observation::ProcessObservation;
 pub use restart::*;
 pub use spec::*;
+#[cfg(windows)]
+pub use windows_control::*;
 #[cfg(windows)]
 pub use windows_executable::*;
 #[cfg(windows)]
