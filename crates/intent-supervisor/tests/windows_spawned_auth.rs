@@ -1,14 +1,16 @@
 #![cfg(windows)]
 
-use intent_contracts::WorkerInstanceId;
+use intent_contracts::{ContentHash, WorkerInstanceId};
 use intent_local_transport::{WorkerChannel, WorkerHello, WorkerRole, verify_named_pipe_server};
 use intent_supervisor::{
     HealthPolicy, RestartDecision, RestartPolicy, SupervisorError, WindowsBootstrapPacket,
-    WindowsPendingWorker, WindowsRestartLifecycle,
+    WindowsExecutableIdentity, WindowsPendingWorker, WindowsPinnedAuthenticatedWorker,
+    WindowsRestartLifecycle,
 };
+use sha2::{Digest, Sha256};
 use std::{
     error::Error,
-    fs::{File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     process::{Command, Stdio},
     thread,
@@ -29,8 +31,11 @@ fn third_instance() -> Result<WorkerInstanceId, Box<dyn Error>> {
     Ok("018f47f7-5a86-7c00-8000-000000000507".parse()?)
 }
 
-fn child_command() -> Result<Command, Box<dyn Error>> {
-    let mut command = Command::new(std::env::current_exe()?);
+fn child_command() -> Result<(Command, WindowsExecutableIdentity), Box<dyn Error>> {
+    let executable_path = std::env::current_exe()?;
+    let expected = ContentHash::from_bytes(Sha256::digest(fs::read(&executable_path)?).into());
+    let executable = WindowsExecutableIdentity::load(&executable_path, expected)?;
+    let mut command = Command::new(executable.path());
     command
         .args([
             "--exact",
@@ -40,7 +45,7 @@ fn child_command() -> Result<Command, Box<dyn Error>> {
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    Ok(command)
+    Ok((command, executable))
 }
 
 #[test]
@@ -100,10 +105,8 @@ fn write_hello(pipe: &mut File, hello: &WorkerHello) -> TestResult {
     Ok(())
 }
 
-fn finish_authenticated(
-    authenticated: intent_supervisor::WindowsAuthenticatedWorker,
-) -> TestResult {
-    let (mut child, mut control, mut progress, _, _) = authenticated.into_parts()?;
+fn finish_authenticated(authenticated: WindowsPinnedAuthenticatedWorker) -> TestResult {
+    let (mut child, mut control, mut progress, _, _, _executable) = authenticated.into_parts()?;
     control.write_all(&[1])?;
     progress.write_all(&[1])?;
     assert!(child.wait()?.success());
@@ -112,9 +115,10 @@ fn finish_authenticated(
 
 #[test]
 fn windows_supervisor_binds_spawned_worker_channels() -> TestResult {
-    let mut command = child_command()?;
-    let pending = WindowsPendingWorker::spawn(
+    let (mut command, executable) = child_command()?;
+    let pending = WindowsPendingWorker::spawn_pinned(
         &mut command,
+        executable,
         instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
@@ -144,10 +148,11 @@ fn windows_supervisor_binds_spawned_worker_channels() -> TestResult {
 
 #[test]
 fn windows_supervisor_rejects_previous_generation() -> TestResult {
-    let mut command = child_command()?;
+    let (mut command, executable) = child_command()?;
     command.env("INTENT_WINDOWS_STALE_GENERATION", "1");
-    let pending = WindowsPendingWorker::spawn(
+    let pending = WindowsPendingWorker::spawn_pinned(
         &mut command,
+        executable,
         fresh_instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
@@ -161,18 +166,20 @@ fn windows_supervisor_rejects_previous_generation() -> TestResult {
 
 #[test]
 fn windows_supervisor_revokes_before_auth_then_restarts_fresh() -> TestResult {
-    let mut first = child_command()?;
-    let pending = WindowsPendingWorker::spawn(
+    let (mut first, first_executable) = child_command()?;
+    let pending = WindowsPendingWorker::spawn_pinned(
         &mut first,
+        first_executable,
         instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
     )?;
     assert!(!pending.revoke_before_auth()?.success());
 
-    let mut second = child_command()?;
-    let pending = WindowsPendingWorker::spawn(
+    let (mut second, second_executable) = child_command()?;
+    let pending = WindowsPendingWorker::spawn_pinned(
         &mut second,
+        second_executable,
         fresh_instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
@@ -191,9 +198,10 @@ fn windows_supervisor_revokes_before_auth_then_restarts_fresh() -> TestResult {
 
 #[test]
 fn windows_supervisor_revokes_after_auth_then_restarts_fresh() -> TestResult {
-    let mut first = child_command()?;
-    let pending = WindowsPendingWorker::spawn(
+    let (mut first, first_executable) = child_command()?;
+    let pending = WindowsPendingWorker::spawn_pinned(
         &mut first,
+        first_executable,
         instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
@@ -201,9 +209,10 @@ fn windows_supervisor_revokes_after_auth_then_restarts_fresh() -> TestResult {
     let authenticated = pending.authenticate()?;
     assert!(!authenticated.revoke_after_auth()?.success());
 
-    let mut second = child_command()?;
-    let pending = WindowsPendingWorker::spawn(
+    let (mut second, second_executable) = child_command()?;
+    let pending = WindowsPendingWorker::spawn_pinned(
         &mut second,
+        second_executable,
         fresh_instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
@@ -225,15 +234,16 @@ fn windows_supervisor_restart_budget_survives_authenticated_generations() -> Tes
     let policy = RestartPolicy::bounded(1, Duration::from_millis(100), Duration::from_millis(100))?;
     let mut lifecycle = WindowsRestartLifecycle::new(policy, Duration::from_secs(5))?;
 
-    let mut first = child_command()?;
-    let first = WindowsPendingWorker::spawn(
+    let (mut first, first_executable) = child_command()?;
+    let first = WindowsPendingWorker::spawn_pinned(
         &mut first,
+        first_executable,
         instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
     )?
     .authenticate()?;
-    assert!(!lifecycle.revoke_after_auth(first)?.success());
+    assert!(!lifecycle.revoke_pinned_after_auth(first)?.success());
     assert!(matches!(
         lifecycle.decision(),
         RestartDecision::BackoffUntil(_)
@@ -242,10 +252,11 @@ fn windows_supervisor_restart_budget_survives_authenticated_generations() -> Tes
     thread::sleep(Duration::from_millis(125));
     assert_eq!(lifecycle.decision(), RestartDecision::Eligible);
 
-    let mut second = child_command()?;
+    let (mut second, second_executable) = child_command()?;
     let second = lifecycle
-        .restart(
+        .restart_pinned(
             &mut second,
+            second_executable,
             fresh_instance()?,
             WorkerRole::BrowserWorker,
             Duration::from_secs(15),
@@ -253,13 +264,14 @@ fn windows_supervisor_restart_budget_survives_authenticated_generations() -> Tes
         .authenticate()?;
     assert_eq!(second.control_identity().instance_id(), fresh_instance()?);
     assert_eq!(second.progress_identity().instance_id(), fresh_instance()?);
-    assert!(!lifecycle.revoke_after_auth(second)?.success());
+    assert!(!lifecycle.revoke_pinned_after_auth(second)?.success());
     assert_eq!(lifecycle.decision(), RestartDecision::CircuitOpen);
 
-    let mut denied = child_command()?;
+    let (mut denied, denied_executable) = child_command()?;
     assert!(matches!(
-        lifecycle.restart(
+        lifecycle.restart_pinned(
             &mut denied,
+            denied_executable,
             third_instance()?,
             WorkerRole::BrowserWorker,
             Duration::from_secs(15),
@@ -273,17 +285,18 @@ fn windows_supervisor_restart_budget_survives_authenticated_generations() -> Tes
 fn windows_supervisor_cooperative_stop_uses_shared_health_grace() -> TestResult {
     let policy = RestartPolicy::bounded(1, Duration::from_millis(100), Duration::from_millis(100))?;
     let mut lifecycle = WindowsRestartLifecycle::new(policy, Duration::from_secs(5))?;
-    let mut command = child_command()?;
+    let (mut command, executable) = child_command()?;
     command.env("INTENT_WINDOWS_COOPERATIVE_STOP", "1");
-    let authenticated = WindowsPendingWorker::spawn(
+    let authenticated = WindowsPendingWorker::spawn_pinned(
         &mut command,
+        executable,
         instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
     )?
     .authenticate()?;
 
-    let report = lifecycle.stop_after_auth(
+    let report = lifecycle.stop_pinned_after_auth(
         authenticated,
         HealthPolicy {
             stop_grace: Duration::from_secs(1),
@@ -300,17 +313,18 @@ fn windows_supervisor_cooperative_stop_uses_shared_health_grace() -> TestResult 
 fn windows_supervisor_escalates_uncooperative_stop_and_records_failure() -> TestResult {
     let policy = RestartPolicy::bounded(1, Duration::from_millis(100), Duration::from_millis(100))?;
     let mut lifecycle = WindowsRestartLifecycle::new(policy, Duration::from_secs(5))?;
-    let mut command = child_command()?;
+    let (mut command, executable) = child_command()?;
     command.env("INTENT_WINDOWS_IGNORE_STOP", "1");
-    let authenticated = WindowsPendingWorker::spawn(
+    let authenticated = WindowsPendingWorker::spawn_pinned(
         &mut command,
+        executable,
         instance()?,
         WorkerRole::BrowserWorker,
         Duration::from_secs(15),
     )?
     .authenticate()?;
 
-    let report = lifecycle.stop_after_auth(
+    let report = lifecycle.stop_pinned_after_auth(
         authenticated,
         HealthPolicy {
             stop_grace: Duration::from_millis(50),
