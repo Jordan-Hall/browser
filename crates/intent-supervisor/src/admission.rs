@@ -179,6 +179,7 @@ pub(crate) struct WorkQueues {
     queues: [VecDeque<ScheduledMessage>; 3],
     bytes: [usize; 3],
     turns: u64,
+    last_account: [Option<intent_contracts::AccountId>; 3],
     pub(crate) dropped: u64,
 }
 impl WorkQueues {
@@ -188,6 +189,7 @@ impl WorkQueues {
             queues: std::array::from_fn(|_| VecDeque::new()),
             bytes: [0; 3],
             turns: 0,
+            last_account: std::array::from_fn(|_| None),
             dropped: 0,
         }
     }
@@ -249,12 +251,22 @@ impl WorkQueues {
             _ => [2, 0, 1],
         };
         for i in order {
-            if let Some(position) = self.queues[i]
+            let last_account = self.last_account[i];
+            let position = self.queues[i]
                 .iter()
-                .position(|item| eligible(item.permit.generation()))
-            {
+                .position(|item| {
+                    eligible(item.permit.generation())
+                        && Some(item.permit.lease.scope().account_id) != last_account
+                })
+                .or_else(|| {
+                    self.queues[i]
+                        .iter()
+                        .position(|item| eligible(item.permit.generation()))
+                });
+            if let Some(position) = position {
                 let message = self.queues[i].remove(position)?;
                 self.bytes[i] -= message.bytes.len();
+                self.last_account[i] = Some(message.permit.lease.scope().account_id);
                 self.turns = self.turns.wrapping_add(1);
                 return Some(message);
             }
@@ -316,9 +328,22 @@ mod tests {
         bytes: usize,
         now: Instant,
     ) -> Result<ScheduledMessage, SupervisorError> {
+        message_for_account(
+            generation,
+            AccountId::from_uuid(Uuid::new_v4()),
+            bytes,
+            now,
+        )
+    }
+    fn message_for_account(
+        generation: WorkerInstanceId,
+        account_id: AccountId,
+        bytes: usize,
+        now: Instant,
+    ) -> Result<ScheduledMessage, SupervisorError> {
         let capability = CapabilityId::from_uuid(Uuid::new_v4());
         let scope = WorkerScope {
-            account_id: AccountId::from_uuid(Uuid::new_v4()),
+            account_id,
             task_id: TaskId::from_uuid(Uuid::new_v4()),
         };
         let lease = WorkerLease::new(
@@ -369,6 +394,40 @@ mod tests {
         assert_eq!(queues.bytes, [0; 3]);
         Ok(())
     }
+    #[test]
+    fn same_priority_rotates_across_accounts_when_both_are_eligible()
+    -> Result<(), SupervisorError> {
+        let now = Instant::now();
+        let mut queues = WorkQueues::new(SchedulerLimits::default());
+        let first_account = AccountId::from_uuid(Uuid::new_v4());
+        let second_account = AccountId::from_uuid(Uuid::new_v4());
+        let first_worker = id();
+        let second_worker = id();
+
+        for _ in 0..3 {
+            queues.enqueue(
+                Priority::Background,
+                message_for_account(first_worker, first_account, 5, now)?,
+            )?;
+        }
+        queues.enqueue(
+            Priority::Background,
+            message_for_account(second_worker, second_account, 5, now)?,
+        )?;
+
+        let first = queues
+            .pop_ready(now, |_| true)
+            .ok_or(SupervisorError::QueueFull)?;
+        let second = queues
+            .pop_ready(now, |_| true)
+            .ok_or(SupervisorError::QueueFull)?;
+
+        assert_eq!(first.permit.lease.scope().account_id, first_account);
+        assert_eq!(second.permit.lease.scope().account_id, second_account);
+        assert_eq!(queues.len(), 2);
+        Ok(())
+    }
+
     #[test]
     fn aged_background_and_speech_both_receive_service() -> Result<(), SupervisorError> {
         let now = Instant::now();
