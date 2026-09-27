@@ -619,13 +619,47 @@ fn queued_work_and_late_results_cannot_cross_revocation() -> TestResult {
 }
 
 #[test]
-fn expired_queued_request_is_never_sent() -> TestResult {
+fn expired_queued_request_is_discarded_without_failing_worker() -> TestResult {
     let mut supervisor = supervisor(1)?;
     let capability = cap();
     let id = supervisor.launch(image()?, config(scope(), capability)?, &[])?;
     ready(&mut supervisor, id)?;
-    let request = submit(&mut supervisor, id, capability, Duration::from_millis(10))?;
+    let _expired_request = submit(&mut supervisor, id, capability, Duration::from_millis(10))?;
     std::thread::sleep(Duration::from_millis(20));
+    let report = supervisor.poll();
+    assert_eq!(report.queued_requests, 0);
+    assert_eq!(report.discarded_queued_requests, 1);
+    let snapshot = supervisor.snapshot(id)?;
+    assert_eq!(snapshot.state, WorkerState::Ready);
+    assert_eq!(snapshot.failure, None);
+    assert_eq!(snapshot.retained_observations, 0);
+
+    let fresh = submit(&mut supervisor, id, capability, Duration::from_secs(2))?;
+    until(&mut supervisor, id, Duration::from_secs(3), |snapshot| {
+        snapshot.retained_observations == 1
+    })?;
+    assert!(supervisor.take_result(id, fresh)?.is_some());
+
+    supervisor.cancel(id, cancel_id())?;
+    terminal(&mut supervisor, id)?;
+    assert!(supervisor.retire(id)?.unresolved_requests.is_empty());
+    Ok(())
+}
+
+#[test]
+fn sent_request_deadline_still_fails_generation() -> TestResult {
+    let mut supervisor = supervisor(1)?;
+    let capability = cap();
+    let id = supervisor.launch(
+        image()?,
+        config(scope(), capability)?,
+        &["late-result".to_owned()],
+    )?;
+    ready(&mut supervisor, id)?;
+    let request = submit(&mut supervisor, id, capability, Duration::from_millis(200))?;
+    let report = supervisor.poll();
+    assert_eq!(report.queued_requests, 0);
+    std::thread::sleep(Duration::from_millis(250));
     let expired = terminal(&mut supervisor, id)?;
     assert_eq!(expired.failure, Some(WorkerFailure::DeadlineExpired));
     assert_eq!(expired.retained_observations, 0);

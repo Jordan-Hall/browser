@@ -498,8 +498,15 @@ impl Entry {
         if let Some(exited_at) = self.exit_observed_at {
             return Ok(self.finish_exit(now, exited_at, read_budget));
         }
-        if self.lease.expired(now) || self.pending.values().any(|request| now >= request.expires) {
+        let sent_request_expired = self
+            .pending
+            .values()
+            .any(|request| request.sent && now >= request.expires);
+        if self.lease.expired(now) || sent_request_expired {
             self.fail(now, WorkerFailure::DeadlineExpired);
+        } else {
+            self.pending
+                .retain(|_, request| request.sent || now < request.expires);
         }
         if self.lease.is_revoked() && self.stop_at.is_none() {
             self.stop(now, CancellationId::from_uuid(Uuid::new_v4()), None);
