@@ -571,6 +571,35 @@ fn capture_artifacts(
     Ok(captured)
 }
 
+fn validate_operation_journal_continuity(
+    connection: &Connection,
+    operation_id: OperationId,
+    expected_revision: u64,
+    journal_watermark: Option<u64>,
+) -> Result<(), CheckpointError> {
+    if expected_revision >= 4096 {
+        return Err(CheckpointError::Capacity);
+    }
+    let expected_count = sql_integer(expected_revision + 1)?;
+    let expected_maximum = sql_integer(expected_revision)?;
+    let (count, minimum, maximum): (i64, i64, i64) = match journal_watermark {
+        Some(watermark) => connection.query_row(
+            "SELECT COUNT(*),COALESCE(MIN(revision),-1),COALESCE(MAX(revision),-1) FROM (SELECT revision FROM operation_journal WHERE operation_id=?1 AND sequence<=?2 ORDER BY revision LIMIT 4097)",
+            params![operation_id.to_string(), sql_integer(watermark)?],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?,
+        None => connection.query_row(
+            "SELECT COUNT(*),COALESCE(MIN(revision),-1),COALESCE(MAX(revision),-1) FROM (SELECT revision FROM operation_journal WHERE operation_id=?1 ORDER BY revision LIMIT 4097)",
+            [operation_id.to_string()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?,
+    };
+    if count != expected_count || minimum != 0 || maximum != expected_maximum {
+        return Err(CheckpointError::Corrupt);
+    }
+    Ok(())
+}
+
 fn capture_operations(
     connection: &Connection,
     task: TaskId,
@@ -589,6 +618,12 @@ fn capture_operations(
             let operation =
                 crate::operations::load_operation_from_connection(connection, parse_id(&id)?)?
                     .ok_or(CheckpointError::Corrupt)?;
+            validate_operation_journal_continuity(
+                connection,
+                operation.operation_id(),
+                operation.revision(),
+                None,
+            )?;
             Ok(CheckpointOperation {
                 operation_id: operation.operation_id(),
                 action_proposal_id: operation.action_proposal_id(),
@@ -770,6 +805,12 @@ fn load_checkpoint(
         if nonnegative(captured_revision)? != operation.revision {
             return Err(CheckpointError::Corrupt);
         }
+        validate_operation_journal_continuity(
+            connection,
+            operation.operation_id,
+            operation.revision,
+            Some(checkpoint.journal_watermark),
+        )?;
         let journal: Option<(String, Option<String>, i64, i64)> = connection.query_row(
             "SELECT to_state,attempt_identity,occurred_at_micros,sequence FROM operation_journal WHERE operation_id=?1 AND revision=?2",
             params![operation.operation_id.to_string(),sql_integer(operation.revision)?], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
