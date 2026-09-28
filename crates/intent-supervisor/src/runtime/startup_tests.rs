@@ -34,6 +34,72 @@ fn starting_worker() -> Result<(Supervisor, WorkerInstanceId), Box<dyn Error>> {
     Ok((supervisor, id))
 }
 
+
+#[test]
+fn post_spawn_launch_failure_rolls_back_owned_child_namespace_and_admission()
+-> Result<(), Box<dyn Error>> {
+    let mut supervisor = Supervisor::new(
+        &std::env::temp_dir(),
+        AdmissionLimits::new(1, 128 * 1024 * 1024, 100, [0; 2], [0; 2], [0; 2])?,
+        SchedulerLimits::default(),
+    )?;
+    let path = Path::new("/bin/sleep");
+    let hash = ContentHash::from_bytes(Sha256::digest(std::fs::read(path)?).into());
+    let image = ExecutableImage::load(path, hash)?;
+    let config = WorkerConfig::new(
+        WorkerScope {
+            task_id: TaskId::from_uuid(Uuid::new_v4()),
+            account_id: AccountId::from_uuid(Uuid::new_v4()),
+        },
+        WorkerRole::FixtureWorker,
+        [CapabilityId::from_uuid(Uuid::new_v4())],
+        Priority::Background,
+        ProcessLimits::new(128 * 1024 * 1024, 10, 64, 100)?,
+        HealthPolicy::default(),
+        Duration::from_secs(20),
+        RestartPolicy::never(),
+        crate::ExecutionBoundary::CooperativeLocal,
+    )?;
+
+    arm_fail_after_spawn();
+    assert!(matches!(
+        supervisor.launch(image.clone(), config.clone(), &["10".to_owned()]),
+        Err(SupervisorError::InvalidState)
+    ));
+    let (failed_generation, failed_pid) = take_failed_spawn().ok_or("missing injected spawn")?;
+    assert!(supervisor.entries.is_empty());
+    assert_eq!(supervisor.admission.active_count(), 0);
+    assert!(matches!(
+        supervisor.lease(failed_generation),
+        Err(SupervisorError::UnknownWorker)
+    ));
+    assert!(!Path::new(
+        &supervisor
+            .namespace
+            .endpoint(&format!("c-{failed_generation}"), false)
+    )
+    .exists());
+    assert!(!Path::new(
+        &supervisor
+            .namespace
+            .endpoint(&format!("p-{failed_generation}"), false)
+    )
+    .exists());
+    assert!(matches!(
+        nix::sys::wait::waitid(
+            nix::sys::wait::Id::Pid(nix::unistd::Pid::from_raw(failed_pid as i32)),
+            nix::sys::wait::WaitPidFlag::WEXITED | nix::sys::wait::WaitPidFlag::WNOHANG,
+        ),
+        Err(nix::errno::Errno::ECHILD)
+    ));
+
+    let second = supervisor.launch(image, config, &["10".to_owned()])?;
+    assert!(supervisor.entries.contains_key(&second));
+    assert_eq!(supervisor.admission.active_count(), 1);
+    drop(supervisor);
+    Ok(())
+}
+
 fn fixture_identity(
     id: WorkerInstanceId,
     stream: &UnixStream,

@@ -44,6 +44,36 @@ use uuid::Uuid;
 const MAX_PENDING_REQUESTS: usize = 32;
 const MAX_READ_BYTES_PER_POLL: usize = 32 * 1024;
 
+#[cfg(test)]
+std::thread_local! {
+    static FAIL_AFTER_SPAWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static FAILED_SPAWN: std::cell::Cell<Option<(WorkerInstanceId, u32)>> =
+        const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+fn arm_fail_after_spawn() {
+    FAILED_SPAWN.with(|value| value.set(None));
+    FAIL_AFTER_SPAWN.with(|value| value.set(true));
+}
+
+#[cfg(test)]
+fn take_failed_spawn() -> Option<(WorkerInstanceId, u32)> {
+    FAILED_SPAWN.with(|value| value.take())
+}
+
+#[cfg(test)]
+fn fail_after_spawn(
+    generation: WorkerInstanceId,
+    process_id: u32,
+) -> Result<(), SupervisorError> {
+    if FAIL_AFTER_SPAWN.with(|value| value.replace(false)) {
+        FAILED_SPAWN.with(|value| value.set(Some((generation, process_id))));
+        return Err(SupervisorError::InvalidState);
+    }
+    Ok(())
+}
+
 fn next_read_cursor(
     read_start: usize,
     worker_count: usize,
@@ -884,6 +914,8 @@ impl Supervisor {
                 .spawn()?;
             let stdin = raw.stdin.take();
             let child = ManagedChild::new(raw);
+            #[cfg(test)]
+            fail_after_spawn(generation, child.id())?;
             let expected =
                 ExpectedPeer::unix_process(child.id(), geteuid().as_raw(), getegid().as_raw())
                     .map_err(|_| SupervisorError::Protocol)?;
