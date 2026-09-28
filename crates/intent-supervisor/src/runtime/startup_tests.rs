@@ -334,3 +334,67 @@ fn a_serviced_ready_heartbeat_keeps_the_existing_poll_clock_policy() -> Result<(
 fn serviced_ready_progress_keeps_the_existing_poll_clock_policy() -> Result<(), Box<dyn Error>> {
     serviced_ready_signal(false)
 }
+
+#[test]
+fn stale_same_generation_progress_is_idempotent_without_refreshing_liveness()
+-> Result<(), Box<dyn Error>> {
+    let (mut supervisor, id) = starting_worker()?;
+    let entry = supervisor.entries.get_mut(&id).ok_or("missing entry")?;
+    entry.state = WorkerState::Ready;
+    let initial_progress_at = Instant::now() - Duration::from_secs(1);
+    entry.progress_at = initial_progress_at;
+    let request_id = RequestId::from_uuid(Uuid::new_v4());
+    entry.pending.insert(
+        request_id,
+        PendingRequest {
+            sequence: 7,
+            expires: Instant::now() + Duration::from_secs(10),
+            sent: true,
+        },
+    );
+    let (receiver, mut sender) = UnixStream::pair()?;
+    entry.progress.identity = Some(fixture_identity(id, &receiver)?);
+    entry.progress.socket = Some(FramedSocket::new(receiver)?);
+
+    let accepted_at = Instant::now();
+    sender.write_all(&encode_event(
+        ProgressMessage {
+            generation: id,
+            sequence: 3,
+            work_sequence: 7,
+        },
+        None,
+    )?)?;
+    entry.read_progress(
+        accepted_at,
+        &mut ReadBudget::new(MAX_READ_BYTES_PER_POLL),
+    )?;
+    assert_eq!(entry.last_progress, 3);
+    assert_eq!(entry.progress_at, accepted_at);
+
+    for sequence in [3, 2] {
+        sender.write_all(&encode_event(
+            ProgressMessage {
+                generation: id,
+                sequence,
+                work_sequence: 7,
+            },
+            None,
+        )?)?;
+    }
+    entry.read_progress(
+        accepted_at + Duration::from_millis(50),
+        &mut ReadBudget::new(MAX_READ_BYTES_PER_POLL),
+    )?;
+
+    assert_eq!(entry.last_progress, 3);
+    assert_eq!(entry.progress_at, accepted_at);
+    assert_eq!(entry.state, WorkerState::Ready);
+    assert_eq!(entry.failure, None);
+    assert!(!entry.lease.is_revoked());
+    assert_eq!(entry.pending.len(), 1);
+    assert!(entry.pending.contains_key(&request_id));
+    assert!(entry.observations.is_empty());
+    assert_eq!(entry.late_messages, 0);
+    Ok(())
+}

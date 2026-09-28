@@ -744,8 +744,11 @@ impl Entry {
                 return Err(SupervisorError::Protocol);
             }
             let progress = envelope.into_payload();
-            if progress.generation != self.generation || progress.sequence <= self.last_progress {
+            if progress.generation != self.generation {
                 return Err(SupervisorError::Protocol);
+            }
+            if progress.sequence <= self.last_progress {
+                continue;
             }
             self.last_progress = progress.sequence;
             if self.lease.is_revoked() {
