@@ -187,7 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-    let mut descendant = if mode == "descendant" {
+    let mut descendant = if matches!(mode, "descendant" | "descendant-exit-delayed") {
         let child = Command::new("/bin/sleep")
             .arg("60")
             .env_clear()
@@ -210,7 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("worker inherited environment".into());
     }
     loop {
-        if mode == "exit-delayed" && active_since.elapsed() >= Duration::from_millis(150) {
+        if matches!(mode, "exit-delayed" | "descendant-exit-delayed")\n            && active_since.elapsed() >= Duration::from_millis(150)\n        {
             std::process::exit(23);
         }
         if let Some(envelope) = client.poll_control()? {

@@ -853,6 +853,47 @@ fn cancellation_reaps_the_leader_and_terminates_cooperative_descendants() -> Tes
 }
 
 #[test]
+fn natural_leader_exit_terminates_a_surviving_cooperative_descendant() -> TestResult {
+    let pid_file =
+        std::env::temp_dir().join(format!("intent-descendant-exit-{}", Uuid::new_v4()));
+    let mut supervisor = supervisor(1)?;
+    let id = supervisor.launch(
+        image()?,
+        config(scope(), cap())?,
+        &[
+            "descendant-exit-delayed".to_owned(),
+            pid_file.display().to_string(),
+        ],
+    )?;
+    let ready_snapshot = ready(&mut supervisor, id)?;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !pid_file.exists() {
+        supervisor.poll();
+        if Instant::now() >= deadline {
+            return Err("missing surviving descendant PID".into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let pid: u32 = std::fs::read_to_string(&pid_file)?.parse()?;
+
+    let stopped = terminal(&mut supervisor, id)?;
+    assert_eq!(stopped.state, WorkerState::Failed);
+    assert_eq!(stopped.failure, Some(WorkerFailure::OsExit));
+    assert_eq!(stopped.exit_code, Some(23));
+    assert!(!Path::new(&format!("/proc/{}", ready_snapshot.process_id)).exists());
+
+    let descendant_deadline = Instant::now() + Duration::from_secs(2);
+    while Path::new(&format!("/proc/{pid}")).exists() {
+        if Instant::now() >= descendant_deadline {
+            return Err(format!("surviving descendant {pid} was not reaped").into());
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    std::fs::remove_file(pid_file)?;
+    Ok(())
+}
+
+#[test]
 fn an_unresponsive_stop_escalates_without_blocking_other_workers() -> TestResult {
     let mut supervisor = supervisor(2)?;
     let capability = cap();
